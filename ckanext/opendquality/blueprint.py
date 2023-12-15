@@ -2,13 +2,16 @@
 
 from flask import Blueprint
 import ckan.plugins.toolkit as toolkit 
+from logging import getLogger
 # from ckan.common import config
+from ckan.model import package_table, Session
 import ckanext.opendquality.quality as quality_lib
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
 #     DataQualityMetrics
 # )
+log = getLogger(__name__)
 qa = Blueprint('quality', __name__)
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
@@ -100,10 +103,10 @@ def all_packages(handler):
 def home():
     return {'msg': 'hello world quality'}
 
-def completeness():
-    return {'msg': 'completeness score',
+def calculate_quality(): #completeness
+    return {'msg': 'calculate quality score',
             'score': dquality.get_last_modified_datasets(),
-            'metric': calculate('bird','all')
+            'metric': calculate('all','all')
             # metrics.calculate('bird','completeness')
             #metrics.calculate_metrics_for_dataset('bird')  
     }
@@ -115,4 +118,4 @@ def completeness():
 #     }
 
 qa.add_url_rule('/quality', view_func=home)
-qa.add_url_rule('/completeness', view_func=completeness)
+qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
