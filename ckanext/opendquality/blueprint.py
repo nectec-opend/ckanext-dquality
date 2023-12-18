@@ -29,7 +29,7 @@ def calculate(dataset, dimension):
         'validity'    : quality_lib.Validity(),
         # 'accuracy'    : quality_lib.Accuracy(),
         'consistency' : quality_lib.Consistency(),
-        'openness' : quality_lib.Openness(),
+        'openness'    : quality_lib.Openness(),
         'downloadable' : quality_lib.Downloadable()
     }
 

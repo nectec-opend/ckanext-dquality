@@ -27,11 +27,11 @@ log = logging.getLogger(__name__)
 
 
 @click.group()
-def db():
+def opendquality_db():
     pass
 
 
-@db.command(u'init', short_help=u'Initialize Knowledgehub tables')
+@opendquality_db.command(u'init', short_help=u'Initialize Knowledgehub tables')
 def init():
     init_db()
 
