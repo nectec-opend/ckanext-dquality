@@ -50,7 +50,7 @@ def opendquality(ctx, config, *args, **kwargs):
     ctx.obj = CkanCommand(config)
 
 
-opendquality.add_command(db.db)
+opendquality.add_command(db.opendquality)
 # opendquality.add_command(predictive_search.predictive_search)
 # opendquality.add_command(index.index)
 # opendquality.add_command(intents.intents)

@@ -27,11 +27,11 @@ log = logging.getLogger(__name__)
 
 
 @click.group()
-def opendquality_db():
+def opendquality():
     pass
 
 
-@opendquality_db.command(u'init', short_help=u'Initialize Knowledgehub tables')
+@opendquality.command(u'init', short_help=u'Initialize opendquality tables')
 def init():
     init_db()
 
@@ -49,3 +49,6 @@ def init_db():
             u'Initialising Opendquality tables: SUCCESS',
             fg=u'green',
             bold=True)
+
+def get_commands():
+    return [opendquality]
