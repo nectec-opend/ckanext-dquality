@@ -19,6 +19,7 @@ import click
 
 import ckan.plugins.toolkit as toolkit
 from ckan.model import package_table, Session
+import ckanext.opendquality.quality as quality_lib
 # from ckanext.opendquality.quality import (
 #     Completeness,
 #     DataQualityMetrics
@@ -86,7 +87,7 @@ def calculate(dataset, dimension):
     else:
         calculators = [dimension_calculators[dimension]]
 
-    metrics = DataQualityMetrics(metrics=calculators)
+    metrics = quality_lib.DataQualityMetrics(metrics=calculators)
 
     if dataset == 'all':
 

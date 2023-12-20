@@ -2,7 +2,7 @@ import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 from logging import getLogger
 from ckanext.opendquality import blueprint
-from ckanext.opendquality.cli import db
+from ckanext.opendquality.cli import cli
 
 
 log = getLogger(__name__)
@@ -15,7 +15,7 @@ class OpendqualityPlugin(plugins.SingletonPlugin):
 
     # IClick
     def get_commands(self):
-        return db.get_commands()
+        return cli.get_commands()
 
     # IConfigurer
     def update_config(self, config_):

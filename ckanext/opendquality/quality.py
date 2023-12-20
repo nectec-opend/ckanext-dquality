@@ -197,10 +197,10 @@ class DataQualityMetrics(object):
 
         results = []
         for resource in dataset['resources']:
-            self.logger.debug ('Calculating data quality for resource: %s',
-                              resource['id'])
-            self.logger.debug ('Calculating data quality for resource: %s',
-                              resource)
+            # self.logger.debug ('Calculating data quality for resource: %s',
+            #                   resource['id'])
+            # self.logger.debug ('Calculating data quality for resource: %s',
+            #                   resource)
             resource['data_quality_settings'] = self._data_quality_settings(
                 resource)
        

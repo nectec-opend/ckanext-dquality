@@ -27,6 +27,13 @@ import click
 #                                       index,
 #                                       intents,
 #                                       quality)
+from ckanext.opendquality.cli import (click_config_option,
+                                      db,
+                                      load_config,
+                                      quality)
+from ckanext.opendquality.model import (
+    DataQualityMetrics as DataQualityMetricsModel
+)
 from ckanext.opendquality.cli import (
                                       db,
                                       quality)
@@ -35,23 +42,26 @@ from ckan.config.middleware import make_app
 log = logging.getLogger(__name__)
 
 
-class CkanCommand(object):
+# class CkanCommand(object):
 
-    def __init__(self, conf=None):
-        self.config = load_config(conf)
-        self.app = make_app(self.config.global_conf, **self.config.local_conf)
-
-
-@click.group()
-@click.help_option(u'-h', u'--help')
-@click_config_option
-@click.pass_context
-def opendquality(ctx, config, *args, **kwargs):
-    ctx.obj = CkanCommand(config)
+#     def __init__(self, conf=None):
+#         self.config = load_config(conf)
+#         self.app = make_app(self.config.global_conf, **self.config.local_conf)
 
 
-opendquality.add_command(db.opendquality)
-# opendquality.add_command(predictive_search.predictive_search)
-# opendquality.add_command(index.index)
-# opendquality.add_command(intents.intents)
-opendquality.add_command(quality.quality)
+# @click.group()
+# @click.help_option(u'-h', u'--help')
+# @click_config_option
+# @click.pass_context
+# def opendquality(ctx, config, *args, **kwargs):
+#     ctx.obj = CkanCommand(config)
+
+
+# opendquality.add_command(db.opendquality)
+# # opendquality.add_command(predictive_search.predictive_search)
+# # opendquality.add_command(index.index)
+# # opendquality.add_command(intents.intents)
+# opendquality.add_command(quality.quality)
+
+def get_commands():
+    return [db.opendquality, quality.quality]
