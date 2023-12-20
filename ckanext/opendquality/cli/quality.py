@@ -52,21 +52,31 @@ def quality():
               help='Which metric to calculate.')
 def calculate(dataset, dimension):
     _register_mock_translator()
-    dimensions = ['completeness',
-                #   'uniqueness',
-                #   'timeliness',
-                #   'validity',
-                #   'accuracy',
-                #   'consistency'
-                  ]
+    # dimensions = ['completeness',
+    #             #   'uniqueness',
+    #             #   'timeliness',
+    #             #   'validity',
+    #             #   'accuracy',
+    #             #   'consistency'
+    #               ]
+       # dimension_calculators = {
+    #     'completeness': Completeness(),
+    #     # 'uniqueness': Uniqueness(),
+    #     # 'timeliness': Timeliness(),
+    #     # 'validity': Validity(),
+    #     # 'accuracy': Accuracy(),
+    #     # 'consistency': Consistency(),
+    # }
+    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable']
     dimension_calculators = {
-        'completeness': Completeness(),
-        # 'uniqueness': Uniqueness(),
-        # 'timeliness': Timeliness(),
-        # 'validity': Validity(),
-        # 'accuracy': Accuracy(),
-        # 'consistency': Consistency(),
+        'completeness': quality_lib.Completeness(),
+        'uniqueness'  : quality_lib.Uniqueness(),
+        'validity'    : quality_lib.Validity(),
+        'consistency' : quality_lib.Consistency(),
+        'openness'    : quality_lib.Openness(),
+        'downloadable' : quality_lib.Downloadable()
     }
+ 
 
     if dimension == 'all':
         calculators = [dimension_calculators[dim] for dim in dimensions]
