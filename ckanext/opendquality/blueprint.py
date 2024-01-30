@@ -30,7 +30,8 @@ def calculate(dataset, dimension):
         # 'accuracy'    : quality_lib.Accuracy(),
         'consistency' : quality_lib.Consistency(),
         'openness'    : quality_lib.Openness(),
-        'downloadable' : quality_lib.Downloadable()
+        'downloadable' : quality_lib.Downloadable(),
+        'machine_readable' : quality_lib.MachineReadable()
     }
 
     if dimension == 'all':
@@ -42,7 +43,8 @@ def calculate(dataset, dimension):
         calculators = [dimension_calculators[dimension]]
     # self.logger.debug('----Calculators---')
     # self.logger.debug(calculators)
-    the_metrics = quality_lib.DataQualityMetrics(metrics=calculators)
+    the_metrics  = quality_lib.DataQualityMetrics(metrics=calculators)
+    # the_metrics = resource.DataQualityMetrics(metrics=calculators)
 
     if dataset == 'all':
 
@@ -107,6 +109,7 @@ def calculate_quality(): #completeness
     return {'msg': 'calculate quality score',
             'score': dquality.get_last_modified_datasets(),
             'metric': calculate('all','all')
+            # 'metric': calculate('bird','all')
             # metrics.calculate('bird','completeness')
             #metrics.calculate_metrics_for_dataset('bird')  
     }

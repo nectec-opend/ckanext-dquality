@@ -68,14 +68,15 @@ def calculate(dataset, dimension):
     #     # 'accuracy': Accuracy(),
     #     # 'consistency': Consistency(),
     # }
-    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable']
+    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','machine_readable']
     dimension_calculators = {
         'completeness': quality_lib.Completeness(),
         'uniqueness'  : quality_lib.Uniqueness(),
         'validity'    : quality_lib.Validity(),
         'consistency' : quality_lib.Consistency(),
         'openness'    : quality_lib.Openness(),
-        'downloadable' : quality_lib.Downloadable()
+        'downloadable' : quality_lib.Downloadable(),
+        'machine_readable' : quality_lib.MachineReadable()
     }
  
 

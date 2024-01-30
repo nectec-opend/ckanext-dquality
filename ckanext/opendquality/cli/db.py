@@ -35,7 +35,6 @@ def opendquality():
 def init():
     init_db()
 
-
 def init_db():
     u'''Initialising the Opendquality tables'''
     log.info(u"Initialize Opendquality tables")

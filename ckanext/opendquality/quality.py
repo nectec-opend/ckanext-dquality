@@ -136,7 +136,7 @@ class DataQualityMetrics(object):
         settings = {}
         # for dimension in ['completeness', 'uniqueness', 'timeliness',
         #                   'validity', 'accuracy', 'consistency']:
-        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','downloadable']:
+        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','downloadable','machine_readable']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -258,6 +258,7 @@ class DataQualityMetrics(object):
                             data_quality.consistency,
                             data_quality.openness,
                             data_quality.downloadable,
+                            data_quality.machine_readable
                             ])):
                     self.logger.debug('Data Quality already calculated.')
                     return data_quality.metrics
@@ -314,9 +315,10 @@ class DataQualityMetrics(object):
                         data_stream['records'].rewind()
                     else:
                         data_stream = self._fetch_resource_data(resource)
-                
-                if(metric.name == 'openness' or metric.name == 'downloadable'):
-                    results[metric.name] = metric.calculate_metric(resource, resource['format'], resource['url'])
+                #------ Check Meta Data ------------
+                if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'machine_readable'):
+                    results[metric.name] = metric.calculate_metric(resource)
+                    # results[metric.name] = metric.calculate_metric(resource, resource['format'], resource['url'])
                 else:                                              
                     results[metric.name] = metric.calculate_metric(resource,data_stream)
                                                                
@@ -589,6 +591,277 @@ class ResourceFetchData(object):
             log.debug('Will try to download the data directly.')
             return self.fetch_page(page, limit)
 
+class Openness():#DimensionMetric
+    '''Calculates the openness Data Qualtiy dimension.
+
+    The calculation is performed over all values in the resource data.
+    In each row, ever cell is inspected if there is a value present in it.
+
+    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+        * `cells_with_value` is the number of cells containing a value. A cell
+            contains a value if the value in the cell is not `None` or an empty
+            string or a string containing only whitespace.
+        * `total_numbr_of_cells` is the total number of cells expected to be
+            populted. This is calculated from the number of rows multiplied by
+            the number of columns in the tabular data.
+
+    The return value is a percentage of cells that are populated from the total
+    number of cells.
+    '''
+    
+    
+    def __init__(self):
+        self.name = 'openness'
+
+    def get_openness_score(self,data_type):
+        openness_score = { "N3": 5, "SPARQL": 5, "RDF": 5,
+        "TTL": 5, "KML": 3, "WCS": 3, "NetCDF": 3,
+        "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
+        "ODS": 3, "JSON": 3,"ODB": 3, "ODF": 3,
+        "ODG": 3, "XML": 3,"WMS": 3, "WMTS": 3,
+        "SVG": 3, "JPEG": 3,"CSV": 3, "Atom Feed": 3,
+        "XYZ": 3, "PNG": 3,"RSS": 3, "GeoJSON": 3,
+        "IATI": 3, "ICS": 3,"XLS": 2, "MDB": 2,
+        "ArcGIS Map Service": 2,"BMP": 2, "TIFF": 2,
+        "XLSX": 2, "GIF": 2,"E00": 2, "MrSID": 2,
+        "ArcGIS Map Preview": 2,"MOP": 2, "Esri REST": 2,
+        "dBase": 2, "SHP": 2,"PPTX": 1, "DOC": 1,
+        "ArcGIS Online Map": 1, "ZIP": 1, "GZ": 1,
+        "ODT": 1, "RAR": 1,"TXT": 1, "DCR": 1,
+        "DOCX": 1, "BIN": 1,"PPT": 1, "ODP": 1,
+        "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
+        "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
+        "XSLT": 0, "RDFa": 0}
+        score =  openness_score.get(data_type)
+        return score
+    def calculate_metric(self, resource):
+        '''Calculates the openness dimension metric for the given resource
+        from the resource data.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, the report contaning the calculated values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        resource_data_format = resource['format']
+
+        openness_score = self.get_openness_score(resource_data_format)
+
+        log.debug('Openness score: %f%%', openness_score)
+        return {
+            'format': resource_data_format,
+            'value': openness_score,
+        }
+        
+
+
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the cumulative report for all resources from the
+        calculated results for each resource.
+
+        The calculation is done as `all_complete/all_total * 100`, where
+            * `all_complete` is the total number of completed values in all
+                resources.
+            * all_total is the number of expected values (rows*columns) in all
+                resources.
+        The final value is the percentage of completed values in all resources
+        in the dataset.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of complete values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        total, openness = reduce(lambda (total, openness), result: (
+            total + result.get('total', 0),
+            openness + result.get('openness', 0)
+        ), metrics, (0, 0))
+        return {
+            'total': total,
+            'openness': openness,
+            'value': float(openness)/float(total) * 100.0 if total else 0.0,
+        }
+class Downloadable():#DimensionMetric
+    '''Calculates the Downloadable Data Qualtiy dimension.
+
+    The calculation is performed over all values in the resource data.
+    In each row, ever cell is inspected if there is a value present in it.
+
+    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+        * `cells_with_value` is the number of cells containing a value. A cell
+            contains a value if the value in the cell is not `None` or an empty
+            string or a string containing only whitespace.
+        * `total_numbr_of_cells` is the total number of cells expected to be
+            populted. This is calculated from the number of rows multiplied by
+            the number of columns in the tabular data.
+
+    The return value is a percentage of cells that are populated from the total
+    number of cells.
+    '''
+
+    def __init__(self):
+        self.name = 'downloadable'
+    def calculate_metric(self, resource):
+        '''Calculates the openness dimension metric for the given resource
+        from the resource data.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, the report contaning the calculated values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        log.debug ('------------downloadable--')
+        # log.debug(resource)
+        downloadable_score = 2
+        resource_data_format = resource['format'] 
+        resource_url    = resource['url']
+         #-------downloadable------
+        if(pd.isna(resource_data_format)):
+            downloadable_score = 0
+        elif(pd.notna(resource_url)): 
+            format_url = resource_url.split(".")[-1]
+            lower_format = resource_data_format.lower()
+            log.debug ('Check downloadable type')
+            log.debug (lower_format)
+            log.debug (format_url)
+            if(format_url != lower_format):
+                downloadable_score = 1
+        log.debug('Downloadable score:', downloadable_score)
+        return {
+            'format': resource_data_format,
+            'value': downloadable_score,
+        }
+        
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the cumulative report for all resources from the
+        calculated results for each resource.
+
+        The calculation is done as `all_complete/all_total * 100`, where
+            * `all_complete` is the total number of completed values in all
+                resources.
+            * all_total is the number of expected values (rows*columns) in all
+                resources.
+        The final value is the percentage of completed values in all resources
+        in the dataset.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of complete values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        total, downloadable = reduce(lambda (total, downloadable), result: (
+            total + result.get('total', 0),
+            downloadable + result.get('downloadable', 0)
+        ), metrics, (0, 0))
+        return {
+            'total': total,
+            'downloadable': downloadable,
+            'value': float(downloadable)/float(total) * 100.0 if total else 0.0,
+        }
+class MachineReadable():#DimensionMetric
+    '''Calculates the MachineReadable Data Qualtiy dimension.
+
+    The calculation is performed over all values in the resource data.
+    In each row, ever cell is inspected if there is a value present in it.
+
+    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+        * `cells_with_value` is the number of cells containing a value. A cell
+            contains a value if the value in the cell is not `None` or an empty
+            string or a string containing only whitespace.
+        * `total_numbr_of_cells` is the total number of cells expected to be
+            populted. This is calculated from the number of rows multiplied by
+            the number of columns in the tabular data.
+
+    The return value is a percentage of cells that are populated from the total
+    number of cells.
+    '''
+
+    def __init__(self):
+        self.name = 'machine_readable'
+    def calculate_metric(self, resource):
+        '''Calculates the openness dimension metric for the given resource
+        from the resource data.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, the report contaning the calculated values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        machine_readable_score = 2 
+         #-------downloadable------
+        log.debug (resource['format'])
+        if(resource['datastore_active'] == True and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')):
+            machine_readable_score = 2
+        elif(resource['datastore_active'] == False and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')): 
+            machine_readable_score = 1
+        else:
+            machine_readable_score = 0
+        log.debug('MachineReadable score: %f%%', machine_readable_score)
+        return {
+            'datastore': resource['datastore_active'],
+            'format': resource['format'],
+            'value': machine_readable_score
+        }
+        
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the cumulative report for all resources from the
+        calculated results for each resource.
+
+        The calculation is done as `all_complete/all_total * 100`, where
+            * `all_complete` is the total number of completed values in all
+                resources.
+            * all_total is the number of expected values (rows*columns) in all
+                resources.
+        The final value is the percentage of completed values in all resources
+        in the dataset.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of complete values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        total, machine_readable = reduce(lambda (total, machine_readable), result: (
+            total + result.get('total', 0),
+            machine_readable + result.get('machine_readable', 0)
+        ), metrics, (0, 0))
+        return {
+            'total': total,
+            'machine_readable': machine_readable,
+            'value': float(machine_readable)/float(total) * 100.0 if total else 0.0,
+        }
 class Completeness():#DimensionMetric
     '''Calculates the completeness Data Qualtiy dimension.
 
@@ -689,197 +962,6 @@ class Completeness():#DimensionMetric
             'total': total,
             'complete': complete,
             'value': float(complete)/float(total) * 100.0 if total else 0.0,
-        }
-class Openness():#DimensionMetric
-    '''Calculates the openness Data Qualtiy dimension.
-
-    The calculation is performed over all values in the resource data.
-    In each row, ever cell is inspected if there is a value present in it.
-
-    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
-        * `cells_with_value` is the number of cells containing a value. A cell
-            contains a value if the value in the cell is not `None` or an empty
-            string or a string containing only whitespace.
-        * `total_numbr_of_cells` is the total number of cells expected to be
-            populted. This is calculated from the number of rows multiplied by
-            the number of columns in the tabular data.
-
-    The return value is a percentage of cells that are populated from the total
-    number of cells.
-    '''
-    
-    
-    def __init__(self):
-        self.name = 'openness'
-
-    def get_openness_score(self,data_type):
-        openness_score = { "N3": 5, "SPARQL": 5, "RDF": 5,
-        "TTL": 5, "KML": 3, "WCS": 3, "NetCDF": 3,
-        "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
-        "ODS": 3, "JSON": 3,"ODB": 3, "ODF": 3,
-        "ODG": 3, "XML": 3,"WMS": 3, "WMTS": 3,
-        "SVG": 3, "JPEG": 3,"CSV": 3, "Atom Feed": 3,
-        "XYZ": 3, "PNG": 3,"RSS": 3, "GeoJSON": 3,
-        "IATI": 3, "ICS": 3,"XLS": 2, "MDB": 2,
-        "ArcGIS Map Service": 2,"BMP": 2, "TIFF": 2,
-        "XLSX": 2, "GIF": 2,"E00": 2, "MrSID": 2,
-        "ArcGIS Map Preview": 2,"MOP": 2, "Esri REST": 2,
-        "dBase": 2, "SHP": 2,"PPTX": 1, "DOC": 1,
-        "ArcGIS Online Map": 1, "ZIP": 1, "GZ": 1,
-        "ODT": 1, "RAR": 1,"TXT": 1, "DCR": 1,
-        "DOCX": 1, "BIN": 1,"PPT": 1, "ODP": 1,
-        "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
-        "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
-        "XSLT": 0, "RDFa": 0}
-        score =  openness_score.get(data_type)
-        return score
-    def calculate_metric(self, resource, resource_data_format,resource_url):
-        '''Calculates the openness dimension metric for the given resource
-        from the resource data.
-
-        :param resource: `dict`, CKAN resource.
-        :param data: `dict`, the resource data as a dict with the following
-            values:
-                * `total`, `int`, total number of rows.
-                * `fields`, `list` of `dict`, column metadata - name, type.
-                * `records`, `iterable`, iterable over the rows in the resource
-                    where each row is a `dict` itself.
-
-        :returns: `dict`, the report contaning the calculated values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        openness_score = self.get_openness_score(resource_data_format)
-
-        log.debug('Openness score: %f%%', openness_score)
-        return {
-            'format': resource_data_format,
-            'value': openness_score,
-        }
-        
-
-
-    def calculate_cumulative_metric(self, resources, metrics):
-        '''Calculates the cumulative report for all resources from the
-        calculated results for each resource.
-
-        The calculation is done as `all_complete/all_total * 100`, where
-            * `all_complete` is the total number of completed values in all
-                resources.
-            * all_total is the number of expected values (rows*columns) in all
-                resources.
-        The final value is the percentage of completed values in all resources
-        in the dataset.
-
-        :param resources: `list` of CKAN resources.
-        :param metrics: `list` of `dict` results for each resource.
-
-        :returns: `dict`, a report for the total percentage of complete values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        total, openness = reduce(lambda (total, openness), result: (
-            total + result.get('total', 0),
-            openness + result.get('openness', 0)
-        ), metrics, (0, 0))
-        return {
-            'total': total,
-            'openness': openness,
-            'value': float(openness)/float(total) * 100.0 if total else 0.0,
-        }
-class Downloadable():#DimensionMetric
-    '''Calculates the Downloadable Data Qualtiy dimension.
-
-    The calculation is performed over all values in the resource data.
-    In each row, ever cell is inspected if there is a value present in it.
-
-    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
-        * `cells_with_value` is the number of cells containing a value. A cell
-            contains a value if the value in the cell is not `None` or an empty
-            string or a string containing only whitespace.
-        * `total_numbr_of_cells` is the total number of cells expected to be
-            populted. This is calculated from the number of rows multiplied by
-            the number of columns in the tabular data.
-
-    The return value is a percentage of cells that are populated from the total
-    number of cells.
-    '''
-
-    def __init__(self):
-        self.name = 'downloadable'
-    def calculate_metric(self, resource, resource_data_format,resource_url):
-        '''Calculates the openness dimension metric for the given resource
-        from the resource data.
-
-        :param resource: `dict`, CKAN resource.
-        :param data: `dict`, the resource data as a dict with the following
-            values:
-                * `total`, `int`, total number of rows.
-                * `fields`, `list` of `dict`, column metadata - name, type.
-                * `records`, `iterable`, iterable over the rows in the resource
-                    where each row is a `dict` itself.
-
-        :returns: `dict`, the report contaning the calculated values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        format_type = { "N3", "RDF", "TTL", "KML", "WCS", "NetCDF",
-        "TSV", "WFS", "KMZ", "ODS", "JSON","ODB", "ODF",
-        "ODG", "XML","WMS", "WMTS","SVG", "JPEG","CSV",
-        "XYZ", "PNG","RSS", "GeoJSON","IATI", "ICS","XLS", "MDB",
-        "BMP", "TIFF", "XLSX", "GIF","E00", "MrSID","MOP",
-        "dBase", "SHP","PPTX", "DOC","ZIP", "GZ","ODT", "RAR","TXT", "DCR",
-        "DOCX", "BIN","PPT", "ODP","PDF", "ODC","MXD", "TAR","EXE",
-        "JS","Perl","OWL", "HTML", "XSLT", "RDFa"}
-        downloadable_score = 2
-         #-------downloadable------
-        if(pd.isna(resource_data_format)):
-            downloadable_score = 0
-        elif(pd.notna(resource_url)): 
-            format_url = resource_url.split(".")[-1]
-            lower_format = resource_data_format.lower()
-            log.debug ('Check downloadable type')
-            log.debug (lower_format)
-            log.debug (format_url)
-            if(format_url != lower_format):
-                downloadable_score = 1
-        log.debug('Downloadable score: %f%%', downloadable_score)
-        return {
-            'format': resource_data_format,
-            'value': downloadable_score,
-        }
-        
-    def calculate_cumulative_metric(self, resources, metrics):
-        '''Calculates the cumulative report for all resources from the
-        calculated results for each resource.
-
-        The calculation is done as `all_complete/all_total * 100`, where
-            * `all_complete` is the total number of completed values in all
-                resources.
-            * all_total is the number of expected values (rows*columns) in all
-                resources.
-        The final value is the percentage of completed values in all resources
-        in the dataset.
-
-        :param resources: `list` of CKAN resources.
-        :param metrics: `list` of `dict` results for each resource.
-
-        :returns: `dict`, a report for the total percentage of complete values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        total, openness = reduce(lambda (total, openness), result: (
-            total + result.get('total', 0),
-            openness + result.get('openness', 0)
-        ), metrics, (0, 0))
-        return {
-            'total': total,
-            'openness': openness,
-            'value': float(openness)/float(total) * 100.0 if total else 0.0,
         }
 class Uniqueness(): #DimensionMetric
     '''Calculates the uniqueness of the data.
@@ -1034,10 +1116,35 @@ class Validity():#DimensionMetric
 
         total_rows = 0
         total_errors = 0
+
+
+        errors_message = ''
+        errors_code = ''
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
             total_errors += table.get('error-count', 0)
-
+            log.debug('-----Check Validity---')
+            log.debug(type(table))
+            for error in table.get('errors', []):
+                # errors_message += error.get('message')
+                errors_code += error.get('code')
+            # log.debug(errors_message)
+            log.debug(errors_code)
+            log.debug(table.get('valid'))
+            log.debug(table.get('format'))
+            log.debug(table.get('encoding'))
+            log.debug(table.get('headers'))
+            # errors = table.get('errors', [0])
+            # errors_message = errors.get('message')
+            # errors_code = errors.get('code')
+            # log.debug(errors_message)
+            # log.debug(errors_code)
+            # log.debug(table.get('errors', [0]))
+     
+            # log.debug(table.get('errors',[0]['message']))
+            # log.debug(table.get('errors',[0]['column-number']))
+            with open("D:\\Documents\\SAI\\OpenD\\DataQuality\\report_validity.txt", "w") as file:
+                file.write("New wiki entry: ChatGPT")
         if total_rows == 0:
             return {
                 'value': 0.0,
