@@ -415,6 +415,7 @@ class DataQualityMetrics(object):
                             data_quality.consistency,
                             data_quality.openness,
                             data_quality.downloadable,
+                            data_quality.access_api,
                             data_quality.machine_readable
                             ])):
                     self.logger.debug('Data Quality already calculated.')
@@ -476,9 +477,9 @@ class DataQualityMetrics(object):
                     else:
                         data_stream = self._fetch_resource_data(resource)
                 #------ Check Meta Data ------------
-                if(metric.name == 'openness' or metric.name == 'downloadable'):
+                if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                     results[metric.name] = metric.calculate_metric(resource)
-                    # results[metric.name] = metric.calculate_metric(resource, resource['format'], resource['url'])
+
                 elif(metric.name == 'consistency'):
                     log.debug('------Call _fetch_resource_data2-----')
                     data_stream2 = self._fetch_resource_data2(resource)
@@ -752,20 +753,16 @@ class ResourceFetchData(object):
                     * `id` - `str`, the name of the column
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
-        log.debug('----call fetch_page at ResourceFetchData-------')
+        # log.debug('----call fetch_page at ResourceFetchData-------')
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
                 log.debug('Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
         try:
-            #------ Pang Edit: Original ------------------
             page = self._fetch_data_datastore(page, limit)
             log.debug('Data is available in DataStore. '
                       'Using datastore for data retrieval.')
-            
-            # page = self._download_resource_from_ckan(self.resource)
-            # log.debug('Get data from _download_resource_from_ckan')
             return page
         except Exception as e:
             log.warning('Failed to load resource data from DataStore. '
@@ -868,10 +865,10 @@ class ResourceFetchData2(object):
             data = []
             if os.path.isfile(filepath):
                 data = []
-                if '\0' in open(filepath).read():
-                    print("you have null bytes in your input file")
-                else:
-                    print("you don't")
+                # if '\0' in open(filepath).read():
+                #     print("you have null bytes in your input file")
+                # else:
+                #     print("you don't")
 
                 with open(filepath) as csvf:
                     reader = csv.reader(csvf)
@@ -939,17 +936,14 @@ class ResourceFetchData2(object):
                     * `id` - `str`, the name of the column
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
-        log.debug('----call fetch_page at ResourceFetchData2-------')
+        # log.debug('----call fetch_page at ResourceFetchData2-------')
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
-                log.debug('Resource data downloaded directly.')
+                # log.debug('Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
         try:
-            #------ Pang Edit: Original ------------------
-            # page = self._fetch_data_datastore(page, limit)
-            # log.debug('Data is available in DataStore. '
-            #           'Using datastore for data retrieval.')         
+            #------ Pang Edit ------------------       
             self.download_resource = True
             log.debug('Will try to download the data directly.')
             return self.fetch_page2(page, limit)
@@ -1023,8 +1017,7 @@ class Openness():#DimensionMetric
         resource_data_format = resource['format']
 
         openness_score = self.get_openness_score(resource_data_format)
-
-        log.debug('Openness score: %f%%', openness_score)
+        # log.debug('Openness score: %f%%', openness_score)
         return {
             'format': resource_data_format,
             'value': openness_score,
@@ -1052,14 +1045,18 @@ class Openness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        total, openness = reduce(lambda (total, openness), result: (
-            total + result.get('total', 0),
-            openness + result.get('openness', 0)
-        ), metrics, (0, 0))
+        log.debug('-------------Calculate openness metrics -----------')
+        # log.debug(metrics)
+        openness_list = []
+        total = 0
+        for item_metric in metrics:
+            openness_score = item_metric.get('value')
+            total = total+openness_score
+            openness_list.append(openness_score)
+        result_score = max(openness_list)
         return {
             'total': total,
-            'openness': openness,
-            'value': float(openness)/float(total) * 100.0 if total else 0.0,
+            'value': result_score,
         }
 class Downloadable():#DimensionMetric
     '''Calculates the Downloadable Data Qualtiy dimension.
@@ -1103,18 +1100,17 @@ class Downloadable():#DimensionMetric
         downloadable_score = 2
         resource_data_format = resource['format'] 
         resource_url    = resource['url']
-         #-------downloadable------
         if(pd.isna(resource_data_format)):
             downloadable_score = 0
         elif(pd.notna(resource_url)): 
             format_url = resource_url.split(".")[-1]
             lower_format = resource_data_format.lower()
-            log.debug ('Check downloadable type')
-            log.debug (lower_format)
-            log.debug (format_url)
+            # log.debug ('Check downloadable type')
+            # log.debug (lower_format)
+            # log.debug (format_url)
             if(format_url != lower_format):
                 downloadable_score = 1
-        log.debug('Downloadable score:', downloadable_score)
+        # log.debug('Downloadable score:', downloadable_score)
         return {
             'format': resource_data_format,
             'value': downloadable_score,
@@ -1140,14 +1136,105 @@ class Downloadable():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        total, downloadable = reduce(lambda (total, downloadable), result: (
-            total + result.get('total', 0),
-            downloadable + result.get('downloadable', 0)
-        ), metrics, (0, 0))
+        log.debug('-------------Calculate downloadable metrics -----------')
+        # log.debug(metrics)
+        downloadable_list = []
+        total = 0
+        for item_metric in metrics:
+            downloadable_score = item_metric.get('value')
+            total = total+downloadable_score
+            downloadable_list.append(downloadable_score)
+        result_score = max(downloadable_list)
         return {
             'total': total,
-            'downloadable': downloadable,
-            'value': float(downloadable)/float(total) * 100.0 if total else 0.0,
+            'value': result_score,
+        }
+class AccessAPI():#DimensionMetric
+    '''Calculates the Downloadable Data Qualtiy dimension.
+
+    The calculation is performed over all values in the resource data.
+    In each row, ever cell is inspected if there is a value present in it.
+
+    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+        * `cells_with_value` is the number of cells containing a value. A cell
+            contains a value if the value in the cell is not `None` or an empty
+            string or a string containing only whitespace.
+        * `total_numbr_of_cells` is the total number of cells expected to be
+            populted. This is calculated from the number of rows multiplied by
+            the number of columns in the tabular data.
+
+    The return value is a percentage of cells that are populated from the total
+    number of cells.
+    '''
+
+    def __init__(self):
+        self.name = 'access_api'
+    def calculate_metric(self, resource):
+        '''Calculates the API Accesssibility dimension metric for the given resource
+        from the resource data.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, the report contaning the calculated values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        # log.debug ('-----Access API-----')
+        access_api_score = 2 
+        log.debug (resource['format'])
+        if(resource['datastore_active'] == True and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')):
+            access_api_score = 2
+        elif(resource['datastore_active'] == False and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')): 
+            access_api_score = 1
+        else:
+            access_api_score = 0
+        # log.debug('Accessibility API score: %f%%', access_api_score)
+        return {
+            'datastore': resource['datastore_active'],
+            'format': resource['format'],
+            'value': access_api_score
+        }
+   
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the cumulative report for all resources from the
+        calculated results for each resource.
+
+        The calculation is done as `all_complete/all_total * 100`, where
+            * `all_complete` is the total number of completed values in all
+                resources.
+            * all_total is the number of expected values (rows*columns) in all
+                resources.
+        The final value is the percentage of completed values in all resources
+        in the dataset.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of complete values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        # log.debug('-------------Calculate accessibility metrics -----------')
+        # log.debug(metrics)
+        access_api_list = []
+        total = 0
+        for item_metric in metrics:
+            access_api_score = item_metric.get('value')
+            total = total+access_api_score
+            access_api_list.append(access_api_score)
+        result_score = max(access_api_list)
+        return {
+            'total': total,
+            'avg_score': total/len(access_api_list),
+            'value': result_score,
         }
 class MachineReadable():#DimensionMetric
     '''Calculates the MachineReadable Data Qualtiy dimension.
@@ -1193,21 +1280,6 @@ class MachineReadable():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        # machine_readable_score = 2 
-        #  #-------downloadable------
-        # log.debug (resource['format'])
-        # if(resource['datastore_active'] == True and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')):
-        #     machine_readable_score = 2
-        # elif(resource['datastore_active'] == False and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')): 
-        #     machine_readable_score = 1
-        # else:
-        #     machine_readable_score = 0
-        # log.debug('MachineReadable score: %f%%', machine_readable_score)
-        # return {
-        #     'datastore': resource['datastore_active'],
-        #     'format': resource['format'],
-        #     'value': machine_readable_score
-        # }
         #--------------Machine Readable-----------------
         machine_readable_format = ['CSV','XLSX']
         openness_5_star_format = ['RDF','TTL','JSON','XML','N3','SPARQL']
@@ -1230,8 +1302,8 @@ class MachineReadable():#DimensionMetric
                 machine_readable_score = machine_readable_score-20
             elif(encoding_utf8 == False):
                 machine_readable_score = machine_readable_score-10
-            log.debug('----machine_readable_val------')
-            log.debug('MachineReadable score: %f%%', machine_readable_score)
+            # log.debug('----machine_readable_val------')
+            # log.debug('MachineReadable score: %f%%', machine_readable_score)
             return {
                 'consistency': consistency_val,
                 'validity': validity_chk,
@@ -1269,7 +1341,7 @@ class MachineReadable():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug('-------------Calculate machine metrics -----------')
+        # log.debug('-------------Calculate machine metrics -----------')
         # log.debug(metrics)
         machine_readable_list = []
         total = 0
@@ -1283,15 +1355,6 @@ class MachineReadable():#DimensionMetric
             'avg_score': total/len(machine_readable_list),
             'value': result_score,
         }
-        # total, machine_readable = reduce(lambda (total, machine_readable), result: (
-        #     total + result.get('total', 0),
-        #     machine_readable + result.get('machine_readable', 0)
-        # ), metrics, (0, 0))
-        # return {
-        #     'total': total,
-        #     'machine_readable': machine_readable,
-        #     'value': float(machine_readable)/float(total) * 100.0 if total else 0.0,
-        # }
 class Completeness():#DimensionMetric
     '''Calculates the completeness Data Qualtiy dimension.
 
@@ -1548,13 +1611,13 @@ class Validity():#DimensionMetric
         total_errors = 0
         # errors_code = ''
         encoding = ''
-        encoding_utf8 = False
+        # encoding_utf8 = False
         dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0,'encoding':''}
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
             total_errors += table.get('error-count', 0)
-            log.debug('-----Check Validity---')
-            log.debug(type(table))
+            # log.debug('-----Check Validity---')
+            # log.debug(type(table))
             for error in table.get('errors', []):
                 # errors_code += error.get('code')
                 item_code = error.get('code')
@@ -1562,11 +1625,11 @@ class Validity():#DimensionMetric
                 dict_error[item_code] = count_val
             encoding = table.get('encoding')
             dict_error['encoding'] = encoding
-            log.debug(dict_error)
-            log.debug(table.get('valid'))
-            log.debug(table.get('format'))
-            log.debug(table.get('encoding'))
-            log.debug(table.get('headers'))
+            # log.debug(dict_error)
+            # log.debug(table.get('valid'))
+            # log.debug(table.get('format'))
+            # log.debug(table.get('encoding'))
+            # log.debug(table.get('headers'))
             # errors = table.get('errors', [0])
             # errors_message = errors.get('message')
             # errors_code = errors.get('code')
@@ -1833,34 +1896,6 @@ class Consistency():#DimensionMetric
             * `report`, `dict`, detailed, per column, report for the
                 consistency of the data.
         '''
-        log.debug('----Check Consistency1=====')
-
-        # self.resource_csv = ResourceCSVData(self._fetch_data_directly)
-        # log.debug('Resource data downloaded directly.')
-        # self.resource_csv.fetch_page(0, 20000)
-
-        # log.debug('----Check Consistency2=====')
-        # upload = uploader.get_resource_uploader(resource)
-        # filepath = upload.get_path(resource['id'])
-        
-        # if os.path.isfile(filepath):
-        #     # row = []
-        #     if '\0' in open(filepath).read():
-        #         print("you have null bytes in your input file")
-        #     else:
-        #         print("you don't")
-           
-        #     # Open the file in binary mode and read its content
-        #     with open(filepath, 'rb') as file:
-        #         # Decode the content into a string, ignoring null bytes
-        #         content = file.read().decode('utf-8', 'replace')
-
-        #     # Create a CSV reader using the decoded content
-        #     reader = csv.reader(content.splitlines())
-        #     # Now you can iterate over the rows in the CSV file
-        #     # for row in reader:
-        #     #     print(row)
-    
         validators = self.get_consistency_validators()
         fields = {f['id']: f for f in data['fields']}
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}
@@ -1888,25 +1923,6 @@ class Consistency():#DimensionMetric
             'value': value,
             'report': report,
         }
-            
-        # log.debug('----')
-        # log.debug(field_report)
-        # for field, field_report in report.items():
-        #     most_consistent = max([count if fmt != 'unknown' else 0
-        #                            for fmt, count
-        #                            in field_report['formats'].items()])
-        #     field_report['consistent'] = most_consistent
-
-        # total = sum([f.get('count', 0) for _, f in report.items()])
-        # consistent = sum([f.get('consistent', 0) for _, f in report.items()])
-        # value = float(consistent)/float(total) * 100.0 if total else 0.0
-        # return {
-        #     'total': total,
-        #     'consistent': consistent,
-        #     'value': value,
-        #     'report': report,
-        # }
-
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the total percentage of consistent values in the data for
         all the given resources.
@@ -2205,8 +2221,6 @@ def validate_resource_data(resource):
         options = json.loads(options)
     else:
         options = {}
-    log.debug('------Validator Options--------')
-    log.debug(options)
     resource_options = resource.get(u'validation_options')
     if resource_options and isinstance(resource_options, basestring):
         resource_options = json.loads(resource_options)

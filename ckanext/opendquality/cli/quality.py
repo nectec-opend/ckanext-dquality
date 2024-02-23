@@ -68,7 +68,7 @@ def calculate(dataset, dimension):
     #     # 'accuracy': Accuracy(),
     #     # 'consistency': Consistency(),
     # }
-    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','machine_readable']
+    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable']
     dimension_calculators = {
         'completeness': quality_lib.Completeness(),
         'uniqueness'  : quality_lib.Uniqueness(),
@@ -76,6 +76,7 @@ def calculate(dataset, dimension):
         'consistency' : quality_lib.Consistency(),
         'openness'    : quality_lib.Openness(),
         'downloadable' : quality_lib.Downloadable(),
+        'access_api' : quality_lib.AccessAPI(),
         'machine_readable' : quality_lib.MachineReadable()
     }
  

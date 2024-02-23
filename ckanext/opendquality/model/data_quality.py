@@ -47,6 +47,7 @@ data_quality_metrics_table = Table(
     Column('consistency', types.Float),
     Column('openness', types.Float),
     Column('downloadable', types.Float),
+    Column('access_api', types.Float),
     Column('machine_readable', types.Float),
     # Column('clarity', types.Float),
     Column('metrics', types.JSON),
