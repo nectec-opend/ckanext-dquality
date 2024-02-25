@@ -14,10 +14,10 @@ import re
 import csv
 from goodtables import validate
 import pandas as pd
+from pandas import read_excel
 from tempfile import TemporaryFile
 import os.path
 import requests
-import codecs
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -487,7 +487,6 @@ class DataQualityMetrics(object):
                     log.debug('----consistency_val------')
                     consistency_val = results[metric.name].get('value')
                     log.debug(consistency_val)
-
                 elif(metric.name == 'validity'):
                     results[metric.name] = metric.calculate_metric(resource,data_stream)         
                     log.debug('----validity_val------')
@@ -753,7 +752,7 @@ class ResourceFetchData(object):
                     * `id` - `str`, the name of the column
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
-        # log.debug('----call fetch_page at ResourceFetchData-------')
+        log.debug('----call fetch_page at ResourceFetchData-------')
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
@@ -861,19 +860,22 @@ class ResourceFetchData2(object):
     def _download_resource_from_ckan(self, resource):       
         upload = uploader.get_resource_uploader(resource)
         filepath = upload.get_path(resource['id'])
+        resource_format = resource['format']    
         try:
             data = []
             if os.path.isfile(filepath):
-                data = []
-                # if '\0' in open(filepath).read():
-                #     print("you have null bytes in your input file")
-                # else:
-                #     print("you don't")
-
-                with open(filepath) as csvf:
-                    reader = csv.reader(csvf)
-                    for row in reader:
-                        data.append(row)
+                if '\0' in open(filepath).read():
+                    print("you have null bytes in your input file")
+                else:
+                    print("you don't")
+                if(resource_format == 'XLSX'):                  
+                    data_df = pd.read_excel(filepath)
+                    data = data_df.values.tolist()
+                else:
+                    with open(filepath) as csvf:
+                        reader = csv.reader(csvf)
+                        for row in reader:
+                            data.append(row)
                 return data
             else:
                 # The worker is not in the same machine as CKAN, so it cannot
@@ -936,7 +938,7 @@ class ResourceFetchData2(object):
                     * `id` - `str`, the name of the column
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
-        # log.debug('----call fetch_page at ResourceFetchData2-------')
+        log.debug('----call fetch_page at ResourceFetchData2-------')
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
@@ -1298,12 +1300,15 @@ class MachineReadable():#DimensionMetric
             
             if(consistency_val != 0 and consistency_val != 100):
                 machine_readable_score = machine_readable_score-15
-            elif(validity_chk):
+            elif(validity_chk == True):
                 machine_readable_score = machine_readable_score-20
             elif(encoding_utf8 == False):
                 machine_readable_score = machine_readable_score-10
-            # log.debug('----machine_readable_val------')
-            # log.debug('MachineReadable score: %f%%', machine_readable_score)
+            log.debug('----machine_readable_val in------')
+            log.debug('MachineReadable score: %f%%', machine_readable_score)
+            log.debug(encoding_utf8)
+            log.debug(consistency_val)
+            log.debug(validity_chk)
             return {
                 'consistency': consistency_val,
                 'validity': validity_chk,
@@ -1910,13 +1915,20 @@ class Consistency():#DimensionMetric
 
         for field, field_report in report.items():
             most_consistent = max([count if fmt != 'unknown' else 0
-                                   for fmt, count
-                                   in field_report['formats'].items()])
+                                for fmt, count
+                                in field_report['formats'].items()])
             field_report['consistent'] = most_consistent
 
         total = sum([f.get('count', 0) for _, f in report.items()])
         consistent = sum([f.get('consistent', 0) for _, f in report.items()])
         value = float(consistent)/float(total) * 100.0 if total else 0.0
+        #---- check key in report {} : for excel, if key is not str type, set report null because the data structure is invalid---
+        list_key = report.keys()
+        for key_item in list_key:
+            if not isinstance(key_item, str):
+                report = {}
+                break
+        #------------------------------------------------
         return {
             'total': total,
             'consistent': consistent,
