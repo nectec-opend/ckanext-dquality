@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import ckan.plugins.toolkit as toolkit, dateutil
 from datetime import datetime, timedelta
 from logging import getLogger
@@ -8,7 +9,7 @@ from sqlalchemy import Table, select, join, func, and_
 from sqlalchemy.sql import text
 # # import ckan.plugins as p
 # import ckan.model as model
-from ckan.model import Session, User, user_table, package, package_extra
+from ckan.model import Session, User, user_table, Package, PackageExtra
 import json
 import re
 import csv
@@ -2032,78 +2033,52 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        settings = resource.get('data_quality_settings', {}).get('timeliness',{})
-        log.info('#############eee')
-        log.info(resource)
-        log.info('timeliness')
-        log.info('------')
-        log.info(type(data))
-        log.info('$$$$$$')
-        log.info(settings)
-        column = settings.get('column')
-        log.info(column)
-        log.info(data['records'])
-        log.info('----------------')
-        packages = resoruce.get("package_id")
-        log.info(packages)
-        log.info('xxxxx')
-        # if not column:
-        #     log.warning('No column for record entry date defined '
-        #                         'for resource %s', resource['id'])
-        #     return {
-        #         'failed': True,
-        #         'error': 'No date column defined in settings',
-        #     }
-        dt_format = settings.get('date_format')
-        parse_date_column = lambda ds: dateutil.parser.parse(ds)  # NOQA
-        if dt_format:
-            parse_date_column = lambda ds: datetime.strptime(ds, dt_format)  # NOQA
+        package_id = resource.get('package_id')
+        packages = Package.get(package_id)
+        update_frequency_unit = Session.query(PackageExtra).filter(PackageExtra.key == 'update_frequency_unit', PackageExtra.package_id == package_id).first()
+        update_frequency_interval = Session.query(PackageExtra).filter(PackageExtra.key == 'update_frequency_interval', PackageExtra.package_id == package_id).first()
 
         created = dateutil.parser.parse(resource.get('last_modified') or
                                         resource.get('created'))
 
         measured_count = 0
         total_delta = 0
-        log.info(created)
-        log.info('#############')
-
-        # for row in data['records']:
-        #     value = row.get(column)
-        #     if value:
-        #         try:
-        #             record_date = parse_date_column(value)
-        #             if record_date > created:
-        #                 self.logger.warning('Date of record creating is after '
-        #                                     'the time it has entered the '
-        #                                     'system.')
-        #                 continue
-        #             delta = created - record_date
-        #             total_delta += delta.total_seconds()
-        #             measured_count += 1
-        #         except Exception as e:
-        #             self.logger.debug('Failed to process value: %s. '
-        #                               'Error: %s', value, str(e))
-        # if measured_count == 0:
-        #     return {
-        #         'value': '',
-        #         'total': 0,
-        #         'average': 0,
-        #         'records': 0,
-        #     }
-        # total_delta = round(total_delta)
-        total_delta = 0
-        # avg_delay = timedelta(seconds=int(total_delta/measured_count))
-        avg_delay = 0
-        tln = created.date() - datetime.now().date()
-        # self.logger.debug('Measured records: %d of %d.',
-        #                   measured_count, data.get('total', 0))
-        # self.logger.debug('Total delay: %s (%d seconds).',
-        #                   str(total_delta), total_delta)
-        # self.logger.debug('Average delay: %s (%d seconds).',
-        #                   str(avg_delay), avg_delay.total_seconds())
+        tln = abs((created.date() - datetime.now().date()).days)
+        if update_frequency_unit.value == 'วัน':
+            if update_frequency_interval.value != '':
+                tln_val = int(update_frequency_interval.value) - tln
+            else:
+                tln_val = 1 - tln
+        elif update_frequency_unit.value == 'สัปดาห์':
+            if update_frequency_interval.value != '':
+                tln_val = (7*int(update_frequency_interval.value)) - tln
+            else:
+                tln_val = 7 - tln
+        elif update_frequency_unit.value == 'เดือน':
+            if update_frequency_interval.value != '':
+                tln_val = (30 * int(update_frequency_interval.value)) - tln
+            else:
+                tln_val = 30 - tln
+        elif update_frequency_unit.value == 'ไตรมาส':
+            if update_frequency_interval.value != '':
+                tln_val = (90 * int(update_frequency_interval.value)) - tln
+            else:
+                tln_val = 90 - tln
+        elif update_frequency_unit.value == 'ครึ่งปี':
+            if update_frequency_interval.value != '':
+                tln_val = (180 * int(update_frequency_interval.value)) - tln
+            else:
+                tln_val = 180 - tln
+        elif update_frequency_unit.value == 'ปี':
+            if update_frequency_interval.value != '':
+                tln_val =  (365 * int(update_frequency_interval.value)) - tln
+            else:
+                tln_val = 365 - tln
+        else:
+            tln_val = 0
 
         return {
-            'value': tln.days,
+            'value': tln_val,
             'total': 0,
             'average': 0,
             'records': 0,
