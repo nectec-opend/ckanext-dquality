@@ -978,7 +978,7 @@ class Openness():#DimensionMetric
     def __init__(self):
         self.name = 'openness'
 
-    def get_openness_score(self,data_type):
+    def get_openness_score(self,data_type,mimetype):
         openness_score = { "N3": 5, "SPARQL": 5, "RDF": 5,
         "TTL": 5, "KML": 3, "WCS": 3, "NetCDF": 3,
         "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
@@ -997,7 +997,19 @@ class Openness():#DimensionMetric
         "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
         "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
         "XSLT": 0, "RDFa": 0}
-        score =  openness_score.get(data_type)
+        if(data_type == ''):
+            score = 0
+            if(mimetype == 'text/csv'):
+                data_type = 'CSV'
+            elif(mimetype == 'application/pdf'):
+                data_type = 'PDF'
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
+                data_type = 'XLSX'
+            
+            if(data_type != '' ):
+                score =  openness_score.get(data_type)
+        else:
+            score =  openness_score.get(data_type)
         return score
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
@@ -1017,8 +1029,8 @@ class Openness():#DimensionMetric
             * `complete`, `int`, number of cells that have value.
         '''
         resource_data_format = resource['format']
-
-        openness_score = self.get_openness_score(resource_data_format)
+        resource_mimetype    = resource['mimetype']
+        openness_score = self.get_openness_score(resource_data_format,resource_mimetype)
         # log.debug('Openness score: %f%%', openness_score)
         return {
             'format': resource_data_format,
@@ -2100,22 +2112,35 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        total_delay = sum([r.get('total', 0) for r in metrics])
-        total_records = sum([r.get('records', 0) for r in metrics])
-        if not total_records:
-            return {
-                'value': '',
-                'total': int(total_delay),
-                'average': 0,
-                'records': 0,
-            }
-        avg_delay = int(total_delay/total_records)
+        log.debug('-------------Calculate Timeliness metrics -----------')
+        # log.debug(metrics)
+        timeliness_list = []
+        total = 0
+        for item_metric in metrics:
+            timelines_score = item_metric.get('value')
+            total = total+timelines_score
+            timeliness_list.append(timelines_score)
+        result_score = max(timeliness_list)
         return {
-            'value': '+%s' % str(timedelta(seconds=avg_delay)),
-            'total': int(total_delay),
-            'average': avg_delay,
-            'records': total_records,
+            'total': total,
+            'value': result_score,
         }
+        # total_delay = sum([r.get('total', 0) for r in metrics])
+        # total_records = sum([r.get('records', 0) for r in metrics])
+        # if not total_records:
+        #     return {
+        #         'value': '',
+        #         'total': int(total_delay),
+        #         'average': 0,
+        #         'records': 0,
+        #     }
+        # avg_delay = int(total_delay/total_records)
+        # return {
+        #     'value': '+%s' % str(timedelta(seconds=avg_delay)),
+        #     'total': int(total_delay),
+        #     'average': avg_delay,
+        #     'records': total_records,
+        # }
 # Date format utils
 
 _all_date_formats = [
