@@ -1,4 +1,4 @@
-import ckan.plugins.toolkit as toolkit
+import ckan.plugins.toolkit as toolkit, dateutil
 from datetime import datetime, timedelta
 from logging import getLogger
 import ckan.lib.uploader as uploader
@@ -8,7 +8,7 @@ from sqlalchemy import Table, select, join, func, and_
 from sqlalchemy.sql import text
 # # import ckan.plugins as p
 # import ckan.model as model
-from ckan.model import Session, User, user_table
+from ckan.model import Session, User, user_table, package, package_extra
 import json
 import re
 import csv
@@ -230,7 +230,7 @@ class DataQualityMetrics(object):
         settings = {}
         # for dimension in ['completeness', 'uniqueness', 'timeliness',
         #                   'validity', 'accuracy', 'consistency']:
-        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','downloadable','machine_readable']:
+        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','downloadable','machine_readable', 'timeliness']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -2032,16 +2032,28 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        settings = resource.get('data_quality_settings', {}).get('timeliness',
-                                                                 {})
+        settings = resource.get('data_quality_settings', {}).get('timeliness',{})
+        log.info('#############eee')
+        log.info(resource)
+        log.info('timeliness')
+        log.info('------')
+        log.info(type(data))
+        log.info('$$$$$$')
+        log.info(settings)
         column = settings.get('column')
-        if not column:
-            log.warning('No column for record entry date defined '
-                                'for resource %s', resource['id'])
-            return {
-                'failed': True,
-                'error': 'No date column defined in settings',
-            }
+        log.info(column)
+        log.info(data['records'])
+        log.info('----------------')
+        packages = resoruce.get("package_id")
+        log.info(packages)
+        log.info('xxxxx')
+        # if not column:
+        #     log.warning('No column for record entry date defined '
+        #                         'for resource %s', resource['id'])
+        #     return {
+        #         'failed': True,
+        #         'error': 'No date column defined in settings',
+        #     }
         dt_format = settings.get('date_format')
         parse_date_column = lambda ds: dateutil.parser.parse(ds)  # NOQA
         if dt_format:
@@ -2052,45 +2064,49 @@ class Timeliness():#DimensionMetric
 
         measured_count = 0
         total_delta = 0
+        log.info(created)
+        log.info('#############')
 
-        for row in data['records']:
-            value = row.get(column)
-            if value:
-                try:
-                    record_date = parse_date_column(value)
-                    if record_date > created:
-                        self.logger.warning('Date of record creating is after '
-                                            'the time it has entered the '
-                                            'system.')
-                        continue
-                    delta = created - record_date
-                    total_delta += delta.total_seconds()
-                    measured_count += 1
-                except Exception as e:
-                    self.logger.debug('Failed to process value: %s. '
-                                      'Error: %s', value, str(e))
-        if measured_count == 0:
-            return {
-                'value': '',
-                'total': 0,
-                'average': 0,
-                'records': 0,
-            }
-        total_delta = round(total_delta)
-        avg_delay = timedelta(seconds=int(total_delta/measured_count))
-
-        self.logger.debug('Measured records: %d of %d.',
-                          measured_count, data.get('total', 0))
-        self.logger.debug('Total delay: %s (%d seconds).',
-                          str(total_delta), total_delta)
-        self.logger.debug('Average delay: %s (%d seconds).',
-                          str(avg_delay), avg_delay.total_seconds())
+        # for row in data['records']:
+        #     value = row.get(column)
+        #     if value:
+        #         try:
+        #             record_date = parse_date_column(value)
+        #             if record_date > created:
+        #                 self.logger.warning('Date of record creating is after '
+        #                                     'the time it has entered the '
+        #                                     'system.')
+        #                 continue
+        #             delta = created - record_date
+        #             total_delta += delta.total_seconds()
+        #             measured_count += 1
+        #         except Exception as e:
+        #             self.logger.debug('Failed to process value: %s. '
+        #                               'Error: %s', value, str(e))
+        # if measured_count == 0:
+        #     return {
+        #         'value': '',
+        #         'total': 0,
+        #         'average': 0,
+        #         'records': 0,
+        #     }
+        # total_delta = round(total_delta)
+        total_delta = 0
+        # avg_delay = timedelta(seconds=int(total_delta/measured_count))
+        avg_delay = 0
+        tln = created.date() - datetime.now().date()
+        # self.logger.debug('Measured records: %d of %d.',
+        #                   measured_count, data.get('total', 0))
+        # self.logger.debug('Total delay: %s (%d seconds).',
+        #                   str(total_delta), total_delta)
+        # self.logger.debug('Average delay: %s (%d seconds).',
+        #                   str(avg_delay), avg_delay.total_seconds())
 
         return {
-            'value': '+%s' % str(avg_delay),
-            'total': int(total_delta),
-            'average': avg_delay.total_seconds(),
-            'records': measured_count,
+            'value': tln.days,
+            'total': 0,
+            'average': 0,
+            'records': 0,
         }
 
     def calculate_cumulative_metric(self, resources, metrics):
@@ -2112,15 +2128,21 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        log.debug('-------------Calculate Timeliness metrics -----------')
-        # log.debug(metrics)
-        timeliness_list = []
-        total = 0
-        for item_metric in metrics:
-            timelines_score = item_metric.get('value')
-            total = total+timelines_score
-            timeliness_list.append(timelines_score)
-        result_score = max(timeliness_list)
+        log.info('!@#@#@')
+        log.info(metrics)
+        log.info(type(metrics))
+        log.info('!@#@#@')
+        total_delay = sum([r.get('total', 0) for r in metrics])
+        total_records = sum([r.get('records', 0) for r in metrics])
+        if not total_records:
+            return {
+                'value': '',
+                'total': int(total_delay),
+                'average': 0,
+                'records': 0,
+            }
+        avg_delay = 0
+        # avg_delay = int(total_delay/total_records)
         return {
             'total': total,
             'value': result_score,
