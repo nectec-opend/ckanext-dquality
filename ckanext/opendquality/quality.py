@@ -142,8 +142,8 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-                  str(self), self.total, self.column_names, self.fields)
+        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+        #           str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -2075,14 +2075,18 @@ class Timeliness():#DimensionMetric
             else:
                 tln_val = 365 - tln
         else:
-            tln_val = 0
-
-        return {
+            tln_val = 999
+        # log.info('----------!@#@#@------------------')  
+        # log.debug(resource['id'])
+        # log.debug(tln)
+        # log.debug(tln_val)
+        # log.debug(update_frequency_unit.value)
+        # log.debug(created.date())
+        return {         
+            'frequency': update_frequency_unit.value,
             'value': tln_val,
-            'total': 0,
-            'average': 0,
-            'records': 0,
-        }
+            'tln': tln
+        }#'last_date': created.date(),
 
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the timeliness of all data in all of the given resources
@@ -2103,25 +2107,42 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        log.info('!@#@#@')
-        log.info(metrics)
-        log.info(type(metrics))
-        log.info('!@#@#@')
-        total_delay = sum([r.get('total', 0) for r in metrics])
-        total_records = sum([r.get('records', 0) for r in metrics])
-        if not total_records:
-            return {
-                'value': '',
-                'total': int(total_delay),
-                'average': 0,
-                'records': 0,
-            }
-        avg_delay = 0
-        # avg_delay = int(total_delay/total_records)
+        # log.info('!@#@#@')
+        # log.info(metrics)
+        # log.info(type(metrics))
+        # log.info('!@#@#@')
+        timeliness_list = []
+        total = 0
+        for item_metric in metrics:
+            timeliness_score = item_metric.get('value')
+            total = total+timeliness_score
+            timeliness_list.append(timeliness_score)
+            # if timeliness_score is None or timeliness_score == "":
+            #     print("String is None")
+            # else:
+            #     total = total+timeliness_score
+            #     timeliness_list.append(timeliness_score)
+        result_score = min(timeliness_list)
         return {
             'total': total,
             'value': result_score,
         }
+        # total_delay = sum([r.get('total', 0) for r in metrics])
+        # total_records = sum([r.get('records', 0) for r in metrics])
+        # if not total_records:
+        #     return {
+        #         'value': '',
+        #         'total': int(total_delay),
+        #         'average': 0,
+        #         'records': 0,
+        #     }
+        # avg_delay = 0
+        # # avg_delay = int(total_delay/total_records)
+        # return {
+        #     'total': total,
+        #     'value': result_score,
+        # }
+    #--------------
         # total_delay = sum([r.get('total', 0) for r in metrics])
         # total_records = sum([r.get('records', 0) for r in metrics])
         # if not total_records:
