@@ -2044,32 +2044,32 @@ class Timeliness():#DimensionMetric
         measured_count = 0
         total_delta = 0
         tln = abs((created.date() - datetime.now().date()).days)
-        if update_frequency_unit.value == 'วัน':
+        if update_frequency_unit.value == u'วัน':
             if update_frequency_interval.value != '':
                 tln_val = int(update_frequency_interval.value) - tln
             else:
                 tln_val = 1 - tln
-        elif update_frequency_unit.value == 'สัปดาห์':
+        elif update_frequency_unit.value == u'สัปดาห์':
             if update_frequency_interval.value != '':
                 tln_val = (7*int(update_frequency_interval.value)) - tln
             else:
                 tln_val = 7 - tln
-        elif update_frequency_unit.value == 'เดือน':
+        elif update_frequency_unit.value == u'เดือน':
             if update_frequency_interval.value != '':
                 tln_val = (30 * int(update_frequency_interval.value)) - tln
             else:
                 tln_val = 30 - tln
-        elif update_frequency_unit.value == 'ไตรมาส':
+        elif update_frequency_unit.value == u'ไตรมาส':
             if update_frequency_interval.value != '':
                 tln_val = (90 * int(update_frequency_interval.value)) - tln
             else:
                 tln_val = 90 - tln
-        elif update_frequency_unit.value == 'ครึ่งปี':
+        elif update_frequency_unit.value == u'ครึ่งปี':
             if update_frequency_interval.value != '':
                 tln_val = (180 * int(update_frequency_interval.value)) - tln
             else:
                 tln_val = 180 - tln
-        elif update_frequency_unit.value == 'ปี':
+        elif update_frequency_unit.value == u'ปี':
             if update_frequency_interval.value != '':
                 tln_val =  (365 * int(update_frequency_interval.value)) - tln
             else:
