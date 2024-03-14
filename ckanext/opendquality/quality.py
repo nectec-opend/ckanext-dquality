@@ -861,7 +861,10 @@ class ResourceFetchData2(object):
     def _download_resource_from_ckan(self, resource):       
         upload = uploader.get_resource_uploader(resource)
         filepath = upload.get_path(resource['id'])
-        resource_format = resource['format']    
+        resource_format = resource['format']
+        log.debug("-----#####-----------")
+        log.debug(resource_format)
+        log.debug(resource['id'])
         try:
             data = []
             if os.path.isfile(filepath):
@@ -869,14 +872,26 @@ class ResourceFetchData2(object):
                     print("you have null bytes in your input file")
                 else:
                     print("you don't")
-                if(resource_format == 'XLSX'):                  
+                if(resource_format == 'XLSX' or resource_format == 'XLS'):                  
                     data_df = pd.read_excel(filepath)
                     data = data_df.values.tolist()
-                else:
+                elif(resource_format == 'JSON'):
+                    try:
+                        data_json = pd.read_json(filepath)
+                        data_df = pd.DataFrame(data_json)
+                        data = data_df.values.tolist()
+                        data[:0] = [list(data_df.keys())]
+                        print(list(data_df.keys()))
+                    except ValueError as e:
+                        print('ValueError = ', e)
+                        data = []
+                elif(resource_format == 'CSV'):
                     with open(filepath) as csvf:
                         reader = csv.reader(csvf)
                         for row in reader:
                             data.append(row)
+                else:
+                    data = []
                 return data
             else:
                 # The worker is not in the same machine as CKAN, so it cannot
@@ -979,9 +994,9 @@ class Openness():#DimensionMetric
     def __init__(self):
         self.name = 'openness'
 
-    def get_openness_score(self,data_type,mimetype):
-        openness_score = { "N3": 5, "SPARQL": 5, "RDF": 5,
-        "TTL": 5, "KML": 3, "WCS": 3, "NetCDF": 3,
+    def get_openness_score(self,data_format,mimetype):
+        openness_score = { "JSON-LD": 5,"N3": 5, "SPARQL": 5, "RDF": 5,
+        "TTL": 5, "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,
         "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
         "ODS": 3, "JSON": 3,"ODB": 3, "ODF": 3,
         "ODG": 3, "XML": 3,"WMS": 3, "WMTS": 3,
@@ -998,19 +1013,69 @@ class Openness():#DimensionMetric
         "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
         "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
         "XSLT": 0, "RDFa": 0}
-        if(data_type == ''):
+
+        #if user add a resource as a link, data type will be null
+        if(data_format == ''):
             score = 0
             if(mimetype == 'text/csv'):
-                data_type = 'CSV'
+                data_format = 'CSV'
             elif(mimetype == 'application/pdf'):
-                data_type = 'PDF'
+                data_format = 'PDF'
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
-                data_type = 'XLSX'
-            
-            if(data_type != '' ):
-                score =  openness_score.get(data_type)
+                data_format = 'XLSX'
+            elif(mimetype == 'application/vnd.ms-excel'):
+                data_format = 'XLS'
+            elif(mimetype == 'application/rdf+xml'):
+                data_format = 'RDF'
+            elif(mimetype == 'application/ld+json'):
+                data_format = 'JSON-LD'
+            elif(mimetype == 'application/xml'):
+                data_format = 'XML'           
+            elif(mimetype == 'application/vnd.google-earth.kml+xml'):
+                data_format = 'KML'
+            elif(mimetype == 'application/gml+xml'):
+                data_format = 'GML'          
+            elif(mimetype == 'application/json'):
+                data_format = 'JSON'
+            elif(mimetype == 'image/png'):
+                data_format = 'PNG'
+            elif(mimetype == 'image/jpeg'):
+                data_format = 'JPEG'
+            elif(mimetype == 'image/bmp'):
+                data_format = 'BMP'
+            elif(mimetype == 'image/gif'):
+                data_format = 'GIF'
+            elif(mimetype == 'image/tiff'):
+                data_format = 'TIFF'
+            elif(mimetype == 'application/zip'):
+                data_format = 'ZIP'
+            elif(mimetype == 'application/msword'):
+                data_format = 'DOC'
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'):
+                data_format = 'DOCX'
+            elif(mimetype == 'application/vnd.oasis.opendocument.text'):
+                data_format = 'ODT'
+            elif(mimetype == 'application/vnd.oasis.opendocument.spreadsheet'):
+                data_format = 'ODS'
+            elif(mimetype == 'application/vnd.oasis.opendocument.presentation'):
+                data_format = 'ODP'
+            elif(mimetype == 'application/vnd.ms-powerpoint'):
+                data_format = 'PPT'
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'):
+                data_format = 'PPTX'
+            elif(mimetype == 'text/html'):
+                data_format = 'HTML'
+            elif(mimetype == 'application/vnd.rar'):
+                data_format = 'RAR'
+            elif(mimetype == 'text/plain'):
+                data_format = 'TXT'
+            if(data_format != '' ):
+                score =  openness_score.get(data_format)
         else:
-            score =  openness_score.get(data_type)
+            score =  openness_score.get(data_format)
+        # data type is not in the list
+        if (score == None):
+            score = -1
         return score
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
@@ -1029,17 +1094,20 @@ class Openness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        resource_data_format = resource['format']
-        resource_mimetype    = resource['mimetype']
-        openness_score = self.get_openness_score(resource_data_format,resource_mimetype)
+        data_format = resource['format']
+        mimetype    = resource['mimetype']
+
+        if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
+            resource_url = resource['url']   
+            format_url = resource_url.split(".")[-1]
+            data_format = format_url.upper()
+        openness_score = self.get_openness_score(data_format,mimetype)
         # log.debug('Openness score: %f%%', openness_score)
         return {
-            'format': resource_data_format,
+            'format': data_format,
             'value': openness_score,
         }
         
-
-
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the cumulative report for all resources from the
         calculated results for each resource.
@@ -1296,48 +1364,75 @@ class MachineReadable():#DimensionMetric
             * `complete`, `int`, number of cells that have value.
         '''
         #--------------Machine Readable-----------------
-        machine_readable_format = ['CSV','XLSX']
-        openness_5_star_format = ['RDF','TTL','JSON','XML','N3','SPARQL']
-        validity_chk = False
+        machine_readable_format = ['CSV','XLSX','XLS','JSON','XML'] #'JSON','XML' 
+        documenct_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT'] #-50
+        image_format = ['PNG','JPEG','GIF']#-60
+        openness_5_star_format = ['RDF','TTL','N3','SPARQL','OWL','GeoJSON','GML','KML','SHP','Esri REST']#100
+        validity_chk = True
         encoding_utf8 = False
-        data_format = resource['format']    
+        data_format = resource['format'] 
+        mimetype    = resource['mimetype']   
         machine_readable_score = 100
-        
+        # log.debug('-----Machine Readable ------')
+        # log.debug(data_format)
+        # log.debug(resource['mimetype'])
+        # log.debug(resource['id'])
+        #if data format and mimetype is null, find format from url
+        if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
+            resource_url = resource['url']   
+            format_url = resource_url.split(".")[-1]
+            data_format = format_url.upper()
+            # log.debug(data_format)
+        #---- Tabular Data -------------#
+        data_format = data_format.upper()
         if data_format in machine_readable_format:
             encoding = validity_report.get('encoding')
+            valid    = validity_report.get('valid')          
+            # log.debug('-----Check Valid -----Report ------')
+            # log.debug(valid)
+            # log.debug(encoding_utf8)
+            # log.debug(validity_chk)
+            # log.debug(consistency_val)
+
             if "utf-8" in encoding:
                 encoding_utf8 = True
             if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
                         validity_report.get('extra-value') > 0 ):
-                validity_chk = True
+                validity_chk = False
             
-            if(consistency_val != 0 and consistency_val != 100):
+            if(consistency_val >= 0 and consistency_val < 100):
                 machine_readable_score = machine_readable_score-15
-            elif(validity_chk == True):
+            elif(validity_chk == False):
                 machine_readable_score = machine_readable_score-20
             elif(encoding_utf8 == False):
                 machine_readable_score = machine_readable_score-10
-            log.debug('----machine_readable_val in------')
-            log.debug('MachineReadable score: %f%%', machine_readable_score)
-            log.debug(encoding_utf8)
-            log.debug(consistency_val)
-            log.debug(validity_chk)
+                    
+            # log.debug('----machine_readable_val in------')
+            # log.debug('MachineReadable score: %f%%', machine_readable_score)
+            # log.debug(encoding_utf8)
+            # log.debug(consistency_val)
+            # log.debug(validity_chk)
             return {
                 'consistency': consistency_val,
                 'validity': validity_chk,
                 'encoding': encoding_utf8,
                 'value': machine_readable_score
             }
+        elif data_format in openness_5_star_format:
+            machine_readable_score = 100
+        elif data_format in documenct_format:
+            machine_readable_score = machine_readable_score-50
+        elif data_format in image_format:
+            machine_readable_score = machine_readable_score-60
         else:
-            if data_format not in openness_5_star_format:
-                machine_readable_score = machine_readable_score-50
+            machine_readable_score = machine_readable_score-60
             
-            return {
-                'consistency': 0,
-                'validity': {},
-                'encoding': data_format,
-                'value': machine_readable_score
-            }
+        return {
+            'consistency': 0,
+            'validity': {},
+            'encoding': data_format,
+            'value': machine_readable_score
+        }
 
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the cumulative report for all resources from the
@@ -1629,7 +1724,8 @@ class Validity():#DimensionMetric
         total_errors = 0
         # errors_code = ''
         encoding = ''
-        # encoding_utf8 = False
+        valid = ''
+
         dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0,'encoding':''}
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
@@ -1642,7 +1738,11 @@ class Validity():#DimensionMetric
                 count_val = dict_error[item_code]+1
                 dict_error[item_code] = count_val
             encoding = table.get('encoding')
+            valid = table.get('valid')
+            log.debug("---encoding---")
+            log.debug(encoding)
             dict_error['encoding'] = encoding
+            dict_error['valid']    = valid
             # log.debug(dict_error)
             # log.debug(table.get('valid'))
             # log.debug(table.get('format'))
@@ -1656,7 +1756,7 @@ class Validity():#DimensionMetric
                 'value': 0.0,
                 'total': 0,
                 'valid': 0,
-                'report': ''
+                'report': dict_error
             }
 
         valid = total_rows - total_errors
@@ -1942,6 +2042,8 @@ class Consistency():#DimensionMetric
                 report = {}
                 break
         #------------------------------------------------
+        if (consistent == None):
+            consistent = 0
         return {
             'total': total,
             'consistent': consistent,
