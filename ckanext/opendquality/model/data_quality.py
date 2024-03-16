@@ -43,13 +43,12 @@ data_quality_metrics_table = Table(
     Column('uniqueness', types.Float),
     Column('timeliness', types.String),
     Column('validity', types.Float),
-    Column('accuracy', types.Float),
+    # Column('accuracy', types.Float),
     Column('consistency', types.Float),
     Column('openness', types.Float),
     Column('downloadable', types.Float),
     Column('access_api', types.Float),
     Column('machine_readable', types.Float),
-    # Column('clarity', types.Float),
     Column('metrics', types.JSON),
 )
 

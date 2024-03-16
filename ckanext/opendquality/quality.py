@@ -229,8 +229,6 @@ class DataQualityMetrics(object):
     
     def _data_quality_settings(self, resource):
         settings = {}
-        # for dimension in ['completeness', 'uniqueness', 'timeliness',
-        #                   'validity', 'accuracy', 'consistency']:
         for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','downloadable','machine_readable', 'timeliness']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
@@ -419,7 +417,6 @@ class DataQualityMetrics(object):
                     if all(map(lambda m: m is not None, [
                                 data_quality.completeness,
                                 data_quality.uniqueness,
-                                # data_quality.accuracy,
                                 data_quality.validity,
                                 data_quality.timeliness,
                                 data_quality.consistency,
@@ -1242,8 +1239,9 @@ class Downloadable():#DimensionMetric
                 downloadable_score = item_metric.get('value')
                 total = total+downloadable_score
                 downloadable_list.append(downloadable_score)
-        result_score = max(downloadable_list)
+        
         if downloadable_list:
+            result_score = max(downloadable_list)
             return {
                 'total': total,
                 'value': result_score,
@@ -1837,71 +1835,67 @@ class Validity():#DimensionMetric
             'total': total,
             'valid': valid,
         }
-class Accuracy():#DimensionMetric
-    '''Calculates Data Qualtiy dimension accuracy.
+# class Accuracy():#DimensionMetric
+#     '''Calculates Data Qualtiy dimension accuracy.
 
-    Accuracy of a record is determined through background research and it is
-    not quite possible to determine if a record is accurate or inaccurate via
-    a generic algorithm.
+#     Accuracy of a record is determined through background research and it is
+#     not quite possible to determine if a record is accurate or inaccurate via
+#     a generic algorithm.
 
-    This metric calculates the percentage of accurate records *only* for
-    records that already have been marked as accurate or inaccurate in a
-    particular dataset.
+#     This metric calculates the percentage of accurate records *only* for
+#     records that already have been marked as accurate or inaccurate in a
+#     particular dataset.
 
-    To calculate this, the record must contain a flag, a column in the dataset,
-    that marks the record as accurate, inaccurate or not determined.
+#     To calculate this, the record must contain a flag, a column in the dataset,
+#     that marks the record as accurate, inaccurate or not determined.
 
-    If such column is present, then the calculation is:
-    `number_of_accurate/(number_of_accurate + number_of_inaccurate) * 100)`.
+#     If such column is present, then the calculation is:
+#     `number_of_accurate/(number_of_accurate + number_of_inaccurate) * 100)`.
 
-    Accuracy is measured as percentage of accurate records, from the set of
-    records that have been checked and marked as accurate or inaccurate.
-    '''
-    def __init__(self):
-        # super(Accuracy, self).__init__('accuracy')
-        self.name = 'accuracy'
+#     Accuracy is measured as percentage of accurate records, from the set of
+#     records that have been checked and marked as accurate or inaccurate.
+#     '''
+#     def __init__(self):
+#         # super(Accuracy, self).__init__('accuracy')
+#         self.name = 'accuracy'
 
-    def calculate_metric(self, resource, data):
-        '''Calculates the percentage of accurate records for the given resource
-        data.
+#     def calculate_metric(self, resource, data):
+#         '''Calculates the percentage of accurate records for the given resource
+#         data.
 
-        The resource must contain a data quality setting to configure which
-        column contains the flag that marks the record as accurate.
+#         The resource must contain a data quality setting to configure which
+#         column contains the flag that marks the record as accurate.
 
-        :param resource: `dict`, CKAN resource. The resource dict must contain
-            a property `data_quality_settings` which contain the name of the
-            column used to determine the accuracy of that record. This
-            property must have the following format:
+#         :param resource: `dict`, CKAN resource. The resource dict must contain
+#             a property `data_quality_settings` which contain the name of the
+#             column used to determine the accuracy of that record. This
+#             property must have the following format:
 
-                .. code-block: python
+#                 .. code-block: python
 
-                    resource = {
-                        ...
-                        'data_quality_settings': {
-                            'accuracy': {
-                                'column': '<column name>',
-                            }
-                        }
-                    }
-        :param data: `dict`, the resource data as a dict with the following
-            values:
-                * `total`, `int`, total number of rows.
-                * `fields`, `list` of `dict`, column metadata - name, type.
-                * `records`, `iterable`, iterable over the rows in the resource
-                    where each row is a `dict` itself.
+#                     resource = {
+#                         ...
+#                         'data_quality_settings': {
+#                             'accuracy': {
+#                                 'column': '<column name>',
+#                             }
+#                         }
+#                     }
+#         :param data: `dict`, the resource data as a dict with the following
+#             values:
+#                 * `total`, `int`, total number of rows.
+#                 * `fields`, `list` of `dict`, column metadata - name, type.
+#                 * `records`, `iterable`, iterable over the rows in the resource
+#                     where each row is a `dict` itself.
 
-        :returns: `dict`, a report on the accuracy metrics for the resource
-            data:
-            * `value`, `float`, percentage of accurate records in the data.
-            * `accurate`, `int`, number of accurate records.
-            * `inaccurate`, `int`, number of inaccurate records.
-            * `total`, `int`, `accurate` + `inaccurate` - total number of
-                checked records.
-        '''
-        return {
-            'total': 0,
-            'value': 0,
-        }
+#         :returns: `dict`, a report on the accuracy metrics for the resource
+#             data:
+#             * `value`, `float`, percentage of accurate records in the data.
+#             * `accurate`, `int`, number of accurate records.
+#             * `inaccurate`, `int`, number of inaccurate records.
+#             * `total`, `int`, `accurate` + `inaccurate` - total number of
+#                 checked records.
+#         '''
         # settings = resource.get('data_quality_settings',
         #                         {}).get('accuracy', {})
         # column = settings.get('column')
@@ -1941,28 +1935,24 @@ class Accuracy():#DimensionMetric
         #     'inaccurate': inaccurate,
         # }
 
-    def calculate_cumulative_metric(self, resources, metrics):
-        '''Calculates the percentage of accurate records in all data for the
-        given resources, based on the calculations for individual resources.
+    # def calculate_cumulative_metric(self, resources, metrics):
+    #     '''Calculates the percentage of accurate records in all data for the
+    #     given resources, based on the calculations for individual resources.
 
-        The value is calculated as percentage of accurate records of the total
-        number of checked records (all accurate + all inaccurate records).
+    #     The value is calculated as percentage of accurate records of the total
+    #     number of checked records (all accurate + all inaccurate records).
 
-        :param resources: `list` of CKAN resources.
-        :param metrics: `list` of `dict` results for each resource.
+    #     :param resources: `list` of CKAN resources.
+    #     :param metrics: `list` of `dict` results for each resource.
 
-        :returns: `dict`, a report on the accuracy metrics for all data in all
-            resources:
-            * `value`, `float`, percentage of accurate records in the data.
-            * `accurate`, `int`, number of accurate records.
-            * `inaccurate`, `int`, number of inaccurate records.
-            * `total`, `int`, `accurate` + `inaccurate` - total number of
-                checked records.
-        '''
-        return {
-            'total': 0,
-            'value': 0,
-        }
+    #     :returns: `dict`, a report on the accuracy metrics for all data in all
+    #         resources:
+    #         * `value`, `float`, percentage of accurate records in the data.
+    #         * `accurate`, `int`, number of accurate records.
+    #         * `inaccurate`, `int`, number of inaccurate records.
+    #         * `total`, `int`, `accurate` + `inaccurate` - total number of
+    #             checked records.
+    #     '''
         # accurate = sum([r.get('accurate', 0) for r in metrics])
         # inaccurate = sum([r.get('inaccurate', 0) for r in metrics])
 
@@ -2251,31 +2241,28 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        # timeliness_list = []
-        # total = 0
+        timeliness_list = []
+        total = 0
         
-        # for item_metric in metrics:
-        #     #check dict is not Empty
-        #     # if ((item_metric) or (item_metric is not None)):
-        #     if item_metric:
-        #         timeliness_score = item_metric.get('value')
-        #         total = total+timeliness_score
-        #         timeliness_list.append(timeliness_score)
-        # if timeliness_list:
-        #     result_score = min(timeliness_list)
-        #     return {
-        #         'total': total,
-        #         'value': result_score,
-        #     }
-        # else:
-        #     return {
-        #         'total': 0,
-        #         'value': 0,
-        #     }
-        return {
-            'total': 0,
-            'value': 0,
-        }
+        for item_metric in metrics:
+            #check dict is not Empty
+            # if ((item_metric) or (item_metric is not None)):
+            if item_metric:
+                timeliness_score = item_metric.get('value')
+                total = total+timeliness_score
+                timeliness_list.append(timeliness_score)
+        if timeliness_list:
+            result_score = min(timeliness_list)
+            return {
+                'total': total,
+                'value': result_score,
+            }
+        else:
+            return {
+                'total': 0,
+                'value': 0,
+            }
+        
 _all_date_formats = [
     '%Y-%m-%d',
     '%y-%m-%d',
