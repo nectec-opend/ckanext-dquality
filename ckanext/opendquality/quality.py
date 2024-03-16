@@ -2176,8 +2176,11 @@ class Timeliness():#DimensionMetric
         update_frequency_unit = Session.query(PackageExtra).filter(PackageExtra.key == 'update_frequency_unit', PackageExtra.package_id == package_id).first()
         update_frequency_interval = Session.query(PackageExtra).filter(PackageExtra.key == 'update_frequency_interval', PackageExtra.package_id == package_id).first()
 
-        created = dateutil.parser.parse(resource.get('last_modified') or
-                                        resource.get('created'))
+        if resource.get('last_modified') is not None:
+            created = dateutil.parser.parse(resource.get('last_modified') or resource.get('created'))
+        else:
+            created = dateutil.parser.parse(resource.get('created'))
+
 
         measured_count = 0
         total_delta = 0
