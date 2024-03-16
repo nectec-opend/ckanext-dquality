@@ -421,7 +421,7 @@ class DataQualityMetrics(object):
                                 data_quality.uniqueness,
                                 # data_quality.accuracy,
                                 data_quality.validity,
-                                # data_quality.timeliness,
+                                data_quality.timeliness,
                                 data_quality.consistency,
                                 data_quality.openness,
                                 data_quality.downloadable,
@@ -573,11 +573,11 @@ class DataQualityMetrics(object):
 
         if cumulative != dataset_results:
             data_quality = self._new_metrics_record('package', package_id)
-
+        log.debug('----cumulative----')
+        log.debug(cumulative)
         for metric, result in cumulative.items():
             if result.get('value') is not None:
                 setattr(data_quality, metric, result['value'])
-
         data_quality.metrics = cumulative
         data_quality.modified_at = datetime.now()
         data_quality.save()
@@ -589,7 +589,6 @@ class OpendQuality(object):
     # def top_pageckage_view(cls, limit=3, page_no=0):
     #     pass
    
-
     def test(cls, limit=3, page_no=0):
         return 'OK'
     @classmethod
@@ -1133,17 +1132,18 @@ class Openness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug('-------------Calculate openness metrics -----------')
-        log.debug(metrics)
+        # log.debug('-------------Calculate openness metrics -----------')
+        # log.debug(metrics)
         openness_list = []
         total = 0
+        
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric:                  
+                openness_score = item_metric.get('value')
+                total = total+openness_score
+                openness_list.append(openness_score)
         if openness_list:
-            for item_metric in metrics:
-                #check dict is not Empty
-                if item_metric:
-                    openness_score = item_metric.get('value')
-                    total = total+openness_score
-                    openness_list.append(openness_score)
             result_score = max(openness_list)
             return {
                 'total': total,
@@ -1191,7 +1191,7 @@ class Downloadable():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug ('------------downloadable--')
+        # log.debug ('------------downloadable--')
         # log.debug(resource)
         downloadable_score = 2
         resource_data_format = resource['format'] 
@@ -1232,18 +1232,18 @@ class Downloadable():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug('-------------Calculate downloadable metrics -----------')
+        # log.debug('-------------Calculate downloadable metrics -----------')
         # log.debug(metrics)
         downloadable_list = []
         total = 0
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric:
+                downloadable_score = item_metric.get('value')
+                total = total+downloadable_score
+                downloadable_list.append(downloadable_score)
+        result_score = max(downloadable_list)
         if downloadable_list:
-            for item_metric in metrics:
-                #check dict is not Empty
-                if item_metric:
-                    downloadable_score = item_metric.get('value')
-                    total = total+downloadable_score
-                    downloadable_list.append(downloadable_score)
-            result_score = max(downloadable_list)
             return {
                 'total': total,
                 'value': result_score,
@@ -1330,13 +1330,14 @@ class AccessAPI():#DimensionMetric
         # log.debug(metrics)
         access_api_list = []
         total = 0
+        
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric:
+                access_api_score = item_metric.get('value')
+                total = total+access_api_score
+                access_api_list.append(access_api_score)
         if access_api_list:
-            for item_metric in metrics:
-                #check dict is not Empty
-                if item_metric:
-                    access_api_score = item_metric.get('value')
-                    total = total+access_api_score
-                    access_api_list.append(access_api_score)
             result_score = max(access_api_list)
             return {
                 'total': total,
@@ -1486,13 +1487,14 @@ class MachineReadable():#DimensionMetric
         # log.debug(metrics)
         machine_readable_list = []
         total = 0
+        
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric:
+                machine_readable_score = item_metric.get('value')
+                total = total+machine_readable_score
+                machine_readable_list.append(machine_readable_score)
         if machine_readable_list:
-            for item_metric in metrics:
-                #check dict is not Empty
-                if item_metric:
-                    machine_readable_score = item_metric.get('value')
-                    total = total+machine_readable_score
-                    machine_readable_list.append(machine_readable_score)
             result_score = max(machine_readable_list)
             return {
                 'total': total,
@@ -2243,13 +2245,15 @@ class Timeliness():#DimensionMetric
         '''
         timeliness_list = []
         total = 0
+        
+        for item_metric in metrics:
+            #check dict is not Empty
+            # if ((item_metric) or (item_metric is not None)):
+            if item_metric:
+                timeliness_score = item_metric.get('value')
+                total = total+timeliness_score
+                timeliness_list.append(timeliness_score)
         if timeliness_list:
-            for item_metric in metrics:
-                #check dict is not Empty
-                if item_metric:
-                    timeliness_score = item_metric.get('value')
-                    total = total+timeliness_score
-                    timeliness_list.append(timeliness_score)
             result_score = min(timeliness_list)
             return {
                 'total': total,
