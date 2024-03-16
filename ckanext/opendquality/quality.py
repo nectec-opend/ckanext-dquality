@@ -524,7 +524,8 @@ class DataQualityMetrics(object):
                 if result.get('value') is not None:
                     setattr(data_quality, metric, result['value'])
 
-            data_quality.metrics = results
+            # data_quality.metrics = results
+            data_quality.metrics = ''
             data_quality.modified_at = datetime.now()
             data_quality.save()
             self.logger.debug('Metrics calculated for resource: %s',
