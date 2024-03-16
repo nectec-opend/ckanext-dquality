@@ -524,8 +524,7 @@ class DataQualityMetrics(object):
                 if result.get('value') is not None:
                     setattr(data_quality, metric, result['value'])
 
-            # data_quality.metrics = results
-            data_quality.metrics = ''
+            data_quality.metrics = results
             data_quality.modified_at = datetime.now()
             data_quality.save()
             self.logger.debug('Metrics calculated for resource: %s',
@@ -2244,27 +2243,31 @@ class Timeliness():#DimensionMetric
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        timeliness_list = []
-        total = 0
+        # timeliness_list = []
+        # total = 0
         
-        for item_metric in metrics:
-            #check dict is not Empty
-            # if ((item_metric) or (item_metric is not None)):
-            if item_metric:
-                timeliness_score = item_metric.get('value')
-                total = total+timeliness_score
-                timeliness_list.append(timeliness_score)
-        if timeliness_list:
-            result_score = min(timeliness_list)
-            return {
-                'total': total,
-                'value': result_score,
-            }
-        else:
-            return {
-                'total': 0,
-                'value': 0,
-            }
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     # if ((item_metric) or (item_metric is not None)):
+        #     if item_metric:
+        #         timeliness_score = item_metric.get('value')
+        #         total = total+timeliness_score
+        #         timeliness_list.append(timeliness_score)
+        # if timeliness_list:
+        #     result_score = min(timeliness_list)
+        #     return {
+        #         'total': total,
+        #         'value': result_score,
+        #     }
+        # else:
+        #     return {
+        #         'total': 0,
+        #         'value': 0,
+        #     }
+        return {
+            'total': 0,
+            'value': 0,
+        }
 _all_date_formats = [
     '%Y-%m-%d',
     '%y-%m-%d',
