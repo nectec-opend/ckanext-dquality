@@ -1898,44 +1898,48 @@ class Accuracy():#DimensionMetric
             * `total`, `int`, `accurate` + `inaccurate` - total number of
                 checked records.
         '''
-        settings = resource.get('data_quality_settings',
-                                {}).get('accuracy', {})
-        column = settings.get('column')
-        if not column:
-            log.error('Cannot calculate accuracy on this resource '
-                              'because no accuracy column is specified.')
-            return {
-                'failed': True,
-                'error': 'Missing accuracy column.',
-            }
-
-        accurate = 0
-        inaccurate = 0
-
-        for row in data['records']:
-            flag = row.get(column)
-            if flag is None or flag.strip() == '':
-                # neither accurate or inaccurate
-                continue
-            if flag.lower() in ['1', 'yes', 'accurate', 't', 'true']:
-                accurate += 1
-            else:
-                inaccurate += 1
-
-        total = accurate + inaccurate
-        value = 0.0
-        if total:
-            value = float(accurate)/float(total) * 100.0
-
-        log.debug('Accurate: %d', accurate)
-        log.debug('Inaccurate: %d', inaccurate)
-        log.debug('Accuracy: %f%%', value)
         return {
-            'value': value,
-            'total': total,
-            'accurate': accurate,
-            'inaccurate': inaccurate,
+            'total': 0,
+            'value': 0,
         }
+        # settings = resource.get('data_quality_settings',
+        #                         {}).get('accuracy', {})
+        # column = settings.get('column')
+        # if not column:
+        #     log.error('Cannot calculate accuracy on this resource '
+        #                       'because no accuracy column is specified.')
+        #     return {
+        #         'failed': True,
+        #         'error': 'Missing accuracy column.',
+        #     }
+
+        # accurate = 0
+        # inaccurate = 0
+
+        # for row in data['records']:
+        #     flag = row.get(column)
+        #     if flag is None or flag.strip() == '':
+        #         # neither accurate or inaccurate
+        #         continue
+        #     if flag.lower() in ['1', 'yes', 'accurate', 't', 'true']:
+        #         accurate += 1
+        #     else:
+        #         inaccurate += 1
+
+        # total = accurate + inaccurate
+        # value = 0.0
+        # if total:
+        #     value = float(accurate)/float(total) * 100.0
+
+        # log.debug('Accurate: %d', accurate)
+        # log.debug('Inaccurate: %d', inaccurate)
+        # log.debug('Accuracy: %f%%', value)
+        # return {
+        #     'value': value,
+        #     'total': total,
+        #     'accurate': accurate,
+        #     'inaccurate': inaccurate,
+        # }
 
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the percentage of accurate records in all data for the
@@ -1955,20 +1959,24 @@ class Accuracy():#DimensionMetric
             * `total`, `int`, `accurate` + `inaccurate` - total number of
                 checked records.
         '''
-        accurate = sum([r.get('accurate', 0) for r in metrics])
-        inaccurate = sum([r.get('inaccurate', 0) for r in metrics])
-
-        total = accurate + inaccurate
-        value = 0.0
-        if total:
-            value = float(accurate)/float(total) * 100.0
-
         return {
-            'value': value,
-            'total': total,
-            'accurate': accurate,
-            'inaccurate': inaccurate,
+            'total': 0,
+            'value': 0,
         }
+        # accurate = sum([r.get('accurate', 0) for r in metrics])
+        # inaccurate = sum([r.get('inaccurate', 0) for r in metrics])
+
+        # total = accurate + inaccurate
+        # value = 0.0
+        # if total:
+        #     value = float(accurate)/float(total) * 100.0
+
+        # return {
+        #     'value': value,
+        #     'total': total,
+        #     'accurate': accurate,
+        #     'inaccurate': inaccurate,
+        # }
 class Consistency():#DimensionMetric
     '''Calculates Data Quality dimension consistency.
 
