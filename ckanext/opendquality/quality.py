@@ -1596,7 +1596,7 @@ class Completeness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        total, complete = reduce(lambda (total, complete), result: (
+        total, complete = reduce(lambda total, complete, result: (
             total + result.get('total', 0),
             complete + result.get('complete', 0)
         ), metrics, (0, 0))
