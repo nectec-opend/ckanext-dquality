@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import click
+import click, six
 
 import ckan.plugins.toolkit as toolkit
 from ckan.model import package_table, Session
@@ -52,7 +52,8 @@ def quality():
               default='all',
               help='Which metric to calculate.')
 def calculate(dataset, dimension):
-    _register_mock_translator()
+    if six.PY2:
+        _register_mock_translator()
     # dimensions = ['completeness',
     #             #   'uniqueness',
     #             #   'timeliness',
