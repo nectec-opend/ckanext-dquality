@@ -1429,9 +1429,9 @@ class MachineReadable():#DimensionMetric
             
             if(consistency_val >= 0 and consistency_val < 100):
                 machine_readable_score = machine_readable_score-15
-            elif(validity_chk == False):
+            if(validity_chk == False):
                 machine_readable_score = machine_readable_score-20
-            elif(encoding_utf8 == False):
+            if(encoding_utf8 == False):
                 machine_readable_score = machine_readable_score-10
                     
             # log.debug('----machine_readable_val in------')
