@@ -20,20 +20,7 @@ import click, six
 import ckan.plugins.toolkit as toolkit
 from ckan.model import package_table, Session
 import ckanext.opendquality.quality as quality_lib
-# from ckanext.opendquality.quality import (
-#     Completeness,
-#     DataQualityMetrics
-# )
 import ckanext.opendquality.quality as quality_lib
-# from ckanext.opendquality.lib.quality import (
-#     # Accuracy,
-#     # Uniqueness,
-#     # Validity,
-#     # Timeliness,
-#     # Consistency,
-#     Completeness,
-#     DataQualityMetrics
-# )
 from logging import getLogger
 
 
@@ -54,25 +41,11 @@ def quality():
 def calculate(dataset, dimension):
     if six.PY2:
         _register_mock_translator()
-    # dimensions = ['completeness',
-    #             #   'uniqueness',
-    #             #   'timeliness',
-    #             #   'validity',
-    #             #   'accuracy',
-    #             #   'consistency'
-    #               ]
-       # dimension_calculators = {
-    #     'completeness': Completeness(),
-    #     # 'uniqueness': Uniqueness(),
-    #     # 'timeliness': Timeliness(),
-    #     # 'validity': Validity(),
-    #     # 'accuracy': Accuracy(),
-    #     # 'consistency': Consistency(),
-    # }
-    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
+    # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
+    dimensions =  ['validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
     dimension_calculators = {
-        'completeness': quality_lib.Completeness(),
-        'uniqueness'  : quality_lib.Uniqueness(),
+        # 'completeness': quality_lib.Completeness(),
+        # 'uniqueness'  : quality_lib.Uniqueness(),
         'validity'    : quality_lib.Validity(),
         'consistency' : quality_lib.Consistency(),
         'openness'    : quality_lib.Openness(),

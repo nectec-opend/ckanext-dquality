@@ -229,7 +229,8 @@ class DataQualityMetrics(object):
     
     def _data_quality_settings(self, resource):
         settings = {}
-        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','downloadable','machine_readable', 'timeliness']:
+        #'completeness', 'uniqueness'
+        for dimension in ['validity', 'consistency','openness','downloadable','machine_readable', 'timeliness']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -238,34 +239,6 @@ class DataQualityMetrics(object):
                     setting = key[len(prefix) + 1:]
                     settings[dimension][setting] = value
         return settings
-    #-----Pang Edit: original ----------------------
-    # def _fetch_resource_data(self, resource):
-    #     def _fetch_page(page, page_size):
-    #         try:
-    #             context = {'ignore_auth': True}
-    #             return toolkit.get_action('datastore_search')(None, {
-    #                 'resource_id': resource['id'],
-    #                 'offset': page*page_size,
-    #                 'limit': page_size,
-    #             })
-    #         except Exception as e:
-    #             self.logger.warning('Failed to fetch data for resource %s. '
-    #                                 'Error: %s', resource['id'], str(e))
-    #             self.logger.exception(e)
-    #             return {
-    #                 'total': 0,
-    #                 'records': [],
-    #             }
-       
-
-    #     _fetch_page = ResourceFetchData(resource)
-
-    #     result = _fetch_page(0, 1)  # to calculate the total from start
-    #     return {
-    #         'total': result.get('total', 0),
-    #         'records': LazyStreamingList(_fetch_page),
-    #         'fields': result['fields'],  # metadata
-    #     }
     def _fetch_resource_data(self, resource):
         def _fetch_page(page, page_size):
             try:
@@ -385,12 +358,6 @@ class DataQualityMetrics(object):
                                            resource.get('created')),
                                           '%Y-%m-%dT%H:%M:%S.%f')
         # self.logger.debug ('Resource last modified on: %s', last_modified)
-        #---- Test -----------------------
-        # self.logger.debug('Call Completeness')    
-        # dimension_com  = Completeness()#metrics=calculators
-        # metrics = []
-        # data = self._fetch_resource_data(resource)
-        # result = dimension_com.calculate_metric(resource, data)
         #-------Check Data Dict using Resource Name -----------
         resource_name = resource['name']
         resource_name = resource_name.lower()
@@ -415,8 +382,8 @@ class DataQualityMetrics(object):
                     # check if all metrics have been calculated or some needs to be
                     # calculated again
                     if all(map(lambda m: m is not None, [
-                                data_quality.completeness,
-                                data_quality.uniqueness,
+                                # data_quality.completeness,
+                                # data_quality.uniqueness,
                                 data_quality.validity,
                                 data_quality.timeliness,
                                 data_quality.consistency,
@@ -555,7 +522,6 @@ class DataQualityMetrics(object):
         cumulative = {}
         dataset_results = data_quality.metrics or {}
         for metric in self.metrics:
-            # metric.name = 'completeness'
             cached = dataset_results.get(metric.name, {})
             if cached.get('manual'):
                 self.logger.debug('Metric %s is calculated manually. '
@@ -570,8 +536,6 @@ class DataQualityMetrics(object):
 
         if cumulative != dataset_results:
             data_quality = self._new_metrics_record('package', package_id)
-        log.debug('----cumulative----')
-        log.debug(cumulative)
         for metric, result in cumulative.items():
             if result.get('value') is not None:
                 setattr(data_quality, metric, result['value'])
@@ -1393,8 +1357,8 @@ class MachineReadable():#DimensionMetric
         #--------------Machine Readable-----------------
         machine_readable_format = ['CSV','XLSX','XLS','JSON','XML'] #'JSON','XML' 
         documenct_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT'] #-50
-        image_format = ['PNG','JPEG','GIF']#-60
-        openness_5_star_format = ['RDF','TTL','N3','SPARQL','OWL','GeoJSON','GML','KML','SHP','Esri REST']#100
+        image_format = ['PNG','JPEG','GIF','TIFF']#-60
+        openness_5_star_format = ['RDF','TTL','N3','GeoJSON','GML','KML','SHP','Esri REST']#100
         validity_chk = True
         encoding_utf8 = False
         data_format = resource['format'] 
@@ -1504,203 +1468,203 @@ class MachineReadable():#DimensionMetric
                 'total': 0,
                 'value': 0,
             }
-class Completeness():#DimensionMetric
-    '''Calculates the completeness Data Qualtiy dimension.
+# class Completeness():#DimensionMetric
+#     '''Calculates the completeness Data Qualtiy dimension.
 
-    The calculation is performed over all values in the resource data.
-    In each row, ever cell is inspected if there is a value present in it.
+#     The calculation is performed over all values in the resource data.
+#     In each row, ever cell is inspected if there is a value present in it.
 
-    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
-        * `cells_with_value` is the number of cells containing a value. A cell
-            contains a value if the value in the cell is not `None` or an empty
-            string or a string containing only whitespace.
-        * `total_numbr_of_cells` is the total number of cells expected to be
-            populted. This is calculated from the number of rows multiplied by
-            the number of columns in the tabular data.
+#     The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+#         * `cells_with_value` is the number of cells containing a value. A cell
+#             contains a value if the value in the cell is not `None` or an empty
+#             string or a string containing only whitespace.
+#         * `total_numbr_of_cells` is the total number of cells expected to be
+#             populted. This is calculated from the number of rows multiplied by
+#             the number of columns in the tabular data.
 
-    The return value is a percentage of cells that are populated from the total
-    number of cells.
-    '''
-    def __init__(self):
-        # super(Completeness, self).__init__('completeness')
-        self.name = 'completeness'
+#     The return value is a percentage of cells that are populated from the total
+#     number of cells.
+#     '''
+#     def __init__(self):
+#         # super(Completeness, self).__init__('completeness')
+#         self.name = 'completeness'
 
-    def calculate_metric(self, resource, data):
-        '''Calculates the completeness dimension metric for the given resource
-        from the resource data.
+#     def calculate_metric(self, resource, data):
+#         '''Calculates the completeness dimension metric for the given resource
+#         from the resource data.
 
-        :param resource: `dict`, CKAN resource.
-        :param data: `dict`, the resource data as a dict with the following
-            values:
-                * `total`, `int`, total number of rows.
-                * `fields`, `list` of `dict`, column metadata - name, type.
-                * `records`, `iterable`, iterable over the rows in the resource
-                    where each row is a `dict` itself.
+#         :param resource: `dict`, CKAN resource.
+#         :param data: `dict`, the resource data as a dict with the following
+#             values:
+#                 * `total`, `int`, total number of rows.
+#                 * `fields`, `list` of `dict`, column metadata - name, type.
+#                 * `records`, `iterable`, iterable over the rows in the resource
+#                     where each row is a `dict` itself.
 
-        :returns: `dict`, the report contaning the calculated values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        columns_count = len(data['fields'])
-        rows_count = data['total']
-        total_values_count = columns_count * rows_count
+#         :returns: `dict`, the report contaning the calculated values:
+#             * `value`, `float`, the percentage of complete values in the data.
+#             * `total`, `int`, total number of values expected to be populated.
+#             * `complete`, `int`, number of cells that have value.
+#         '''
+#         columns_count = len(data['fields'])
+#         rows_count = data['total']
+#         total_values_count = columns_count * rows_count
 
-        log.debug('Rows: %d, Columns: %d, Total Values: %d',
-                          rows_count, columns_count, total_values_count)
-        # log.debug(data)
-        total_complete_values = 0
-        for row in data['records']:
-            total_complete_values += self._completenes_row(row)
+#         log.debug('Rows: %d, Columns: %d, Total Values: %d',
+#                           rows_count, columns_count, total_values_count)
+#         # log.debug(data)
+#         total_complete_values = 0
+#         for row in data['records']:
+#             total_complete_values += self._completenes_row(row)
 
-        result = \
-            float(total_complete_values)/float(total_values_count) * 100.0 if \
-            total_values_count else 0
-        log.debug ('Complete (non-empty) values: %s',
-                          total_complete_values)
-        log.debug('Completeness score: %f%%', result)
-        return {
-            'value': result,
-            'total': total_values_count,
-            'complete': total_complete_values,
-        }
+#         result = \
+#             float(total_complete_values)/float(total_values_count) * 100.0 if \
+#             total_values_count else 0
+#         log.debug ('Complete (non-empty) values: %s',
+#                           total_complete_values)
+#         log.debug('Completeness score: %f%%', result)
+#         return {
+#             'value': result,
+#             'total': total_values_count,
+#             'complete': total_complete_values,
+#         }
 
-    def _completenes_row(self, row):
-        count = 0
-        for _, value in row.items():
-            if value is None:
-                continue
-            if isinstance(value, str):
-                if not value.strip():
-                    continue
-            count += 1
-        return count
+#     def _completenes_row(self, row):
+#         count = 0
+#         for _, value in row.items():
+#             if value is None:
+#                 continue
+#             if isinstance(value, str):
+#                 if not value.strip():
+#                     continue
+#             count += 1
+#         return count
 
-    def calculate_cumulative_metric(self, resources, metrics):
-        '''Calculates the cumulative report for all resources from the
-        calculated results for each resource.
+#     def calculate_cumulative_metric(self, resources, metrics):
+#         '''Calculates the cumulative report for all resources from the
+#         calculated results for each resource.
 
-        The calculation is done as `all_complete/all_total * 100`, where
-            * `all_complete` is the total number of completed values in all
-                resources.
-            * all_total is the number of expected values (rows*columns) in all
-                resources.
-        The final value is the percentage of completed values in all resources
-        in the dataset.
+#         The calculation is done as `all_complete/all_total * 100`, where
+#             * `all_complete` is the total number of completed values in all
+#                 resources.
+#             * all_total is the number of expected values (rows*columns) in all
+#                 resources.
+#         The final value is the percentage of completed values in all resources
+#         in the dataset.
 
-        :param resources: `list` of CKAN resources.
-        :param metrics: `list` of `dict` results for each resource.
+#         :param resources: `list` of CKAN resources.
+#         :param metrics: `list` of `dict` results for each resource.
 
-        :returns: `dict`, a report for the total percentage of complete values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        total, complete = reduce(lambda total, complete, result: (
-            total + result.get('total', 0),
-            complete + result.get('complete', 0)
-        ), metrics, (0, 0))
-        return {
-            'total': total,
-            'complete': complete,
-            'value': float(complete)/float(total) * 100.0 if total else 0.0,
-        }
-class Uniqueness(): #DimensionMetric
-    '''Calculates the uniqueness of the data.
+#         :returns: `dict`, a report for the total percentage of complete values:
+#             * `value`, `float`, the percentage of complete values in the data.
+#             * `total`, `int`, total number of values expected to be populated.
+#             * `complete`, `int`, number of cells that have value.
+#         '''
+#         total, complete = reduce(lambda total, complete, result: (
+#             total + result.get('total', 0),
+#             complete + result.get('complete', 0)
+#         ), metrics, (0, 0))
+#         return {
+#             'total': total,
+#             'complete': complete,
+#             'value': float(complete)/float(total) * 100.0 if total else 0.0,
+#         }
+# class Uniqueness(): #DimensionMetric
+#     '''Calculates the uniqueness of the data.
 
-    The general calculation is: `unique_values/total_values * 100`, where:
-        * `unique_values` is the number of unique values
-        * `total_values` is the total number of value
+#     The general calculation is: `unique_values/total_values * 100`, where:
+#         * `unique_values` is the number of unique values
+#         * `total_values` is the total number of value
 
-    The dimension value is a percentage of unique values in the data.
-    '''
-    def __init__(self):
-        # super(Uniqueness, self).__init__('uniqueness')
-        self.name = 'uniqueness'
+#     The dimension value is a percentage of unique values in the data.
+#     '''
+#     def __init__(self):
+#         # super(Uniqueness, self).__init__('uniqueness')
+#         self.name = 'uniqueness'
 
-    def calculate_metric(self, resource, data):
-        '''Calculates the uniqueness of the values in the data for the given
-        resource.
+#     def calculate_metric(self, resource, data):
+#         '''Calculates the uniqueness of the values in the data for the given
+#         resource.
 
-        For each column of the data, the number of unique values is calculated
-        and the total number of values (basically the number of rows).
+#         For each column of the data, the number of unique values is calculated
+#         and the total number of values (basically the number of rows).
 
-        Then, to calculate the number of unique values in the data, the sum of
-        all unique values is calculated and the sum of the total number of
-        values for each column. The the percentage is calculated from those two
-        values.
+#         Then, to calculate the number of unique values in the data, the sum of
+#         all unique values is calculated and the sum of the total number of
+#         values for each column. The the percentage is calculated from those two
+#         values.
 
-        :param resource: `dict`, CKAN resource.
-        :param data: `dict`, the resource data as a dict with the following
-            values:
-                * `total`, `int`, total number of rows.
-                * `fields`, `list` of `dict`, column metadata - name, type.
-                * `records`, `iterable`, iterable over the rows in the resource
-                    where each row is a `dict` itself.
+#         :param resource: `dict`, CKAN resource.
+#         :param data: `dict`, the resource data as a dict with the following
+#             values:
+#                 * `total`, `int`, total number of rows.
+#                 * `fields`, `list` of `dict`, column metadata - name, type.
+#                 * `records`, `iterable`, iterable over the rows in the resource
+#                     where each row is a `dict` itself.
 
-        :returns: `dict`, a report on the uniqueness metrics for the given
-            resource data:
-            * `value`, `float`, the percentage of unique values in the data.
-            * `total`, `int`, total number of values in the data.
-            * `unique`, `int`, number unique values in the data.
-            * `columns`, `dict`, detailed report for each column in the data.
-        '''
-        total = {}
-        distinct = {}
+#         :returns: `dict`, a report on the uniqueness metrics for the given
+#             resource data:
+#             * `value`, `float`, the percentage of unique values in the data.
+#             * `total`, `int`, total number of values in the data.
+#             * `unique`, `int`, number unique values in the data.
+#             * `columns`, `dict`, detailed report for each column in the data.
+#         '''
+#         total = {}
+#         distinct = {}
 
-        for row in data['records']:
-            for col, value in row.items():
-                total[col] = total.get(col, 0) + 1
-                if distinct.get(col) is None:
-                    distinct[col] = set()
-                distinct[col].add(value)
+#         for row in data['records']:
+#             for col, value in row.items():
+#                 total[col] = total.get(col, 0) + 1
+#                 if distinct.get(col) is None:
+#                     distinct[col] = set()
+#                 distinct[col].add(value)
 
-        result = {
-            'total': sum(v for _, v in total.items()),
-            'unique': sum([len(s) for _, s in distinct.items()]),
-            'columns': {},
-        }
-        if result['total'] > 0:
-            result['value'] = (100.0 *
-                               float(result['unique'])/float(result['total']))
-        else:
-            result['value'] = 0.0
+#         result = {
+#             'total': sum(v for _, v in total.items()),
+#             'unique': sum([len(s) for _, s in distinct.items()]),
+#             'columns': {},
+#         }
+#         if result['total'] > 0:
+#             result['value'] = (100.0 *
+#                                float(result['unique'])/float(result['total']))
+#         else:
+#             result['value'] = 0.0
 
-        for col, tot in total.items():
-            unique = len(distinct.get(col, set()))
-            result['columns'][col] = {
-                'total': tot,
-                'unique': unique,
-                'value': 100.0*float(unique)/float(tot) if tot > 0 else 0.0,
-            }
-        return result
+#         for col, tot in total.items():
+#             unique = len(distinct.get(col, set()))
+#             result['columns'][col] = {
+#                 'total': tot,
+#                 'unique': unique,
+#                 'value': 100.0*float(unique)/float(tot) if tot > 0 else 0.0,
+#             }
+#         return result
 
-    def calculate_cumulative_metric(self, resources, metrics):
-        '''Calculates uniqueness for all resources based on the metrics
-        calculated in the previous phase for each resource.
+#     def calculate_cumulative_metric(self, resources, metrics):
+#         '''Calculates uniqueness for all resources based on the metrics
+#         calculated in the previous phase for each resource.
 
-        The calculation is performed based on the total unique values as a
-        percentage of the total number of values present in all data from all
-        given resources.
+#         The calculation is performed based on the total unique values as a
+#         percentage of the total number of values present in all data from all
+#         given resources.
 
-        :param resources: `list` of CKAN resources.
-        :param metrics: `list` of `dict` results for each resource.
+#         :param resources: `list` of CKAN resources.
+#         :param metrics: `list` of `dict` results for each resource.
 
-        :returns: `dict`, a report for the total percentage of unique values:
-            * `value`, `float`, the percentage of unique values in the data.
-            * `total`, `int`, total number of values in the data.
-            * `unique`, `int`, number of unique values.
-        '''
-        result = {}
-        result['total'] = sum([r.get('total', 0) for r in metrics])
-        result['unique'] = sum([r.get('unique', 0) for r in metrics])
-        if result['total'] > 0:
-            result['value'] = (100.0 *
-                               float(result['unique'])/float(result['total']))
-        else:
-            result['value'] = 0.0
+#         :returns: `dict`, a report for the total percentage of unique values:
+#             * `value`, `float`, the percentage of unique values in the data.
+#             * `total`, `int`, total number of values in the data.
+#             * `unique`, `int`, number of unique values.
+#         '''
+#         result = {}
+#         result['total'] = sum([r.get('total', 0) for r in metrics])
+#         result['unique'] = sum([r.get('unique', 0) for r in metrics])
+#         if result['total'] > 0:
+#             result['value'] = (100.0 *
+#                                float(result['unique'])/float(result['total']))
+#         else:
+#             result['value'] = 0.0
 
-        return result
+#         return result
 class Validity():#DimensionMetric
     '''Calculates Data Quality dimension validity.
 
@@ -1777,6 +1741,7 @@ class Validity():#DimensionMetric
             valid = table.get('valid')
             log.debug("---encoding---")
             log.debug(encoding)
+            log.debug(table.get('errors'))
             dict_error['encoding'] = encoding
             dict_error['valid']    = valid
             # log.debug(dict_error)
