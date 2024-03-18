@@ -49,6 +49,8 @@ data_quality_metrics_table = Table(
     Column('downloadable', types.Float),
     Column('access_api', types.Float),
     Column('machine_readable', types.Float),
+    Column('filepath', types.String),
+    Column('url', types.String),
     Column('metrics', types.JSON),
 )
 

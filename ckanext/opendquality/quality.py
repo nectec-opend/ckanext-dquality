@@ -450,6 +450,8 @@ class DataQualityMetrics(object):
                         else:
                             data_stream = self._fetch_resource_data(resource)
                     #------ Check Meta Data --------------------------------
+                    log.debug('------ Resource URL-----')
+                    log.debug(resource['url'])
                     if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                         results[metric.name] = metric.calculate_metric(resource)
 
@@ -490,6 +492,11 @@ class DataQualityMetrics(object):
 
             data_quality.metrics = results
             data_quality.modified_at = datetime.now()
+            #---- add filepath ----
+            upload = uploader.get_resource_uploader(resource)
+            filepath = upload.get_path(resource['id'])
+            data_quality.filepath = filepath
+            data_quality.url = resource['url']
             data_quality.save()
             self.logger.debug('Metrics calculated for resource: %s',
                             resource['id'])
@@ -1356,7 +1363,7 @@ class MachineReadable():#DimensionMetric
         '''
         #--------------Machine Readable-----------------
         machine_readable_format = ['CSV','XLSX','XLS','JSON','XML'] #'JSON','XML' 
-        documenct_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT'] #-50
+        documenct_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT','ODS','ODP'] #-50
         image_format = ['PNG','JPEG','GIF','TIFF']#-60
         openness_5_star_format = ['RDF','TTL','N3','GeoJSON','GML','KML','SHP','Esri REST']#100
         validity_chk = True
