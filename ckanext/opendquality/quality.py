@@ -19,6 +19,7 @@ from pandas import read_excel
 from tempfile import TemporaryFile
 import os.path
 import requests
+import mimetypes
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -362,7 +363,7 @@ class DataQualityMetrics(object):
         resource_name = resource['name']
         resource_name = resource_name.lower()
         # initializing test list
-        datadict_list = ['datadict', 'data dict']
+        datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary']
         # using list comprehension
         # checking if string contains list element
         res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
@@ -832,7 +833,20 @@ class ResourceFetchData2(object):
             for row in reader:
                 data.append(row)
         return data
-
+    
+    def is_url_file(url):
+        try:
+            response = requests.head(url)
+            content_type = response.headers.get('Content-Type')
+            if content_type:
+                mime_type, _ = mimetypes.guess_type(url)
+                if mime_type and mime_type != 'application/octet-stream':
+                    return True  # It's a file
+            return False  # It's not a file or has unknown content type
+        except Exception as e:
+            print("An error occurred:", e)
+            return False  # Error occurred, not a file
+        
     def _download_resource_from_ckan(self, resource):       
         # upload = uploader.get_resource_uploader(resource)
         # filepath = upload.get_path(resource['id'])
@@ -840,7 +854,7 @@ class ResourceFetchData2(object):
         resource_format = resource['format']
         try:
             data = []
-            if os.path.isfile(filepath):
+            if self.is_url_file(filepath):   # if os.path.isfile(filepath):
                 if '\0' in open(filepath).read():
                     print("you have null bytes in your input file")
                 else:
