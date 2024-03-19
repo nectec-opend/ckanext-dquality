@@ -834,7 +834,7 @@ class ResourceFetchData2(object):
                 data.append(row)
         return data
     
-    def is_url_file(url):
+    def is_url_file(self,url):
         try:
             response = requests.head(url)
             content_type = response.headers.get('Content-Type')
