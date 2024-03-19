@@ -20,6 +20,8 @@ from tempfile import TemporaryFile
 import os.path
 import requests
 import mimetypes
+import openpyxl
+import io
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -854,32 +856,70 @@ class ResourceFetchData2(object):
         resource_format = resource['format']
         try:
             data = []
-            if self.is_url_file(filepath):   # if os.path.isfile(filepath):
-                if '\0' in open(filepath).read():
-                    print("you have null bytes in your input file")
-                else:
-                    print("you don't")
-                if(resource_format == 'XLSX' or resource_format == 'XLS'):                  
-                    data_df = pd.read_excel(filepath)
-                    data = data_df.values.tolist()
-                elif(resource_format == 'JSON'):
-                    try:
-                        data_json = pd.read_json(filepath)
-                        data_df = pd.DataFrame(data_json)
+            # if os.path.isfile(filepath):
+            #     if '\0' in open(filepath).read():
+            #         print("you have null bytes in your input file")
+            #     else:
+            #         print("you don't")
+            #     if(resource_format == 'XLSX' or resource_format == 'XLS'):                  
+            #         data_df = pd.read_excel(filepath)
+            #         data = data_df.values.tolist()
+            #     elif(resource_format == 'JSON'):
+            #         try:
+            #             data_json = pd.read_json(filepath)
+            #             data_df = pd.DataFrame(data_json)
+            #             data = data_df.values.tolist()
+            #             data[:0] = [list(data_df.keys())]
+            #             print(list(data_df.keys()))
+            #         except ValueError as e:
+            #             print('ValueError = ', e)
+            #             data = []
+            #     elif(resource_format == 'CSV'):
+            #         with open(filepath) as csvf:
+            #             reader = csv.reader(csvf)
+            #             for row in reader:
+            #                 data.append(row)
+            #     else:
+            #         data = []
+            #     return data
+            if self.is_url_file(filepath):
+                response = requests.get(filepath)
+                response.raise_for_status()  # Raise an exception for bad status codes
+                if(resource_format == 'CSV'):
+                    data = response.content.decode('utf-8')  # Decode content to string
+                    data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
+                    if data_df is not None:
                         data = data_df.values.tolist()
                         data[:0] = [list(data_df.keys())]
-                        print(list(data_df.keys()))
+                       
+                elif(resource_format == 'JSON'):
+                    try:
+                        data_json = response.json()
+                        data_json = pd.read_json(filepath)
+                        if data_json is not None:
+                            data_df = pd.DataFrame(data_json)
+                            data = data_df.values.tolist()
+                            data[:0] = [list(data_df.keys())]                           
                     except ValueError as e:
-                        print('ValueError = ', e)
+                            print('ValueError = ', e)
+                            data = []
+                            
+                elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
+                    try:
+                        excel_data = io.BytesIO(response.content)         
+                        dataframe = openpyxl.load_workbook(excel_data)  # Load Excel file using openpyxl
+                        # Define variable to read sheet
+                        dataframe1 = dataframe.active
+                        # Iterate the loop to read the cell values
+                        for row in range(0, dataframe1.max_row):
+                            data_row = []
+                            for col in dataframe1.iter_cols(1, dataframe1.max_column):
+                                data_row.append(col[row].value)
+                            data.append(data_row)
+                        
+                    except Exception as e:
+                        print("An error occurred:", e)
                         data = []
-                elif(resource_format == 'CSV'):
-                    with open(filepath) as csvf:
-                        reader = csv.reader(csvf)
-                        for row in reader:
-                            data.append(row)
-                else:
-                    data = []
-                return data
             else:
                 # The worker is not in the same machine as CKAN, so it cannot
                 # read the resource files from the local file system.
