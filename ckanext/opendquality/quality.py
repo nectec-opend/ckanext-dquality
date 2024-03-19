@@ -834,8 +834,9 @@ class ResourceFetchData2(object):
         return data
 
     def _download_resource_from_ckan(self, resource):       
-        upload = uploader.get_resource_uploader(resource)
-        filepath = upload.get_path(resource['id'])
+        # upload = uploader.get_resource_uploader(resource)
+        # filepath = upload.get_path(resource['id'])
+        filepath = resource['url']
         resource_format = resource['format']
         try:
             data = []
