@@ -22,6 +22,7 @@ import requests
 import mimetypes
 import openpyxl
 import io
+from six import string_types
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -891,7 +892,7 @@ class ResourceFetchData2(object):
                     if data_df is not None:
                         data = data_df.values.tolist()
                         data[:0] = [list(data_df.keys())]
-                       
+                        
                 elif(resource_format == 'JSON'):
                     try:
                         data_json = response.json()
@@ -899,11 +900,12 @@ class ResourceFetchData2(object):
                         if data_json is not None:
                             data_df = pd.DataFrame(data_json)
                             data = data_df.values.tolist()
-                            data[:0] = [list(data_df.keys())]                           
+                            data[:0] = [list(data_df.keys())]
+                                  
                     except ValueError as e:
                             print('ValueError = ', e)
                             data = []
-                            
+
                 elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
                     try:
                         excel_data = io.BytesIO(response.content)         
@@ -916,10 +918,13 @@ class ResourceFetchData2(object):
                             for col in dataframe1.iter_cols(1, dataframe1.max_column):
                                 data_row.append(col[row].value)
                             data.append(data_row)
-                        
+
                     except Exception as e:
                         print("An error occurred:", e)
                         data = []
+                else:
+                    data = []
+                return data
             else:
                 # The worker is not in the same machine as CKAN, so it cannot
                 # read the resource files from the local file system.
@@ -2409,7 +2414,7 @@ def validate_resource_data(resource):
     else:
         options = {}
     resource_options = resource.get(u'validation_options')
-    if resource_options and isinstance(resource_options, basestring):
+    if resource_options and isinstance(resource_options, string_types):#basestring):
         resource_options = json.loads(resource_options)
     if resource_options:
         options.update(resource_options)
@@ -2441,7 +2446,7 @@ def validate_resource_data(resource):
         source = resource[u'url']
 
     schema = resource.get(u'schema')
-    if schema and isinstance(schema, basestring):
+    if schema and isinstance(schema, string_types):#basestring):
         if schema.startswith('http'):
             r = requests.get(schema)
             schema = r.json()
