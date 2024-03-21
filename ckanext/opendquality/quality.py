@@ -893,7 +893,7 @@ class ResourceFetchData2(object):
         except Exception as e:
             print("An error occurred:", e)
             return False  # Error occurred, not a file
-    def detect_encoding(url):
+    def detect_encoding(self,url):
         try:
             response = requests.get(url)
             if response.status_code == 200:
