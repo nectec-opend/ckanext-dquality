@@ -22,6 +22,7 @@ import requests
 import mimetypes
 import openpyxl
 import io
+import chardet
 from six import string_types
 # import db, re
 from ckanext.opendquality.model import (
@@ -146,8 +147,8 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-        #           str(self), self.total, self.column_names, self.fields)
+        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+                  str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -207,12 +208,12 @@ class ResourceCSVData(object):
         log.debug('ResourceCSVData.fetch_page: '
                   'page=%d, limit=%d, of total %d. Got %d results.',
                   page, limit, self.total, len(items))
+        log.debug(items)
         return {
             'total': self.total,
             'records': items,
             'fields': self.fields,
         }
-
 
 class DataQualityMetrics(object):
  
@@ -840,7 +841,8 @@ class ResourceFetchData2(object):
             response = requests.get(filepath)
             response.raise_for_status()
             if(resource_format =='CSV'):
-                data = response.content.decode('utf-8', errors="replace")  # Decode content to string, errors='ignore'
+                encoding = self.detect_encoding(filepath)
+                data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
                 data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
                 if data_df is not None:
                     data = data_df.values.tolist()
@@ -891,7 +893,19 @@ class ResourceFetchData2(object):
         except Exception as e:
             print("An error occurred:", e)
             return False  # Error occurred, not a file
-        
+    def detect_encoding(url):
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                rawdata = response.content
+                result = chardet.detect(rawdata)
+                return result['encoding']
+            else:
+                print("Failed to download the file. Status code:", response.status_code)
+                return None
+        except Exception as e:
+            print("Error:", e)
+            return None   
     def _download_resource_from_ckan(self, resource):       
         upload = uploader.get_resource_uploader(resource)
         filepath = upload.get_path(resource['id'])
@@ -994,10 +1008,10 @@ class ResourceFetchData2(object):
 
     def _fetch_data_directly(self):
         if self.resource.get('url_type') == 'upload':
-            log.debug('Getting data from CKAN...')
+            log.debug('2 Getting data from CKAN...')
             return self._download_resource_from_ckan(self.resource)
         if self.resource.get('url'):
-            log.debug('Getting data from remote URL...')
+            log.debug('2 Getting data from remote URL...')
             return self._download_resource_from_url(self.resource['url'])
         raise Exception('Resource {} is not available '
                         'for download.'.format(self.resource.get('id')))
@@ -1032,7 +1046,7 @@ class ResourceFetchData2(object):
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
-                # log.debug('Resource data downloaded directly.')
+                # log.debug('2Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
         try:
             #------ Pang Edit ------------------       
