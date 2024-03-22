@@ -159,8 +159,8 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-                  str(self), self.total, self.column_names, self.fields)
+        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+        #           str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -220,8 +220,6 @@ class ResourceCSVData(object):
         log.debug('ResourceCSVData.fetch_page: '
                   'page=%d, limit=%d, of total %d. Got %d results.',
                   page, limit, self.total, len(items))
-        log.debug(items)
-        log.debug(self.fields)
         return {
             'total': self.total,
             'records': items,
@@ -1198,11 +1196,14 @@ class Openness():#DimensionMetric
         '''
         data_format = resource['format']
         mimetype    = resource['mimetype']
-
+    
         if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
             resource_url = resource['url']   
             format_url = resource_url.split(".")[-1]
             data_format = format_url.upper()
+
+        data_format = data_format.replace(".", "")
+        data_format = data_format.upper()  
         openness_score = self.get_openness_score(data_format,mimetype)
         # log.debug('Openness score: %f%%', openness_score)
         return {
@@ -1294,9 +1295,8 @@ class Downloadable():#DimensionMetric
         downloadable_score = 2
         resource_data_format = resource['format'] 
         resource_url    = resource['url']
-        if(pd.isna(resource_data_format)):
-            downloadable_score = 0
-        elif(pd.notna(resource_url)): 
+        
+        if(pd.notna(resource_url)): 
             format_url = resource_url.split(".")[-1]
             lower_format = resource_data_format.lower()
             # log.debug ('Check downloadable type')
@@ -1304,6 +1304,8 @@ class Downloadable():#DimensionMetric
             # log.debug (format_url)
             if(format_url != lower_format):
                 downloadable_score = 1
+        elif(pd.isna(resource_data_format)):
+            downloadable_score = 0
         # log.debug('Downloadable score:', downloadable_score)
         return {
             'format': resource_data_format,
@@ -1512,6 +1514,7 @@ class MachineReadable():#DimensionMetric
             data_format = format_url.upper()
             # log.debug(data_format)
         #---- Tabular Data -------------#
+        data_format = data_format.replace(".", "")
         data_format = data_format.upper()
         if data_format in machine_readable_format:
             encoding = validity_report.get('encoding')
@@ -2155,11 +2158,7 @@ class Consistency():#DimensionMetric
         validators = self.get_consistency_validators()
         fields = {f['id']: f for f in data['fields']}
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}
-        log.debug('----Check Consistency111-------')
-        log.debug(data['records'])
         for row in data['records']:
-            log.debug('----row----')
-            log.debug(row)
             for field, value in row.items():
                 field_type = fields.get(field, {}).get('type')
                 validator = validators.get(field_type)
@@ -2167,8 +2166,6 @@ class Consistency():#DimensionMetric
                 if validator:
                     validator(field, value, field_type, field_report)
                     field_report['count'] += 1
-        log.debug('----Check Consistency222-------')
-        log.debug(field_report)
         for field, field_report in report.items():        
             if field_report['formats']:
                 most_consistent = max([count if fmt != 'unknown' else 0
