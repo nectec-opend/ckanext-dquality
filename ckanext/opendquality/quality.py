@@ -89,19 +89,31 @@ class LazyStreamingList(object):
         self.buffer = result.get('records', [])
         self.page += 1
 
+    # def iterator(self):
+    #     '''Returns an iterator over all of the records.
+    #     '''
+    #     current = 0
+    #     self._fetch_buffer()
+    #     while True:
+    #         if current >= self.total or not self.buffer:
+    #             # end of all results
+    #             raise StopIteration()
+    #         for row in self.buffer:
+    #             current += 1
+    #             yield row
+    #         # fetch next buffer
+    #         self._fetch_buffer()
     def iterator(self):
         '''Returns an iterator over all of the records.
         '''
         current = 0
         self._fetch_buffer()
-        while True:
-            if current >= self.total or not self.buffer:
-                # end of all results
-                raise StopIteration()
+        if current >= self.total:
+            log.debug('end of all results')
+        if self.buffer:
             for row in self.buffer:
                 current += 1
                 yield row
-            # fetch next buffer
             self._fetch_buffer()
 
     def __iter__(self):
@@ -209,6 +221,7 @@ class ResourceCSVData(object):
                   'page=%d, limit=%d, of total %d. Got %d results.',
                   page, limit, self.total, len(items))
         log.debug(items)
+        log.debug(self.fields)
         return {
             'total': self.total,
             'records': items,
@@ -1009,7 +1022,8 @@ class ResourceFetchData2(object):
     def _fetch_data_directly(self):
         if self.resource.get('url_type') == 'upload':
             log.debug('2 Getting data from CKAN...')
-            return self._download_resource_from_ckan(self.resource)
+            # return self._download_resource_from_ckan(self.resource)
+            return self._download_resource_from_url(self.resource['url'])
         if self.resource.get('url'):
             log.debug('2 Getting data from remote URL...')
             return self._download_resource_from_url(self.resource['url'])
@@ -2141,7 +2155,11 @@ class Consistency():#DimensionMetric
         validators = self.get_consistency_validators()
         fields = {f['id']: f for f in data['fields']}
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}
+        log.debug('----Check Consistency111-------')
+        log.debug(data['records'])
         for row in data['records']:
+            log.debug('----row----')
+            log.debug(row)
             for field, value in row.items():
                 field_type = fields.get(field, {}).get('type')
                 validator = validators.get(field_type)
@@ -2149,12 +2167,14 @@ class Consistency():#DimensionMetric
                 if validator:
                     validator(field, value, field_type, field_report)
                     field_report['count'] += 1
-
-        for field, field_report in report.items():
-            most_consistent = max([count if fmt != 'unknown' else 0
-                                for fmt, count
-                                in field_report['formats'].items()])
-            field_report['consistent'] = most_consistent
+        log.debug('----Check Consistency222-------')
+        log.debug(field_report)
+        for field, field_report in report.items():        
+            if field_report['formats']:
+                most_consistent = max([count if fmt != 'unknown' else 0
+                                    for fmt, count
+                                    in field_report['formats'].items()])
+                field_report['consistent'] = most_consistent
 
         total = sum([f.get('count', 0) for _, f in report.items()])
         consistent = sum([f.get('consistent', 0) for _, f in report.items()])
