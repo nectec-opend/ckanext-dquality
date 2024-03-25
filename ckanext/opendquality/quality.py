@@ -369,12 +369,23 @@ class DataQualityMetrics(object):
         return metrics
     def _new_metrics_record(self, ref_type, ref_id):
         return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
+    #-- check file size ---
+    def get_file_size(self, url):
+        response = requests.head(url)  # Only get headers, not content
+        file_size = int(response.headers.get('content-length', -1))  # Get file size from headers
+
+        if file_size == -1:
+            return 'Could not get the file size.'
+        else:
+            return file_size 
+        
     def calculate_metrics_for_resource(self, resource):
         last_modified = datetime.strptime((resource.get('last_modified') or
                                            resource.get('created')),
                                           '%Y-%m-%dT%H:%M:%S.%f')
         # self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
+        resource_url = resource['url']
         resource_name = resource['name']
         resource_name = resource_name.lower()
         # initializing test list
@@ -383,7 +394,11 @@ class DataQualityMetrics(object):
         # checking if string contains list element
         res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
         is_datadict = bool(res_datadict)
-        if not is_datadict:                                           
+        
+        file_size = self.get_file_size(resource_url)
+        file_size_mb = file_size/1024**2
+        print("File size in Megabytes: " + str(file_size/1024**2))
+        if (not is_datadict) and (file_size_mb <= 12):                                           
             #----- connect model: check records----------------------
             data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
             # self.logger.debug('Check data_quality_metric')
@@ -879,9 +894,11 @@ class ResourceFetchData2(object):
                     # Define variable to read sheet
                     dataframe1 = dataframe.active
                     # Iterate the loop to read the cell values
-                    for row in range(0, dataframe1.max_row):
+                    max_row = dataframe1.max_row
+                    max_column = dataframe1.max_column
+                    for row in range(0, max_row):
                         data_row = []
-                        for col in dataframe1.iter_cols(1, dataframe1.max_column):
+                        for col in dataframe1.iter_cols(1, max_column):
                             data_row.append(col[row].value)
                         data.append(data_row)
 
