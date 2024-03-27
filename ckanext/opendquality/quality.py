@@ -495,7 +495,7 @@ class DataQualityMetrics(object):
                     #using metadata for calculate metrics
                    
 
-                    if (file_size_mb <= 10):
+                    if (file_size_mb <= 5):
                         if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                             results[metric.name] = metric.calculate_metric(resource)
 
