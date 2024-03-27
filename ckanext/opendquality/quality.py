@@ -406,7 +406,7 @@ class DataQualityMetrics(object):
             log.debug("--- file_size ----")
             log.debug(file_size_mb)
         
-        if not is_datadict and file_size_mb <= 10:         
+        if not is_datadict: #and file_size_mb <= 10:         
         # if (not is_datadict):                                           
             #----- connect model: check records----------------------
             data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
@@ -492,30 +492,44 @@ class DataQualityMetrics(object):
                     #------ Check Meta Data --------------------------------
                     log.debug('------ Resource URL-----')
                     log.debug(resource['url'])
-                    if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
-                        results[metric.name] = metric.calculate_metric(resource)
+                    #using metadata for calculate metrics
+                   
 
-                    elif(metric.name == 'consistency'):
-                        log.debug('------Call _fetch_resource_data2-----')
-                        data_stream2 = self._fetch_resource_data2(resource)
-                        results[metric.name] = metric.calculate_metric(resource,data_stream2)
-                        log.debug('----consistency_val------')
-                        consistency_val = results[metric.name].get('value')
-                        log.debug(consistency_val)
-                    elif(metric.name == 'validity'):
-                        results[metric.name] = metric.calculate_metric(resource,data_stream)         
-                        log.debug('----validity_val------')
-                        # validity_val = results[metric.name].get('value')
-                        validity_report = results[metric.name].get('report')
-                        # encoding   = results[metric.name].get('encoding')
-                        # log.debug(validity_val)
-                        # log.debug(results[metric.name])   
-                    elif(metric.name == 'machine_readable'):
-                        log.debug('----machine_readable_val------')       
-                        results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
-                    else:                                              
-                        results[metric.name] = metric.calculate_metric(resource,data_stream)
+                    if (file_size_mb <= 10):
+                        if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                            results[metric.name] = metric.calculate_metric(resource)
 
+                        elif(metric.name == 'consistency'):
+                            log.debug('------Call _fetch_resource_data2-----')
+                            data_stream2 = self._fetch_resource_data2(resource)
+                            results[metric.name] = metric.calculate_metric(resource,data_stream2)
+                            log.debug('----consistency_val------')
+                            consistency_val = results[metric.name].get('value')
+                            log.debug(consistency_val)
+                        elif(metric.name == 'validity'):
+                            results[metric.name] = metric.calculate_metric(resource,data_stream)         
+                            log.debug('----validity_val------')
+                            # validity_val = results[metric.name].get('value')
+                            validity_report = results[metric.name].get('report')
+                            # encoding   = results[metric.name].get('encoding')
+ 
+                        elif(metric.name == 'machine_readable'):
+                            log.debug('----machine_readable_val------')       
+                            results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
+                        else:                                              
+                            results[metric.name] = metric.calculate_metric(resource,data_stream)
+
+                    else:
+                        if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                            results[metric.name] = metric.calculate_metric(resource)
+                        elif(metric.name == 'timeliness'):
+                            results[metric.name] = metric.calculate_metric(resource,data_stream)
+
+                        results['consistency'] = { 'value': 0}
+                        results['validity']    =    { 'value': 0}
+                        results['machine_readable'] = { 'value': 0}
+                        
+                        
                 except Exception as e:
                     self.logger.error('Failed to calculate metric: %s. Error: %s',
                                     metric, str(e))
@@ -541,21 +555,8 @@ class DataQualityMetrics(object):
             data_quality.save()
             self.logger.debug('Metrics calculated for resource: %s',
                             resource['id'])
-        else:
-            data_quality = self._new_metrics_record('resource', resource['id'])
-            data_quality.modified_at = datetime.now()
-            data_quality.ref_id = resource['id']
-            data_quality.resource_last_modified = last_modified
-            #---- add filepath ----
-            upload = uploader.get_resource_uploader(resource)
-            filepath = upload.get_path(resource['id'])
-            data_quality.filepath = filepath
-            data_quality.url = resource['url']
-            data_quality.file_size = file_size_mb
-            data_quality.save()
-            self.logger.debug('Metrics calculated for resource: %s',
-                            resource['id'])
-        return results
+        
+            return results
 
     def calculate_cumulative_metrics(self, package_id, resources, results):
         '''Calculates the cumulative metrics (reduce phase), from the results
