@@ -371,13 +371,17 @@ class DataQualityMetrics(object):
         return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
     #-- check file size ---
     def get_file_size(self, url):
-        response = requests.head(url)  # Only get headers, not content
-        file_size = int(response.headers.get('content-length', -1))  # Get file size from headers
-
-        if file_size == -1:
-            return 'Could not get the file size.'
-        else:
-            return file_size 
+        try:
+            response = requests.head(url)
+            if response.status_code == 200:
+                size = int(response.headers['Content-Length'])
+                return size
+            else:
+                print("Error: Could not retrieve file size, status code:", response.status_code)
+                return None
+        except Exception as e:
+            print("Error:", e)
+            return None 
         
     def calculate_metrics_for_resource(self, resource):
         last_modified = datetime.strptime((resource.get('last_modified') or
@@ -394,11 +398,16 @@ class DataQualityMetrics(object):
         # checking if string contains list element
         res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
         is_datadict = bool(res_datadict)
-        
+        results = {}
         file_size = self.get_file_size(resource_url)
-        file_size_mb = file_size/1024**2
-        print("File size in Megabytes: " + str(file_size/1024**2))
-        if (not is_datadict) and (file_size_mb <= 12):                                           
+        file_size_mb = 0
+        if file_size is not None:
+            file_size_mb = file_size/1024**2
+            log.debug("--- file_size ----")
+            log.debug(file_size_mb)
+        
+        if not is_datadict and file_size_mb <= 10:         
+        # if (not is_datadict):                                           
             #----- connect model: check records----------------------
             data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
             # self.logger.debug('Check data_quality_metric')
@@ -441,7 +450,7 @@ class DataQualityMetrics(object):
             #----------------Calculate Metrics--------------------
             data_quality.ref_id = resource['id']
             data_quality.resource_last_modified = last_modified
-            results = {}
+            
             data_stream = None
             if self.force_recalculate:
                 log.info('Forcing recalculation of the data metrics '
@@ -528,11 +537,25 @@ class DataQualityMetrics(object):
             filepath = upload.get_path(resource['id'])
             data_quality.filepath = filepath
             data_quality.url = resource['url']
+            data_quality.file_size = file_size_mb
             data_quality.save()
             self.logger.debug('Metrics calculated for resource: %s',
                             resource['id'])
-    
-            return results
+        else:
+            data_quality = self._new_metrics_record('resource', resource['id'])
+            data_quality.modified_at = datetime.now()
+            data_quality.ref_id = resource['id']
+            data_quality.resource_last_modified = last_modified
+            #---- add filepath ----
+            upload = uploader.get_resource_uploader(resource)
+            filepath = upload.get_path(resource['id'])
+            data_quality.filepath = filepath
+            data_quality.url = resource['url']
+            data_quality.file_size = file_size_mb
+            data_quality.save()
+            self.logger.debug('Metrics calculated for resource: %s',
+                            resource['id'])
+        return results
 
     def calculate_cumulative_metrics(self, package_id, resources, results):
         '''Calculates the cumulative metrics (reduce phase), from the results
