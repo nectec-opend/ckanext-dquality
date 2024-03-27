@@ -1314,6 +1314,20 @@ class Downloadable():#DimensionMetric
 
     def __init__(self):
         self.name = 'downloadable'
+
+    def is_downloadable(self,url):
+        try:
+            response = requests.head(url, allow_redirects=True)
+            if 'Content-Type' in response.headers:
+                content_type = response.headers['Content-Type'].lower()
+                if 'text' not in content_type or 'csv' in content_type or 'application/octet-stream' in content_type:
+                    return True
+            # Check if the URL ends with common file extensions
+            if os.path.splitext(url)[1].lower() in ['.zip', '.pdf', '.jpg', '.jpeg', '.png', '.gif', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx','.gml','.kml','.kmz','.json','.geojson','.shp','.wms','.xml']:
+                return True
+            return False
+        except requests.RequestException:
+            return False
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
         from the resource data.
@@ -1337,17 +1351,27 @@ class Downloadable():#DimensionMetric
         resource_data_format = resource['format'] 
         resource_url    = resource['url']
         
-        if(pd.notna(resource_url)): 
-            format_url = resource_url.split(".")[-1]
-            lower_format = resource_data_format.lower()
-            # log.debug ('Check downloadable type')
-            # log.debug (lower_format)
-            # log.debug (format_url)
-            if(format_url != lower_format):
-                downloadable_score = 1
-        elif(pd.isna(resource_data_format)):
-            downloadable_score = 0
-        # log.debug('Downloadable score:', downloadable_score)
+        if self.is_downloadable(resource_url):
+            downloadable_score = 2 # can download
+            #ตรวจสอบ format ไม่ตรงตามที่กำหนด แต่เว้นว่างได้ เลยตรวจยาก เพราะเค้าอาจจะไม่กำหนดก็ได้
+            if(pd.notna(resource_url) and resource_data_format != ""): 
+                format_url = resource_url.split(".")[-1]
+                lower_format = resource_data_format.lower()
+                if(format_url != lower_format): # set wrong format type
+                    downloadable_score = 0
+        else: 
+            downloadable_score = 1 # cannot download such as HTML.
+
+       
+        
+        # if(pd.notna(resource_url)): 
+        #     format_url = resource_url.split(".")[-1]
+        #     lower_format = resource_data_format.lower()
+        #     if(format_url != lower_format): # set wrong format type
+        #         downloadable_score = 1
+        # elif(pd.isna(resource_data_format)):
+        #     downloadable_score = 0
+
         return {
             'format': resource_data_format,
             'value': downloadable_score,
