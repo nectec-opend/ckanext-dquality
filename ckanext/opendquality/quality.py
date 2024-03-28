@@ -1654,7 +1654,7 @@ class MachineReadable():#DimensionMetric
             if "utf-8" in encoding:
                 encoding_utf8 = True
             if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
-                        validity_report.get('extra-value') > 0 or  validity_report.get('schema-error') > 0):
+                        validity_report.get('extra-value') > 0 or validity_report.get('schema-error') > 0):
                 validity_chk = False
             
             if(consistency_val >= 0 and consistency_val < 100):
@@ -1992,7 +1992,7 @@ class Validity():#DimensionMetric
         encoding = ''
         valid = ''
 
-        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'scheme-error':0,'encoding':''}
+        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0,'encoding':''}
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
             total_errors += table.get('error-count', 0)
