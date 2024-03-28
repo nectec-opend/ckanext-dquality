@@ -495,7 +495,7 @@ class DataQualityMetrics(object):
                     #using metadata for calculate metrics
                    
 
-                    if (file_size_mb <= 2):
+                    if (file_size_mb <= 5):
                         if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                             results[metric.name] = metric.calculate_metric(resource)
 
@@ -873,7 +873,7 @@ class ResourceFetchData2(object):
             'offset': page*limit,
             'limit': limit,
         })
-
+    
     def _download_resource_from_url(self, url, headers=None):
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()  # Raise an error if request to file failed.
@@ -885,53 +885,103 @@ class ResourceFetchData2(object):
                 tmpf.write(chunk)
             tmpf.flush()
             tmpf.seek(0, 0)  # rewind to start
-            # reader = csv.reader(tmpf)
-            # for row in reader:
-            #     data.append(row)
-            response = requests.get(filepath)
-            response.raise_for_status()
-            if(resource_format =='CSV'):
-                encoding = self.detect_encoding(filepath)
-                data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-                data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
-                if data_df is not None:
-                    data = data_df.values.tolist()
-                    data[:0] = [list(data_df.keys())]
 
-            elif(resource_format == 'JSON'):
-                try:
-                    data_json = response.json()
-                    data_json = pd.read_json(filepath)
-                    if data_json is not None:
-                        data_df = pd.DataFrame(data_json)
+            if self.is_url_file(filepath):
+                if(resource_format =='CSV'):
+                    response = requests.get(filepath)
+                    response.raise_for_status()  # Raise an exception for bad status codes
+                    encoding = self.detect_encoding(filepath)
+                    print(encoding)
+                    data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+                    data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
+                    if data_df is not None:
                         data = data_df.values.tolist()
                         data[:0] = [list(data_df.keys())]
 
-                except ValueError as e:
-                        print('ValueError = ', e)
-                        data = []
+                elif(resource_format == 'JSON'):
+                    try:
+                        data_json = pd.read_json(filepath)
+                        if data_json is not None:
+                            data_df = pd.DataFrame(data_json)
+                            data = data_df.values.tolist()
+                            data[:0] = [list(data_df.keys())]
 
-            elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
-                try:
-                    excel_data = io.BytesIO(response.content)         
-                    dataframe = openpyxl.load_workbook(excel_data)  # Load Excel file using openpyxl
-                    # Define variable to read sheet
-                    dataframe1 = dataframe.active
-                    # Iterate the loop to read the cell values
-                    max_row = dataframe1.max_row
-                    max_column = dataframe1.max_column
-                    for row in range(0, max_row):
-                        data_row = []
-                        for col in dataframe1.iter_cols(1, max_column):
-                            data_row.append(col[row].value)
-                        data.append(data_row)
-
-                except Exception as e:
-                    print("An error occurred:", e)
+                    except ValueError as e:
+                            print('ValueError = ', e)
+                            data = []
+                elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
+                    data_df = pd.read_excel(filepath)  # Read CSV data into a DataFrame
+                    if data_df is not None:
+                        data = data_df.values.tolist()
+                        data[:0] = [list(data_df.keys())]
+                else:
                     data = []
             else:
                 data = []
         return data
+    # def _download_resource_from_url(self, url, headers=None):
+    #     resp = requests.get(url, headers=headers)
+    #     resp.raise_for_status()  # Raise an error if request to file failed.
+    #     data = []
+    #     filepath = self.resource['url']
+    #     resource_format = self.resource['format']
+    #     with TemporaryFile(mode='w+b') as tmpf:
+    #         for chunk in resp.iter_content():
+    #             tmpf.write(chunk)
+    #         tmpf.flush()
+    #         tmpf.seek(0, 0)  # rewind to start
+    #         # reader = csv.reader(tmpf)
+    #         # for row in reader:
+    #         #     data.append(row)
+    #         response = requests.get(filepath)
+    #         response.raise_for_status()
+    #         if(resource_format =='CSV'):
+    #             # encoding = self.detect_encoding(filepath)
+    #             # data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+    #             # data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
+    #             data_df = pd.read_csv(filepath)
+    #             if data_df is not None:
+    #                 data = data_df.values.tolist()
+    #                 data[:0] = [list(data_df.keys())]
+
+    #         elif(resource_format == 'JSON'):
+    #             try:
+    #                 data_json = response.json()
+    #                 data_json = pd.read_json(filepath)
+    #                 if data_json is not None:
+    #                     data_df = pd.DataFrame(data_json)
+    #                     data = data_df.values.tolist()
+    #                     data[:0] = [list(data_df.keys())]
+
+    #             except ValueError as e:
+    #                     print('ValueError = ', e)
+    #                     data = []
+    #         elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
+    #             data_df = pd.read_excel(filepath)  # Read CSV data into a DataFrame
+    #             if data_df is not None:
+    #                 data = data_df.values.tolist()
+    #                 data[:0] = [list(data_df.keys())]
+    #         # elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
+    #         #     try:
+    #         #         excel_data = io.BytesIO(response.content)         
+    #         #         dataframe = openpyxl.load_workbook(excel_data)  # Load Excel file using openpyxl
+    #         #         # Define variable to read sheet
+    #         #         dataframe1 = dataframe.active
+    #         #         # Iterate the loop to read the cell values
+    #         #         max_row = dataframe1.max_row
+    #         #         max_column = dataframe1.max_column
+    #         #         for row in range(0, max_row):
+    #         #             data_row = []
+    #         #             for col in dataframe1.iter_cols(1, max_column):
+    #         #                 data_row.append(col[row].value)
+    #         #             data.append(data_row)
+
+    #         #     except Exception as e:
+    #         #         print("An error occurred:", e)
+    #         #         data = []
+    #         else:
+    #             data = []
+    #     return data
     
     def is_url_file(self,url):
         try:
@@ -1593,7 +1643,7 @@ class MachineReadable():#DimensionMetric
             if "utf-8" in encoding:
                 encoding_utf8 = True
             if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
-                        validity_report.get('extra-value') > 0 ):
+                        validity_report.get('extra-value') > 0 or  validity_report.get('schema-error') > 0):
                 validity_chk = False
             
             if(consistency_val >= 0 and consistency_val < 100):
@@ -1931,7 +1981,7 @@ class Validity():#DimensionMetric
         encoding = ''
         valid = ''
 
-        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0,'encoding':''}
+        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'scheme-error':0,'encoding':''}
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
             total_errors += table.get('error-count', 0)
