@@ -887,30 +887,41 @@ class ResourceFetchData2(object):
             tmpf.seek(0, 0)  # rewind to start
 
             if self.is_url_file(filepath):
+                n_rows = 5000
                 if(resource_format =='CSV'):
                     response = requests.get(filepath)
                     response.raise_for_status()  # Raise an exception for bad status codes
                     encoding = self.detect_encoding(filepath)
                     print(encoding)
                     data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-                    data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
+                    data_df = pd.read_csv(io.StringIO(data), nrows=n_rows)  # Read CSV data into a DataFrame
                     if data_df is not None:
                         data = data_df.values.tolist()
                         data[:0] = [list(data_df.keys())]
 
                 elif(resource_format == 'JSON'):
-                    try:
-                        data_json = pd.read_json(filepath)
-                        if data_json is not None:
-                            data_df = pd.DataFrame(data_json)
-                            data = data_df.values.tolist()
-                            data[:0] = [list(data_df.keys())]
+                    # Read JSON data in chunks
+                    data_chunks = []
+                    for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
+                        data_chunks.append(chunk)
+                        # Break the loop if the specified number of rows have been read
+                        if len(data_chunks) * n_rows >= n_rows:
+                            break
+                    # Concatenate the data chunks into a single DataFrame
+                    data_df = pd.concat(data_chunks, ignore_index=True)
+                    data = data_df.values.tolist()
+                    # try:
+                    #     data_json = pd.read_json(filepath)
+                    #     if data_json is not None:
+                    #         data_df = pd.DataFrame(data_json)
+                    #         data = data_df.values.tolist()
+                    #         data[:0] = [list(data_df.keys())]
 
-                    except ValueError as e:
-                            print('ValueError = ', e)
-                            data = []
+                    # except ValueError as e:
+                    #         print('ValueError = ', e)
+                    #         data = []
                 elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
-                    data_df = pd.read_excel(filepath)  # Read CSV data into a DataFrame
+                    data_df = pd.read_excel(filepath, nrows=n_rows)  # Read CSV data into a DataFrame
                     if data_df is not None:
                         data = data_df.values.tolist()
                         data[:0] = [list(data_df.keys())]
