@@ -409,6 +409,7 @@ class DataQualityMetrics(object):
             print("Error:", e)
             return False   
     def calculate_metrics_for_resource(self, resource):
+        log.debug('calculate_metrics_for_resource')
         last_modified = datetime.strptime((resource.get('last_modified') or
                                            resource.get('created')),
                                           '%Y-%m-%dT%H:%M:%S.%f')
@@ -430,163 +431,191 @@ class DataQualityMetrics(object):
         connection_url = False
         if self.check_connection_url(resource_url, timeout):
             connection_url = True
-        if file_size is not None:
-            file_size_mb = file_size/1024**2
-            log.debug("--- file_size ----")
-            log.debug(file_size_mb)
-        
-        if not is_datadict: #and file_size_mb <= 10:         
-        # if (not is_datadict):                                           
-            #----- connect model: check records----------------------
-            data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
-            # self.logger.debug('Check data_quality_metric')
-            # self.logger.debug(data_quality)    
-            cached_calculation = False
-            if data_quality:
-                self.logger.debug('Data Quality calculated for '
-                                'version modified on: %s',
-                                data_quality.resource_last_modified)
-                if data_quality.resource_last_modified >= last_modified:
-                    cached_calculation = True
-                    # check if all metrics have been calculated or some needs to be
-                    # calculated again
-                    if all(map(lambda m: m is not None, [
-                                # data_quality.completeness,
-                                # data_quality.uniqueness,
-                                data_quality.validity,
-                                data_quality.timeliness,
-                                data_quality.consistency,
-                                data_quality.openness,
-                                data_quality.downloadable,
-                                data_quality.access_api,
-                                data_quality.machine_readable
-                                ])):
-                        self.logger.debug('Data Quality already calculated.')
-                        return data_quality.metrics
+            if file_size is not None:
+                file_size_mb = file_size/1024**2
+                log.debug("--- file_size ----")
+                log.debug(file_size_mb)
+            
+            if not is_datadict: #and file_size_mb <= 10:         
+            # if (not is_datadict):                                           
+                #----- connect model: check records----------------------
+                data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
+                # self.logger.debug('Check data_quality_metric')
+                # self.logger.debug(data_quality)    
+                cached_calculation = False
+                if data_quality:
+                    self.logger.debug('Data Quality calculated for '
+                                    'version modified on: %s',
+                                    data_quality.resource_last_modified)
+                    if data_quality.resource_last_modified >= last_modified:
+                        cached_calculation = True
+                        # check if all metrics have been calculated or some needs to be
+                        # calculated again
+                        if all(map(lambda m: m is not None, [
+                                    # data_quality.completeness,
+                                    # data_quality.uniqueness,
+                                    data_quality.validity,
+                                    data_quality.timeliness,
+                                    data_quality.consistency,
+                                    data_quality.openness,
+                                    data_quality.downloadable,
+                                    data_quality.access_api,
+                                    data_quality.machine_readable
+                                    ])):
+                            self.logger.debug('Data Quality already calculated.')
+                            return data_quality.metrics
+                        else:
+                            self.logger.debug('Data Quality not calculated for '
+                                            'all dimensions.')
                     else:
-                        self.logger.debug('Data Quality not calculated for '
-                                        'all dimensions.')
+                        data_quality = self._new_metrics_record('resource',
+                                                                resource['id'])
+                        data_quality.resource_last_modified = last_modified
+                        self.logger.debug('Resource changed since last calculated. '
+                                        'Calculating data quality again.')
                 else:
-                    data_quality = self._new_metrics_record('resource',
-                                                            resource['id'])
+                    data_quality = self._new_metrics_record('resource', resource['id'])
                     data_quality.resource_last_modified = last_modified
-                    self.logger.debug('Resource changed since last calculated. '
-                                    'Calculating data quality again.')
-            else:
-                data_quality = self._new_metrics_record('resource', resource['id'])
+                    self.logger.debug('First data quality calculation.')
+                #----------------Calculate Metrics--------------------
+                data_quality.ref_id = resource['id']
                 data_quality.resource_last_modified = last_modified
-                self.logger.debug('First data quality calculation.')
+                
+                data_stream = None
+                if self.force_recalculate:
+                    log.info('Forcing recalculation of the data metrics '
+                            'has been set. All except the manually set metric data '
+                            'will be recalculated.')
+                self.logger.debug('******Calculate Metrics *****')
+                self.logger.debug(self.metrics)
+                # self.logger.debug(resource)
+                consistency_val = 0
+                # encoding = ''
+                validity_report = {}
+                for metric in self.metrics:
+                    self.logger.debug(metric)      
+                    try:
+                        if cached_calculation and getattr(data_quality,
+                                                        metric.name) is not None:
+                            cached = data_quality.metrics[metric.name]
+                            if not self.force_recalculate and not cached.get('failed'):
+                                self.logger.debug('Dimension %s already calculated. '
+                                                'Skipping...', metric.name)
+                                results[metric.name] = cached
+                                continue
+                            if cached.get('manual'):
+                                self.logger.debug('Calculation has been performed '
+                                                'manually. Skipping...', metric.name)
+                                results[metric.name] = cached
+                                continue
+                        
+                        self.logger.debug('Calculating dimension: %s...', metric)
+                    #------------------------------------------------------
+                        if not data_stream:
+                            data_stream = self._fetch_resource_data(resource)
+                        else:
+                            if data_stream.get('records') and \
+                                    hasattr(data_stream['records'], 'rewind'):
+                                data_stream['records'].rewind()
+                            else:
+                                data_stream = self._fetch_resource_data(resource)
+                        #------ Check Meta Data --------------------------------
+                        log.debug('------ Resource URL-----')
+                        log.debug(resource['url'])
+                        #using metadata for calculate metrics
+                    
+
+                        if (file_size_mb <= 5 and connection_url):
+                            if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                                results[metric.name] = metric.calculate_metric(resource)
+
+                            elif(metric.name == 'consistency'):
+                                log.debug('------Call _fetch_resource_data2-----')
+                                data_stream2 = self._fetch_resource_data2(resource)
+                                results[metric.name] = metric.calculate_metric(resource,data_stream2)
+                                log.debug('----consistency_val------')
+                                consistency_val = results[metric.name].get('value')
+                                log.debug(consistency_val)
+                            elif(metric.name == 'validity'):
+                                results[metric.name] = metric.calculate_metric(resource,data_stream)         
+                                log.debug('----validity_val------')
+                                # validity_val = results[metric.name].get('value')
+                                validity_report = results[metric.name].get('report')
+                                # encoding   = results[metric.name].get('encoding')
+    
+                            elif(metric.name == 'machine_readable'):
+                                log.debug('----machine_readable_val------')       
+                                results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
+                            else:                                              
+                                results[metric.name] = metric.calculate_metric(resource,data_stream)
+
+                        else:
+                            if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                                results[metric.name] = metric.calculate_metric(resource)
+                            elif(metric.name == 'timeliness'):
+                                results[metric.name] = metric.calculate_metric(resource,data_stream)
+
+                            results['consistency'] = { 'value': 0}
+                            results['validity']    =    { 'value': 0}
+                            results['machine_readable'] = { 'value': 0}
+                            if not connection_url:
+                                results['connection_url'] = { 'error': True}
+                            
+                    except Exception as e:
+                        self.logger.error('Failed to calculate metric: %s. Error: %s',
+                                        metric, str(e))
+                        self.logger.exception(e)
+                        results[metric.name] = {
+                            'failed': True,
+                            'error': str(e),
+                        }
+
+                # set results
+                for metric, result in results.items():
+                    if result.get('value') is not None:
+                        setattr(data_quality, metric, result['value'])
+
+                data_quality.metrics = results
+                data_quality.modified_at = datetime.now()
+                #---- add filepath ----
+                upload = uploader.get_resource_uploader(resource)
+                filepath = upload.get_path(resource['id'])
+                data_quality.filepath = filepath
+                data_quality.url = resource['url']
+                data_quality.file_size = file_size_mb
+                data_quality.save()
+                self.logger.debug('Metrics calculated for resource: %s',
+                                resource['id'])
+            
+                # return results
+        else:
+        
+            data_quality = self._new_metrics_record('resource', resource['id'])
+            data_quality.resource_last_modified = last_modified
+            self.logger.debug('First data quality calculation.')
             #----------------Calculate Metrics--------------------
             data_quality.ref_id = resource['id']
             data_quality.resource_last_modified = last_modified
-            
-            data_stream = None
-            if self.force_recalculate:
-                log.info('Forcing recalculation of the data metrics '
-                        'has been set. All except the manually set metric data '
-                        'will be recalculated.')
-            self.logger.debug('******Calculate Metrics *****')
-            self.logger.debug(self.metrics)
-            # self.logger.debug(resource)
-            consistency_val = 0
-            # encoding = ''
-            validity_report = {}
-            for metric in self.metrics:
-                self.logger.debug(metric)      
-                try:
-                    if cached_calculation and getattr(data_quality,
-                                                    metric.name) is not None:
-                        cached = data_quality.metrics[metric.name]
-                        if not self.force_recalculate and not cached.get('failed'):
-                            self.logger.debug('Dimension %s already calculated. '
-                                            'Skipping...', metric.name)
-                            results[metric.name] = cached
-                            continue
-                        if cached.get('manual'):
-                            self.logger.debug('Calculation has been performed '
-                                            'manually. Skipping...', metric.name)
-                            results[metric.name] = cached
-                            continue
-                    
-                    self.logger.debug('Calculating dimension: %s...', metric)
-                #------------------------------------------------------
-                    if not data_stream:
-                        data_stream = self._fetch_resource_data(resource)
-                    else:
-                        if data_stream.get('records') and \
-                                hasattr(data_stream['records'], 'rewind'):
-                            data_stream['records'].rewind()
-                        else:
-                            data_stream = self._fetch_resource_data(resource)
-                    #------ Check Meta Data --------------------------------
-                    log.debug('------ Resource URL-----')
-                    log.debug(resource['url'])
-                    #using metadata for calculate metrics
-                   
-
-                    if (file_size_mb <= 5 and connection_url):
-                        if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
-                            results[metric.name] = metric.calculate_metric(resource)
-
-                        elif(metric.name == 'consistency'):
-                            log.debug('------Call _fetch_resource_data2-----')
-                            data_stream2 = self._fetch_resource_data2(resource)
-                            results[metric.name] = metric.calculate_metric(resource,data_stream2)
-                            log.debug('----consistency_val------')
-                            consistency_val = results[metric.name].get('value')
-                            log.debug(consistency_val)
-                        elif(metric.name == 'validity'):
-                            results[metric.name] = metric.calculate_metric(resource,data_stream)         
-                            log.debug('----validity_val------')
-                            # validity_val = results[metric.name].get('value')
-                            validity_report = results[metric.name].get('report')
-                            # encoding   = results[metric.name].get('encoding')
- 
-                        elif(metric.name == 'machine_readable'):
-                            log.debug('----machine_readable_val------')       
-                            results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
-                        else:                                              
-                            results[metric.name] = metric.calculate_metric(resource,data_stream)
-
-                    else:
-                        if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
-                            results[metric.name] = metric.calculate_metric(resource)
-                        elif(metric.name == 'timeliness'):
-                            results[metric.name] = metric.calculate_metric(resource,data_stream)
-
-                        results['consistency'] = { 'value': 0}
-                        results['validity']    =    { 'value': 0}
-                        results['machine_readable'] = { 'value': 0}
-                        if not connection_url:
-                            results['connection_url'] = { 'error': True}
-                        
-                except Exception as e:
-                    self.logger.error('Failed to calculate metric: %s. Error: %s',
-                                    metric, str(e))
-                    self.logger.exception(e)
-                    results[metric.name] = {
-                        'failed': True,
-                        'error': str(e),
-                    }
-
-            # set results
-            for metric, result in results.items():
-                if result.get('value') is not None:
-                    setattr(data_quality, metric, result['value'])
-
-            data_quality.metrics = results
+            data_quality.metrics = {'error':'connection timed out'}
             data_quality.modified_at = datetime.now()
+            #----------------------
+            data_quality.openness = 0
+            data_quality.downloadable = 0
+            data_quality.access_api = 0
+            data_quality.timeliness = 999
+            data_quality.openness = 0
+            data_quality.consistency = 0
+            data_quality.validity = 0
+            data_quality.machine_readable = 0      
             #---- add filepath ----
-            upload = uploader.get_resource_uploader(resource)
-            filepath = upload.get_path(resource['id'])
-            data_quality.filepath = filepath
+            data_quality.filepath = ''
             data_quality.url = resource['url']
-            data_quality.file_size = file_size_mb
+            data_quality.file_size = 0
             data_quality.save()
             self.logger.debug('Metrics calculated for resource: %s',
                             resource['id'])
         
-            return results
+        return results
 
     def calculate_cumulative_metrics(self, package_id, resources, results):
         '''Calculates the cumulative metrics (reduce phase), from the results
