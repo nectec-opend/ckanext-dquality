@@ -24,6 +24,17 @@ import openpyxl
 import io
 import chardet
 from six import string_types
+
+import socket
+try:
+    # Python 3
+    from urllib.request import urlopen
+    from urllib.error import URLError
+except ImportError:
+    # Python 2
+    from urllib2 import urlopen
+    from urllib2 import URLError
+
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -382,7 +393,21 @@ class DataQualityMetrics(object):
         except Exception as e:
             print("Error:", e)
             return None 
-        
+    def check_connection_url(self,url, timeout):
+        try:
+            # Open the URL with a timeout
+            response = urlopen(url, timeout=timeout)
+            response.read()  # Read the response data, you may skip this if you don't need to read the content
+            
+            # If the file is accessible, return True
+            return True
+        except (URLError, socket.timeout):
+            # If there's a timeout or URL error, return False
+            return False
+        except Exception as e:
+            # Handle other exceptions
+            print("Error:", e)
+            return False   
     def calculate_metrics_for_resource(self, resource):
         last_modified = datetime.strptime((resource.get('last_modified') or
                                            resource.get('created')),
@@ -401,6 +426,10 @@ class DataQualityMetrics(object):
         results = {}
         file_size = self.get_file_size(resource_url)
         file_size_mb = 0
+        timeout = 5  # in seconds
+        connection_url = False
+        if self.check_connection_url(resource_url, timeout):
+            connection_url = True
         if file_size is not None:
             file_size_mb = file_size/1024**2
             log.debug("--- file_size ----")
@@ -495,7 +524,7 @@ class DataQualityMetrics(object):
                     #using metadata for calculate metrics
                    
 
-                    if (file_size_mb <= 5):
+                    if (file_size_mb <= 5 and connection_url):
                         if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                             results[metric.name] = metric.calculate_metric(resource)
 
@@ -528,7 +557,8 @@ class DataQualityMetrics(object):
                         results['consistency'] = { 'value': 0}
                         results['validity']    =    { 'value': 0}
                         results['machine_readable'] = { 'value': 0}
-                        
+                        if not connection_url:
+                            results['connection_url'] = { 'error': True}
                         
                 except Exception as e:
                     self.logger.error('Failed to calculate metric: %s. Error: %s',
@@ -880,55 +910,50 @@ class ResourceFetchData2(object):
         data = []
         filepath = self.resource['url']
         resource_format = self.resource['format']
-        with TemporaryFile(mode='w+b') as tmpf:
-            for chunk in resp.iter_content():
-                tmpf.write(chunk)
-            tmpf.flush()
-            tmpf.seek(0, 0)  # rewind to start
-
-            if self.is_url_file(filepath):
-                n_rows = 5000
-                if(resource_format =='CSV'):
-                    response = requests.get(filepath)
-                    response.raise_for_status()  # Raise an exception for bad status codes
-                    encoding = self.detect_encoding(filepath)
-                    print(encoding)
-                    data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-                    data_df = pd.read_csv(io.StringIO(data), nrows=n_rows)  # Read CSV data into a DataFrame
-                    if data_df is not None:
-                        data = data_df.values.tolist()
-                        data[:0] = [list(data_df.keys())]
-
-                elif(resource_format == 'JSON'):
-                    # Read JSON data in chunks
-                    data_chunks = []
-                    for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
-                        data_chunks.append(chunk)
-                        # Break the loop if the specified number of rows have been read
-                        if len(data_chunks) * n_rows >= n_rows:
-                            break
-                    # Concatenate the data chunks into a single DataFrame
-                    data_df = pd.concat(data_chunks, ignore_index=True)
+    
+        if self.is_url_file(filepath) :
+            n_rows = 5000
+            if(resource_format =='CSV'):
+                response = requests.get(filepath)
+                response.raise_for_status()  # Raise an exception for bad status codes
+                encoding = self.detect_encoding(filepath)
+                print(encoding)
+                data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+                data_df = pd.read_csv(io.StringIO(data), nrows=n_rows)  # Read CSV data into a DataFrame
+                if data_df is not None:
                     data = data_df.values.tolist()
-                    # try:
-                    #     data_json = pd.read_json(filepath)
-                    #     if data_json is not None:
-                    #         data_df = pd.DataFrame(data_json)
-                    #         data = data_df.values.tolist()
-                    #         data[:0] = [list(data_df.keys())]
+                    data[:0] = [list(data_df.keys())]
 
-                    # except ValueError as e:
-                    #         print('ValueError = ', e)
-                    #         data = []
-                elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
-                    data_df = pd.read_excel(filepath, nrows=n_rows)  # Read CSV data into a DataFrame
-                    if data_df is not None:
-                        data = data_df.values.tolist()
-                        data[:0] = [list(data_df.keys())]
-                else:
-                    data = []
+            elif(resource_format == 'JSON'):
+                # Read JSON data in chunks
+                data_chunks = []
+                for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
+                    data_chunks.append(chunk)
+                    # Break the loop if the specified number of rows have been read
+                    if len(data_chunks) * n_rows >= n_rows:
+                        break
+                # Concatenate the data chunks into a single DataFrame
+                data_df = pd.concat(data_chunks, ignore_index=True)
+                data = data_df.values.tolist()
+                # try:
+                #     data_json = pd.read_json(filepath)
+                #     if data_json is not None:
+                #         data_df = pd.DataFrame(data_json)
+                #         data = data_df.values.tolist()
+                #         data[:0] = [list(data_df.keys())]
+
+                # except ValueError as e:
+                #         print('ValueError = ', e)
+                #         data = []
+            elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
+                data_df = pd.read_excel(filepath, nrows=n_rows)  # Read CSV data into a DataFrame
+                if data_df is not None:
+                    data = data_df.values.tolist()
+                    data[:0] = [list(data_df.keys())]
             else:
                 data = []
+        else:
+            data = []
         return data
     # def _download_resource_from_url(self, url, headers=None):
     #     resp = requests.get(url, headers=headers)
