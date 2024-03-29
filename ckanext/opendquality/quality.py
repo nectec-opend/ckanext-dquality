@@ -1462,20 +1462,20 @@ class Downloadable():#DimensionMetric
         '''
         # log.debug ('------------downloadable--')
         # log.debug(resource)
-        downloadable_score = 2
+        downloadable_score = 1
         resource_data_format = resource['format'] 
         resource_url    = resource['url']
         
         if self.is_downloadable(resource_url):
-            downloadable_score = 2 # can download
+            downloadable_score = 1 # 2 can download
             #ตรวจสอบ format ไม่ตรงตามที่กำหนด แต่เว้นว่างได้ เลยตรวจยาก เพราะเค้าอาจจะไม่กำหนดก็ได้
-            if(pd.notna(resource_url) and resource_data_format != ""): 
-                format_url = resource_url.split(".")[-1]
-                lower_format = resource_data_format.lower()
-                if(format_url != lower_format): # set wrong format type
-                    downloadable_score = 0
+            # if(pd.notna(resource_url) and resource_data_format != ""): 
+            #     format_url = resource_url.split(".")[-1]
+            #     lower_format = resource_data_format.lower()
+            #     if(format_url != lower_format): # set wrong format type
+            #         downloadable_score = 0
         else: 
-            downloadable_score = 1 # cannot download such as HTML.
+            downloadable_score = 0 # 1 cannot download such as HTML.
 
        
         
