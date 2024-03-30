@@ -429,9 +429,11 @@ class DataQualityMetrics(object):
         is_datadict = bool(res_datadict)
         results = {}
         file_size_mb = 0
+        execute_time = 0
         timeout = 5  # in seconds
         connection_url = False
         if self.check_connection_url(resource_url, timeout):
+            start_time = time.time()
             connection_url = True
             file_size = self.get_file_size(resource_url)
             if file_size is not None:
@@ -523,8 +525,7 @@ class DataQualityMetrics(object):
                         log.debug('------ Resource URL-----')
                         log.debug(resource['url'])
                         #using metadata for calculate metrics
-                    
-                        start_time = time.time()
+                                        
                         if (file_size_mb <= 5 and connection_url):
                             if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
@@ -560,11 +561,7 @@ class DataQualityMetrics(object):
                             results['machine_readable'] = { 'value': 0}
                             if not connection_url:
                                 results['connection_url'] = { 'error': True}
-                        end_time = time.time()   
-                        # Calculate the time taken
-                        elapsed_time = end_time - start_time
-                        log.debug("----elapsed_time----")
-                        log.debug(elapsed_time)
+                        
                     except Exception as e:
                         self.logger.error('Failed to calculate metric: %s. Error: %s',
                                         metric, str(e))
@@ -580,17 +577,23 @@ class DataQualityMetrics(object):
 
                 data_quality.metrics = results
                 data_quality.modified_at = datetime.now()
+                #---- add execute time--
+                end_time = time.time()   
+                # Calculate the time taken
+                execute_time = end_time - start_time
+                log.debug("----execute_time----")
+                log.debug(execute_time)
                 #---- add filepath ----
                 upload = uploader.get_resource_uploader(resource)
                 filepath = upload.get_path(resource['id'])
                 data_quality.filepath = filepath
                 data_quality.url = resource['url']
                 data_quality.file_size = file_size_mb
+                data_quality.execute_time = execute_time
                 data_quality.save()
                 self.logger.debug('Metrics calculated for resource: %s',
                                 resource['id'])
-            
-                # return results
+                     
         else:
             self.logger.debug('Connection Timed Out')
             #----- connect model: check records----------------------
@@ -619,6 +622,7 @@ class DataQualityMetrics(object):
                 data_quality.filepath = ''
                 data_quality.url = resource['url']
                 data_quality.file_size = 0
+                data_quality.execute_time = 0
                 data_quality.save()
                 self.logger.debug('Metrics calculated for resource: %s',
                                     resource['id'])
