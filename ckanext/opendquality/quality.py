@@ -24,6 +24,7 @@ import openpyxl
 import io
 import chardet
 from six import string_types
+import time
 
 import socket
 try:
@@ -394,6 +395,7 @@ class DataQualityMetrics(object):
             print("Error:", e)
             return None 
     def check_connection_url(self,url, timeout):
+        log.debug('---check_connection_url--')
         try:
             # Open the URL with a timeout
             response = urlopen(url, timeout=timeout)
@@ -418,6 +420,7 @@ class DataQualityMetrics(object):
         resource_url = resource['url']
         resource_name = resource['name']
         resource_name = resource_name.lower()
+        log.debug(resource_url)
         # initializing test list
         datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary']
         # using list comprehension
@@ -425,23 +428,20 @@ class DataQualityMetrics(object):
         res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
         is_datadict = bool(res_datadict)
         results = {}
-        file_size = self.get_file_size(resource_url)
         file_size_mb = 0
         timeout = 5  # in seconds
         connection_url = False
         if self.check_connection_url(resource_url, timeout):
             connection_url = True
+            file_size = self.get_file_size(resource_url)
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("--- file_size ----")
                 log.debug(file_size_mb)
             
-            if not is_datadict: #and file_size_mb <= 10:         
-            # if (not is_datadict):                                           
+            if not is_datadict: #and file_size_mb <= 10:                                                    
                 #----- connect model: check records----------------------
-                data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
-                # self.logger.debug('Check data_quality_metric')
-                # self.logger.debug(data_quality)    
+                data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
                 cached_calculation = False
                 if data_quality:
                     self.logger.debug('Data Quality calculated for '
@@ -524,7 +524,7 @@ class DataQualityMetrics(object):
                         log.debug(resource['url'])
                         #using metadata for calculate metrics
                     
-
+                        start_time = time.time()
                         if (file_size_mb <= 5 and connection_url):
                             if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
@@ -560,7 +560,11 @@ class DataQualityMetrics(object):
                             results['machine_readable'] = { 'value': 0}
                             if not connection_url:
                                 results['connection_url'] = { 'error': True}
-                            
+                        end_time = time.time()   
+                        # Calculate the time taken
+                        elapsed_time = end_time - start_time
+                        log.debug("----elapsed_time----")
+                        log.debug(elapsed_time)
                     except Exception as e:
                         self.logger.error('Failed to calculate metric: %s. Error: %s',
                                         metric, str(e))
@@ -569,7 +573,6 @@ class DataQualityMetrics(object):
                             'failed': True,
                             'error': str(e),
                         }
-
                 # set results
                 for metric, result in results.items():
                     if result.get('value') is not None:
@@ -589,32 +592,37 @@ class DataQualityMetrics(object):
             
                 # return results
         else:
-        
-            data_quality = self._new_metrics_record('resource', resource['id'])
-            data_quality.resource_last_modified = last_modified
-            self.logger.debug('First data quality calculation.')
-            #----------------Calculate Metrics--------------------
-            data_quality.ref_id = resource['id']
-            data_quality.resource_last_modified = last_modified
-            data_quality.metrics = {'error':'connection timed out'}
-            data_quality.modified_at = datetime.now()
-            #----------------------
-            data_quality.openness = 0
-            data_quality.downloadable = 0
-            data_quality.access_api = 0
-            data_quality.timeliness = 999
-            data_quality.openness = 0
-            data_quality.consistency = 0
-            data_quality.validity = 0
-            data_quality.machine_readable = 0      
-            #---- add filepath ----
-            data_quality.filepath = ''
-            data_quality.url = resource['url']
-            data_quality.file_size = 0
-            data_quality.save()
-            self.logger.debug('Metrics calculated for resource: %s',
-                            resource['id'])
-        
+            self.logger.debug('Connection Timed Out')
+            #----- connect model: check records----------------------
+            data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
+            if data_quality:
+                self.logger.debug('Data Quality already calculated.')
+            else:
+                data_quality = self._new_metrics_record('resource', resource['id'])
+                data_quality.resource_last_modified = last_modified
+                self.logger.debug('First data quality calculation.')
+                #----------------Calculate Metrics--------------------
+                data_quality.ref_id = resource['id']
+                data_quality.resource_last_modified = last_modified
+                data_quality.metrics = {'error':'connection timed out'}
+                data_quality.modified_at = datetime.now()
+                #----------------------
+                data_quality.openness = 0
+                data_quality.downloadable = 0
+                data_quality.access_api = 0
+                data_quality.timeliness = 999
+                data_quality.openness = 0
+                data_quality.consistency = 0
+                data_quality.validity = 0
+                data_quality.machine_readable = 0      
+                #---- add filepath ----
+                data_quality.filepath = ''
+                data_quality.url = resource['url']
+                data_quality.file_size = 0
+                data_quality.save()
+                self.logger.debug('Metrics calculated for resource: %s',
+                                    resource['id'])
+    
         return results
 
     def calculate_cumulative_metrics(self, package_id, resources, results):
