@@ -946,8 +946,6 @@ class ResourceFetchData2(object):
         })
     
     def _download_resource_from_url(self, url, headers=None):
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()  # Raise an error if request to file failed.
         data = []
         filepath = self.resource['url']
         resource_format = self.resource['format']
