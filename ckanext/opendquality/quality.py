@@ -26,16 +26,6 @@ import chardet
 from six import string_types
 import time
 
-import socket
-try:
-    # Python 3
-    from urllib.request import urlopen
-    from urllib.error import URLError
-except ImportError:
-    # Python 2
-    from urllib2 import urlopen
-    from urllib2 import URLError
-
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -397,14 +387,16 @@ class DataQualityMetrics(object):
     def check_connection_url(self,url, timeout):
         log.debug('---check_connection_url--')
         try:
-            # Open the URL with a timeout
-            response = urlopen(url, timeout=timeout)
-            response.read()  # Read the response data, you may skip this if you don't need to read the content
+            # Send a GET request to the URL with a timeout
+            response = requests.get(url, timeout=timeout)
             
-            # If the file is accessible, return True
-            return True
-        except (URLError, socket.timeout):
-            # If there's a timeout or URL error, return False
+            # Check if the request was successful
+            if response.status_code == 200:
+                return True
+            else:
+                return False
+        except requests.exceptions.Timeout:
+            # If there's a timeout, return False
             return False
         except Exception as e:
             # Handle other exceptions
