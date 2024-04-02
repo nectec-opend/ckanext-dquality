@@ -508,14 +508,16 @@ class DataQualityMetrics(object):
                         
                         self.logger.debug('Calculating dimension: %s...', metric)
                     #------------------------------------------------------
-                        if not data_stream:
-                            data_stream = self._fetch_resource_data(resource)
-                        else:
-                            if data_stream.get('records') and \
-                                    hasattr(data_stream['records'], 'rewind'):
-                                data_stream['records'].rewind()
-                            else:
-                                data_stream = self._fetch_resource_data(resource)
+                        # if not data_stream:
+                        #     data_stream = self._fetch_resource_data(resource)
+                        # else:
+                        #     if data_stream.get('records') and \
+                        #             hasattr(data_stream['records'], 'rewind'):
+                        #         data_stream['records'].rewind()
+                        #     else:
+                        #         data_stream = self._fetch_resource_data(resource)
+                      
+                        data_stream2 = self._fetch_resource_data2(resource)
                         #------ Check Meta Data --------------------------------
                         log.debug('------ Resource URL-----')
                         log.debug(resource['url'])
@@ -527,14 +529,18 @@ class DataQualityMetrics(object):
 
                             elif(metric.name == 'consistency'):
                                 log.debug('------Call _fetch_resource_data2-----')
-                                data_stream2 = self._fetch_resource_data2(resource)
+                                
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)
                                 log.debug('----consistency_val------')
                                 consistency_val = results[metric.name].get('value')
                                 log.debug(consistency_val)
                             elif(metric.name == 'validity'):
-                                results[metric.name] = metric.calculate_metric(resource,data_stream)         
+                               
+                                # results[metric.name] = metric.calculate_metric(resource,data_stream)
                                 log.debug('----validity_val------')
+                                log.debug(data_stream2['total'])
+                                results[metric.name] = metric.calculate_metric(resource,data_stream2)         
+                                
                                 # validity_val = results[metric.name].get('value')
                                 validity_report = results[metric.name].get('report')
                                 # encoding   = results[metric.name].get('encoding')
@@ -542,14 +548,19 @@ class DataQualityMetrics(object):
                             elif(metric.name == 'machine_readable'):
                                 log.debug('----machine_readable_val------')       
                                 results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
-                            else:                                              
-                                results[metric.name] = metric.calculate_metric(resource,data_stream)
+                            elif (metric.name == 'timeliness'):     
+                                log.debug('----timeliness------')                                         
+                                results[metric.name] = metric.calculate_metric(resource) #,data_stream
+                            else:
+                                log.debug('----else----')    
+                                log.debug(metric.name)                                         
+                                results[metric.name] = metric.calculate_metric(resource) #,data_stream
 
                         else:
                             if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
                             elif(metric.name == 'timeliness'):
-                                results[metric.name] = metric.calculate_metric(resource,data_stream)
+                                results[metric.name] = metric.calculate_metric(resource)
 
                             results['consistency'] = { 'value': 0}
                             results['validity']    =    { 'value': 0}
@@ -1000,70 +1011,7 @@ class ResourceFetchData2(object):
         else:
             data = []
         return data
-    # def _download_resource_from_url(self, url, headers=None):
-    #     resp = requests.get(url, headers=headers)
-    #     resp.raise_for_status()  # Raise an error if request to file failed.
-    #     data = []
-    #     filepath = self.resource['url']
-    #     resource_format = self.resource['format']
-    #     with TemporaryFile(mode='w+b') as tmpf:
-    #         for chunk in resp.iter_content():
-    #             tmpf.write(chunk)
-    #         tmpf.flush()
-    #         tmpf.seek(0, 0)  # rewind to start
-    #         # reader = csv.reader(tmpf)
-    #         # for row in reader:
-    #         #     data.append(row)
-    #         response = requests.get(filepath)
-    #         response.raise_for_status()
-    #         if(resource_format =='CSV'):
-    #             # encoding = self.detect_encoding(filepath)
-    #             # data = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-    #             # data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
-    #             data_df = pd.read_csv(filepath)
-    #             if data_df is not None:
-    #                 data = data_df.values.tolist()
-    #                 data[:0] = [list(data_df.keys())]
 
-    #         elif(resource_format == 'JSON'):
-    #             try:
-    #                 data_json = response.json()
-    #                 data_json = pd.read_json(filepath)
-    #                 if data_json is not None:
-    #                     data_df = pd.DataFrame(data_json)
-    #                     data = data_df.values.tolist()
-    #                     data[:0] = [list(data_df.keys())]
-
-    #             except ValueError as e:
-    #                     print('ValueError = ', e)
-    #                     data = []
-    #         elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
-    #             data_df = pd.read_excel(filepath)  # Read CSV data into a DataFrame
-    #             if data_df is not None:
-    #                 data = data_df.values.tolist()
-    #                 data[:0] = [list(data_df.keys())]
-    #         # elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
-    #         #     try:
-    #         #         excel_data = io.BytesIO(response.content)         
-    #         #         dataframe = openpyxl.load_workbook(excel_data)  # Load Excel file using openpyxl
-    #         #         # Define variable to read sheet
-    #         #         dataframe1 = dataframe.active
-    #         #         # Iterate the loop to read the cell values
-    #         #         max_row = dataframe1.max_row
-    #         #         max_column = dataframe1.max_column
-    #         #         for row in range(0, max_row):
-    #         #             data_row = []
-    #         #             for col in dataframe1.iter_cols(1, max_column):
-    #         #                 data_row.append(col[row].value)
-    #         #             data.append(data_row)
-
-    #         #     except Exception as e:
-    #         #         print("An error occurred:", e)
-    #         #         data = []
-    #         else:
-    #             data = []
-    #     return data
-    
     def is_url_file(self,url):
         try:
             response = requests.head(url)
@@ -1492,16 +1440,6 @@ class Downloadable():#DimensionMetric
             #         downloadable_score = 0
         else: 
             downloadable_score = 0 # 1 cannot download such as HTML.
-
-       
-        
-        # if(pd.notna(resource_url)): 
-        #     format_url = resource_url.split(".")[-1]
-        #     lower_format = resource_data_format.lower()
-        #     if(format_url != lower_format): # set wrong format type
-        #         downloadable_score = 1
-        # elif(pd.isna(resource_data_format)):
-        #     downloadable_score = 0
 
         return {
             'format': resource_data_format,
@@ -2437,7 +2375,7 @@ class Timeliness():#DimensionMetric
         # super(Timeliness, self).__init__('timeliness')
         self.name = 'timeliness'
 
-    def calculate_metric(self, resource, data):
+    def calculate_metric(self, resource): #, data
         '''Calculates the timeliness of the data in the given resource.
 
         :param resource: `dict`, CKAN resource. The resource is expected to
