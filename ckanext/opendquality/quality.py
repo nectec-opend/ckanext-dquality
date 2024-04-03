@@ -1744,8 +1744,9 @@ class MachineReadable():#DimensionMetric
             #check dict is not Empty
             if item_metric:
                 machine_readable_score = item_metric.get('value')
-                total = total+machine_readable_score
-                machine_readable_list.append(machine_readable_score)
+                if isinstance(machine_readable_score, int):
+                    total = total+machine_readable_score
+                    machine_readable_list.append(machine_readable_score)
         if machine_readable_list:
             result_score = max(machine_readable_list)
             return {
