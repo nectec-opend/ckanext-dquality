@@ -375,18 +375,18 @@ class DataQualityMetrics(object):
     def _new_metrics_record(self, ref_type, ref_id):
         return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
     #-- check file size ---
-    # def get_file_size(self, url):
-    #     try:
-    #         response = requests.head(url)
-    #         if response.status_code == 200:
-    #             size = int(response.headers['Content-Length'])
-    #             return size
-    #         else:
-    #             print("Error: Could not retrieve file size, status code:", response.status_code)
-    #             return None
-    #     except Exception as e:
-    #         print("Error:", e)
-    #         return None 
+    def get_file_size(self, url):
+        try:
+            response = requests.head(url)
+            if response.status_code == 200:
+                size = int(response.headers['Content-Length'])
+                return size
+            else:
+                print("Error: Could not retrieve file size, status code:", response.status_code)
+                return None
+        except Exception as e:
+            print("Error:", e)
+            return None 
     # def check_connection_url(self,url, timeout):
     #     log.debug('---check_connection_url--')
     #     try:
@@ -437,9 +437,8 @@ class DataQualityMetrics(object):
             start_time = time.time()
             log.debug(start_time)
             connection_url = True
-            # file_size = self.get_file_size(resource_url)
-            file_size = int(response.headers['Content-Length'])
-
+            file_size = self.get_file_size(resource_url)
+            # file_size = int(response.headers['Content-Length'])
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("--- file_size ----")
