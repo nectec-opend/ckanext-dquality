@@ -975,7 +975,9 @@ class ResourceFetchData2(object):
         response = requests.get(filepath)
         if self.is_url_file(filepath) and response.status_code == 200 :
             n_rows = 5000
-            if(resource_format =='CSV'):            
+            if(resource_format =='CSV'):
+                log.debug('----csv----')     
+                log.debug(filepath)           
                 # Create a StringIO object to treat the response content as a file-like object
                 encoding = self.detect_encoding(filepath)
                 print(encoding)
