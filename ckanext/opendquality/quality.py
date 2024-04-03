@@ -971,23 +971,35 @@ class ResourceFetchData2(object):
             n_rows = 5000
             if(resource_format =='CSV'):
                 log.debug('----csv----')     
-                log.debug(filepath)           
+                log.debug(filepath)
+                #-----------------------------------      
                 # Create a StringIO object to treat the response content as a file-like object
-                # encoding = self.detect_encoding(filepath)
-                # print(encoding)
-                # data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-                # csv_data = StringIO(data_encode)
-                # # Use the csv.reader to parse the CSV data
+                encoding = self.detect_encoding(filepath)
+                print(encoding)
+                try:
+                    data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+                    csv_data = StringIO(data_encode)
+                    # Use the csv.reader to parse the CSV data
+                    csv_reader = csv.reader(csv_data)
+                    records_read = 0
+                    for row in csv_reader:
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break
+                except Exception as e:
+                    print("An error occurred:", e)
+                    data = []
+                #-----------------------------------
+                # csv_data = StringIO(response.text)
                 # csv_reader = csv.reader(csv_data)
-
-                csv_data = StringIO(response.text)
-                csv_reader = csv.reader(csv_data)
-                records_read = 0
-                for row in csv_reader:
-                    data.append(row)
-                    records_read += 1
-                    if records_read >= n_rows:
-                        break
+                # records_read = 0
+                # for row in csv_reader:
+                #     data.append(row)
+                #     records_read += 1
+                #     if records_read >= n_rows:
+                #         break
+                #-----------------------------------
                 # data_df = pd.read_csv(io.StringIO(data_encode), nrows=n_rows)  # Read CSV data into a DataFrame
                 # if data_df is not None:
                 #     data = data_df.values.tolist()
