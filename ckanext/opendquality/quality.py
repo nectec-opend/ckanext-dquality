@@ -375,36 +375,36 @@ class DataQualityMetrics(object):
     def _new_metrics_record(self, ref_type, ref_id):
         return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
     #-- check file size ---
-    def get_file_size(self, url):
-        try:
-            response = requests.head(url)
-            if response.status_code == 200:
-                size = int(response.headers['Content-Length'])
-                return size
-            else:
-                print("Error: Could not retrieve file size, status code:", response.status_code)
-                return None
-        except Exception as e:
-            print("Error:", e)
-            return None 
-    def check_connection_url(self,url, timeout):
-        log.debug('---check_connection_url--')
-        try:
-            # Send a GET request to the URL with a timeout
-            response = requests.get(url, timeout=timeout)
+    # def get_file_size(self, url):
+    #     try:
+    #         response = requests.head(url)
+    #         if response.status_code == 200:
+    #             size = int(response.headers['Content-Length'])
+    #             return size
+    #         else:
+    #             print("Error: Could not retrieve file size, status code:", response.status_code)
+    #             return None
+    #     except Exception as e:
+    #         print("Error:", e)
+    #         return None 
+    # def check_connection_url(self,url, timeout):
+    #     log.debug('---check_connection_url--')
+    #     try:
+    #         # Send a GET request to the URL with a timeout
+    #         response = requests.get(url, timeout=timeout)
             
-            # Check if the request was successful
-            if response.status_code == 200:
-                return True
-            else:
-                return False
-        except requests.exceptions.Timeout:
-            # If there's a timeout, return False
-            return False
-        except Exception as e:
-            # Handle other exceptions
-            print("Error:", e)
-            return False   
+    #         # Check if the request was successful
+    #         if response.status_code == 200:
+    #             return True
+    #         else:
+    #             return False
+    #     except requests.exceptions.Timeout:
+    #         # If there's a timeout, return False
+    #         return False
+    #     except Exception as e:
+    #         # Handle other exceptions
+    #         print("Error:", e)
+    #         return False   
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
         last_modified = datetime.strptime((resource.get('last_modified') or
@@ -427,10 +427,19 @@ class DataQualityMetrics(object):
         execute_time = 0
         timeout = 5  # in seconds
         connection_url = False
-        if self.check_connection_url(resource_url, timeout):
+        # check connection
+        response = requests.get(resource_url, timeout=timeout)
+        # Check if the request was successful
+        # if self.check_connection_url(resource_url, timeout):
+        if response.status_code == 200:  # if status 200
+    
+        
             start_time = time.time()
+            log.debug(start_time)
             connection_url = True
-            file_size = self.get_file_size(resource_url)
+            # file_size = self.get_file_size(resource_url)
+            file_size = int(response.headers['Content-Length'])
+
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("--- file_size ----")
@@ -478,7 +487,7 @@ class DataQualityMetrics(object):
                 data_quality.ref_id = resource['id']
                 data_quality.resource_last_modified = last_modified
                 
-                data_stream = None
+                data_stream2 = None
                 if self.force_recalculate:
                     log.info('Forcing recalculation of the data metrics '
                             'has been set. All except the manually set metric data '
@@ -516,8 +525,16 @@ class DataQualityMetrics(object):
                         #         data_stream['records'].rewind()
                         #     else:
                         #         data_stream = self._fetch_resource_data(resource)
+                        if not data_stream2:
+                            data_stream2 = self._fetch_resource_data2(resource)
+                        else:
+                            if data_stream2.get('records') and \
+                                    hasattr(data_stream2['records'], 'rewind'):
+                                data_stream2['records'].rewind()
+                            else:
+                                data_stream2 = self._fetch_resource_data2(resource)
                       
-                        data_stream2 = self._fetch_resource_data2(resource)
+                        # data_stream2 = self._fetch_resource_data2(resource)
                         #------ Check Meta Data --------------------------------
                         log.debug('------ Resource URL-----')
                         log.debug(resource['url'])

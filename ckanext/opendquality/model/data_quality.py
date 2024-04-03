@@ -41,7 +41,7 @@ data_quality_metrics_table = Table(
     Column('resource_last_modified', types.DateTime),
     # Column('completeness', types.Float),
     # Column('uniqueness', types.Float),
-    Column('timeliness', types.String),
+    Column('timeliness', types.Float),
     Column('validity', types.Float),
     # Column('accuracy', types.Float),
     Column('consistency', types.Float),
