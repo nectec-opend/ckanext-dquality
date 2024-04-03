@@ -30,13 +30,15 @@ import click
 from ckanext.opendquality.cli import (click_config_option,
                                       db,
                                       load_config,
-                                      quality)
+                                      quality
+                                      )
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
 from ckanext.opendquality.cli import (
                                       db,
-                                      quality)
+                                      quality
+                                       )
 from ckan.config.middleware import make_app
 
 log = logging.getLogger(__name__)

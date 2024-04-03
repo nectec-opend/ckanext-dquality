@@ -22,7 +22,7 @@ from ckan.model import package_table, Session
 import ckanext.opendquality.quality as quality_lib
 import ckanext.opendquality.quality as quality_lib
 from logging import getLogger
-
+import ckan.model as model
 
 log = getLogger(__name__)
 
@@ -30,15 +30,18 @@ log = getLogger(__name__)
 def quality():
     pass
 
-
 @quality.command(u'calculate', help='Calculate data quality metrics')
-@click.option('--dataset',
+# @click.option('--dataset',
+#               default='all',
+#               help='Calculate quality metrics for dataset.')
+@click.option('--organization',
               default='all',
               help='Calculate quality metrics for dataset.')
 @click.option('--dimension',
               default='all',
               help='Which metric to calculate.')
-def calculate(dataset, dimension):
+# def calculate(dataset, dimension):
+def calculate(organization,dimension):
     if six.PY2:
         _register_mock_translator()
     # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
@@ -66,22 +69,49 @@ def calculate(dataset, dimension):
 
     metrics = quality_lib.DataQualityMetrics(metrics=calculators)
 
-    if dataset == 'all':
+    # if dataset == 'all':
 
-        def _process_batch(packages):
-            for pkg in packages:
-                try:
-                    metrics.calculate_metrics_for_dataset(pkg)
-                except Exception as e:
-                    log.error('Failed to calculate metrics for %s. Error: %s',
-                              pkg, str(e))
-                    log.exception(e)
+    #     def _process_batch(packages):
+    #         for pkg in packages:
+    #             try:
+    #                 metrics.calculate_metrics_for_dataset(pkg)
+    #             except Exception as e:
+    #                 log.error('Failed to calculate metrics for %s. Error: %s',
+    #                           pkg, str(e))
+    #                 log.exception(e)
 
-        all_packages(_process_batch)
+    #     all_packages(_process_batch)
 
-    else:
-        metrics.calculate_metrics_for_dataset(dataset)
+    # else:
+    #     metrics.calculate_metrics_for_dataset(dataset)
 
+    #------------------------------
+    if organization:  
+        log.debug('-------organization--------')  
+        log.debug(organization)     
+        if organization == 'all':
+            def _process_batch(packages):
+                for pkg in packages:
+                    try:
+                        metrics.calculate_metrics_for_dataset(pkg)
+                    except Exception as e:
+                        log.error('Failed to calculate metrics for %s. Error: %s',
+                                pkg, str(e))
+                        log.exception(e)
+
+            all_packages(_process_batch)
+
+        else:
+            def _process_batch(packages):
+                for pkg in packages:
+                    try:
+                        metrics.calculate_metrics_for_dataset(pkg)
+                    except Exception as e:
+                        log.error('Failed to calculate metrics for %s. Error: %s',
+                                pkg, str(e))
+                        log.exception(e)
+            
+            org_packages(_process_batch, organization)
 
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one
@@ -119,3 +149,62 @@ def all_packages(handler):
         except Exception as e:
             log.error('Failed to process package batch. Error: %s', str(e))
             log.exception(e)
+
+def org_packages(handler,org_name):
+    offset = 0
+    limit = 64
+    while True:
+        log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
+        group = model.Group.get(org_name)
+        query = Session.query(package_table.c.id).filter(package_table.c.owner_org == group.id)
+        query = query.offset(offset).limit(limit)
+        count = 0
+        packages = []
+        for result in query.all():
+            packages.append(result[0])
+            count += 1
+
+        if not count:
+            log.debug('No more packages to process.')
+            break
+
+        offset += limit
+
+        try:
+            log.debug('Processing %d packages in current batch.', count)
+            handler(packages)
+        except Exception as e:
+            log.error('Failed to process package batch. Error: %s', str(e))
+            log.exception(e)
+
+# def org_packages(org_name): #handler,
+#     offset = 0
+#     limit = 64
+#     # while True:
+#     log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
+
+#     group = model.Group.get(org_name)
+#     query = Session.query(package_table.c.id).filter(package_table.c.owner_org == group.id)
+#     # query = Session.query(package_table.c.id)
+#     query = query.offset(offset).limit(limit)
+#     log.debug('---Query--')
+#     log.debug(query)
+#     count = 0
+#     packages = []
+#     for result in query.all():
+#         packages.append(result[0])
+#         count += 1
+#         log.debug(result[0])
+    
+    # if not count:
+    #     log.debug('No more packages to process.')
+    #     break
+
+    # offset += limit
+
+    # try:
+    #     log.debug('Processing %d packages in current batch.', count)
+    #     handler(packages)
+    # except Exception as e:
+    #     log.error('Failed to process package batch. Error: %s', str(e))
+    #     log.exception(e)

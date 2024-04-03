@@ -2044,7 +2044,7 @@ class Validity():#DimensionMetric
             valid = table.get('valid')
             log.debug("---encoding---")
             log.debug(encoding)
-            log.debug(table.get('errors'))
+            # log.debug(table.get('errors'))
             dict_error['encoding'] = encoding
             dict_error['valid']    = valid
             # log.debug(dict_error)
