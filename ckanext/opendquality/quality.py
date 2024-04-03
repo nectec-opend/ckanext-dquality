@@ -387,24 +387,24 @@ class DataQualityMetrics(object):
         except Exception as e:
             print("Error:", e)
             return None 
-    # def check_connection_url(self,url, timeout):
-    #     log.debug('---check_connection_url--')
-    #     try:
-    #         # Send a GET request to the URL with a timeout
-    #         response = requests.get(url, timeout=timeout)
+    def check_connection_url(self,url, timeout):
+        log.debug('---check_connection_url--')
+        try:
+            # Send a GET request to the URL with a timeout
+            response = requests.get(url, timeout=timeout)
             
-    #         # Check if the request was successful
-    #         if response.status_code == 200:
-    #             return True
-    #         else:
-    #             return False
-    #     except requests.exceptions.Timeout:
-    #         # If there's a timeout, return False
-    #         return False
-    #     except Exception as e:
-    #         # Handle other exceptions
-    #         print("Error:", e)
-    #         return False   
+            # Check if the request was successful
+            if response.status_code == 200:
+                return True
+            else:
+                return False
+        except requests.exceptions.Timeout:
+            # If there's a timeout, return False
+            return False
+        except Exception as e:
+            # Handle other exceptions
+            print("Error:", e)
+            return False   
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
         last_modified = datetime.strptime((resource.get('last_modified') or
@@ -427,13 +427,8 @@ class DataQualityMetrics(object):
         execute_time = 0
         timeout = 5  # in seconds
         connection_url = False
-        # check connection
-        response = requests.get(resource_url, timeout=timeout)
         # Check if the request was successful
-        # if self.check_connection_url(resource_url, timeout):
-        if response.status_code == 200:  # if status 200
-    
-        
+        if self.check_connection_url(resource_url, timeout):     
             start_time = time.time()
             log.debug(start_time)
             connection_url = True
@@ -978,11 +973,14 @@ class ResourceFetchData2(object):
                 log.debug('----csv----')     
                 log.debug(filepath)           
                 # Create a StringIO object to treat the response content as a file-like object
-                encoding = self.detect_encoding(filepath)
-                print(encoding)
-                data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-                csv_data = StringIO(data_encode)
-                # Use the csv.reader to parse the CSV data
+                # encoding = self.detect_encoding(filepath)
+                # print(encoding)
+                # data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+                # csv_data = StringIO(data_encode)
+                # # Use the csv.reader to parse the CSV data
+                # csv_reader = csv.reader(csv_data)
+
+                csv_data = StringIO(response.text)
                 csv_reader = csv.reader(csv_data)
                 records_read = 0
                 for row in csv_reader:
