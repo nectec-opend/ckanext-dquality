@@ -535,20 +535,20 @@ class DataQualityMetrics(object):
                         #using metadata for calculate metrics
                                         
                         if (file_size_mb <= 5 and connection_url):
+                            log.debug('------ check all metrics-----')
                             if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                                log.debug('------ check openness-----')
                                 results[metric.name] = metric.calculate_metric(resource)
 
                             elif(metric.name == 'consistency'):
-                                log.debug('------Call _fetch_resource_data2-----')
-                                
+                                log.debug('------Call consistency -----')                           
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)
-                                log.debug('----consistency_val------')
                                 consistency_val = results[metric.name].get('value')
                                 log.debug(consistency_val)
                             elif(metric.name == 'validity'):
                                
                                 # results[metric.name] = metric.calculate_metric(resource,data_stream)
-                                log.debug('----validity_val------')
+                                log.debug('----check validity------')
                                 log.debug(data_stream2['total'])
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)         
                                 
@@ -1057,10 +1057,6 @@ class ResourceFetchData2(object):
         try:
             response = requests.get(url)
             if response.status_code == 200:
-                # rawdata = response.content
-                # result = chardet.detect(rawdata)
-                # return result['encoding']
-                
                 # Use chardet to detect the encoding of the sample
                 sample = response.content[:sample_size]
                 result = chardet.detect(sample)
