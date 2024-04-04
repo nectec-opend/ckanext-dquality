@@ -967,8 +967,9 @@ class ResourceFetchData2(object):
         data = []
         filepath = self.resource['url']
         resource_format = self.resource['format']
-        response = requests.get(filepath)
-        if self.is_url_file(filepath) and response.status_code == 200 :
+        timeout = 5
+        response = requests.get(filepath, timeout=timeout)
+        if self.is_url_file(filepath,timeout) and response.status_code == 200 :
             n_rows = 5000
             if(resource_format =='CSV'):
                 log.debug('----csv----')     
@@ -1041,9 +1042,9 @@ class ResourceFetchData2(object):
             data = []
         return data
 
-    def is_url_file(self,url):
+    def is_url_file(self,url,timeout):
         try:
-            response = requests.head(url)
+            response = requests.head(url,timeout=timeout)
             content_type = response.headers.get('Content-Type')
             if content_type:
                 mime_type, _ = mimetypes.guess_type(url)
