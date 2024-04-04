@@ -376,8 +376,9 @@ class DataQualityMetrics(object):
         return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
     #-- check file size ---
     def get_file_size(self, url):
+        timeout = 5
         try:
-            response = requests.head(url)
+            response = requests.head(url, timeout=timeout)
             if response.status_code == 200:
                 size = int(response.headers['Content-Length'])
                 return size
@@ -1053,9 +1054,10 @@ class ResourceFetchData2(object):
             print("An error occurred:", e)
             return False  # Error occurred, not a file
     def detect_encoding(self,url):
+        timeout = 5
         sample_size=1024
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=timeout)
             if response.status_code == 200:
                 # Use chardet to detect the encoding of the sample
                 sample = response.content[:sample_size]
