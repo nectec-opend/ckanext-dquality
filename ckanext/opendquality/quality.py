@@ -1053,11 +1053,17 @@ class ResourceFetchData2(object):
             print("An error occurred:", e)
             return False  # Error occurred, not a file
     def detect_encoding(self,url):
+        sample_size=1024
         try:
             response = requests.get(url)
             if response.status_code == 200:
-                rawdata = response.content
-                result = chardet.detect(rawdata)
+                # rawdata = response.content
+                # result = chardet.detect(rawdata)
+                # return result['encoding']
+                
+                # Use chardet to detect the encoding of the sample
+                sample = response.content[:sample_size]
+                result = chardet.detect(sample)
                 return result['encoding']
             else:
                 print("Failed to download the file. Status code:", response.status_code)
