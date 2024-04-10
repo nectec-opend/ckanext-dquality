@@ -41,7 +41,7 @@ def quality():
               default='all',
               help='Which metric to calculate.')
 # def calculate(dataset, dimension):
-def calculate(organization,dimension):
+def calculate(organization=None,dimension=None):
     if six.PY2:
         _register_mock_translator()
     # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']

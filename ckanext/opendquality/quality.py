@@ -2325,8 +2325,10 @@ class Consistency():#DimensionMetric
         '''
         validators = self.get_consistency_validators()
         fields = {f['id']: f for f in data['fields']}
-        report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}
+        report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}   
+        count_row=0
         for row in data['records']:
+            count_row=count_row+1
             for field, value in row.items():
                 field_type = fields.get(field, {}).get('type')
                 validator = validators.get(field_type)
@@ -2334,6 +2336,8 @@ class Consistency():#DimensionMetric
                 if validator:
                     validator(field, value, field_type, field_report)
                     field_report['count'] += 1
+        log.debug('---number of records----')
+        log.debug(count_row)
         for field, field_report in report.items():        
             if field_report['formats']:
                 most_consistent = max([count if fmt != 'unknown' else 0
