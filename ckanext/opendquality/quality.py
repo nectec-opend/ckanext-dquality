@@ -383,10 +383,10 @@ class DataQualityMetrics(object):
                 size = int(response.headers['Content-Length'])
                 return size
             else:
-                print("Error: Could not retrieve file size, status code:", response.status_code)
+                log.debug("Error: Could not retrieve file size, status code:", response.status_code)
                 return None
         except Exception as e:
-            print("Error:", e)
+            log.debug("Error:", e)
             return None 
     def check_connection_url(self,url, timeout):
         log.debug('---check_connection_url--')
@@ -404,7 +404,7 @@ class DataQualityMetrics(object):
             return False
         except Exception as e:
             # Handle other exceptions
-            print("Error:", e)
+            log.debug("Error:", e)
             return False   
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
@@ -990,8 +990,10 @@ class ResourceFetchData2(object):
                         records_read += 1
                         if records_read >= n_rows:
                             break
+                    log.debug('records_read')
+                    log.debug(records_read)
                 except Exception as e:
-                    print("An error occurred:", e)
+                    log.debug("An error occurred:", e)
                     data = []
                 #-----------------------------------
                 # csv_data = StringIO(response.text)
@@ -1053,7 +1055,7 @@ class ResourceFetchData2(object):
                     return True  # It's a file
             return False  # It's not a file or has unknown content type
         except Exception as e:
-            print("An error occurred:", e)
+            log.debug("An error occurred:", e)
             return False  # Error occurred, not a file
     def detect_encoding(self,url):
         timeout = 5
@@ -1080,9 +1082,9 @@ class ResourceFetchData2(object):
             data = []
             if os.path.isfile(filepath):
                 if '\0' in open(filepath).read():
-                    print("you have null bytes in your input file")
+                    log.debug("you have null bytes in your input file")
                 else:
-                    print("you don't")
+                    log.debug("you don't")
                 if(resource_format == 'XLSX' or resource_format == 'XLS'):                  
                     data_df = pd.read_excel(filepath)
                     data = data_df.values.tolist()
@@ -1092,9 +1094,9 @@ class ResourceFetchData2(object):
                         data_df = pd.DataFrame(data_json)
                         data = data_df.values.tolist()
                         data[:0] = [list(data_df.keys())]
-                        print(list(data_df.keys()))
+                        log.debug(list(data_df.keys()))
                     except ValueError as e:
-                        print('ValueError = ', e)
+                        log.debug('ValueError = ', e)
                         data = []
                 elif(resource_format == 'CSV'):
                     with open(filepath) as csvf:
