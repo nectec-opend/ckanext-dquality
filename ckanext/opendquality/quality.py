@@ -1009,6 +1009,7 @@ class ResourceFetchData2(object):
                 except Exception as e:
                     log.debug("An error occurred, use pandas to readfile", e)
                     try:
+                        #use pandas
                         data_df = pd.read_csv(io.StringIO(data_encode), nrows=n_rows)  # Read CSV data into a DataFrame
                         if data_df is not None:
                             data = data_df.values.tolist()
@@ -1244,7 +1245,7 @@ class ResourceFetchData2(object):
             log.debug('Will try to download the data directly.')
             return self.fetch_page2(page, limit)
         except Exception as e:
-            log.warning('Failed to load resource data from DataStore. '
+            log.warning('2 Failed to load resource data from URL. '
                         'Error: %s', str(e))
             log.exception(e)
             self.download_resource = True
@@ -2653,19 +2654,22 @@ def detect_numeric_format(numstr):
 
     :returns: `str`, the guessed number format, otherwise `None`.
     '''
-    for parser in [int, float]:
-        try:
-            parser(numstr)
-            return parser.__name__
-        except:
-            pass
+    try:
+        for parser in [int, float]:
+            try:
+                parser(numstr)
+                return parser.__name__
+            except:
+                pass
 
-    for num_format in _all_numeric_formats:
-        m = re.match(num_format, str(numstr))
-        if m:
-            return num_format
-    return None
-
+        for num_format in _all_numeric_formats:
+            m = re.match(num_format, str(numstr))
+            if m:
+                return num_format
+        
+    except Exception as e:
+        log.debug("An error occurred", e)
+        return None            
 
 # resource validation
 def validate_resource_data(resource):
