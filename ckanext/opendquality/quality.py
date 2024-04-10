@@ -1065,10 +1065,10 @@ class ResourceFetchData2(object):
                 result = chardet.detect(sample)
                 return result['encoding']
             else:
-                print("Failed to download the file. Status code:", response.status_code)
+                log.debug("Failed to download the file. Status code:", response.status_code)
                 return None
         except Exception as e:
-            print("Error:", e)
+            log.debug("Error:", e)
             return None   
     def _download_resource_from_ckan(self, resource):       
         upload = uploader.get_resource_uploader(resource)
