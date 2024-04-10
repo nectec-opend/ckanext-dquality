@@ -164,8 +164,8 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-        #           str(self), self.total, self.column_names, self.fields)
+        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+                  str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -1211,8 +1211,9 @@ class ResourceFetchData2(object):
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
-                # log.debug('2Resource data downloaded directly.')
+                log.debug('2Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
+            # return self.resource_csv.fetch_page2(page, limit)
         try:
             #------ Pang Edit ------------------       
             self.download_resource = True
