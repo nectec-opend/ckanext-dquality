@@ -977,7 +977,8 @@ class ResourceFetchData2(object):
                 #-----------------------------------      
                 # Create a StringIO object to treat the response content as a file-like object
                 encoding = self.detect_encoding(filepath)
-                print(encoding)
+                log.debug('----endcode csv----')    
+                log.debug(encoding)
                 try:
                     data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
                     csv_data = StringIO(data_encode)
