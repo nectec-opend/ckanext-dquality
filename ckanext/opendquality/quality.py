@@ -981,34 +981,41 @@ class ResourceFetchData2(object):
                 log.debug(encoding)
                 try:
                     # Set the encoding when decoding the content
-                    response.encoding = encoding
-                    csv_data = response.text
-                    # Open the CSV content as a file-like object
-                    csvfile = StringIO(csv_data)
-                    # Read the CSV file using the csv.reader
-                    csv_reader = csv.reader(csvfile)
+                    # response.encoding = encoding
+                    # csv_data = response.text
+                    # # Open the CSV content as a file-like object
+                    # csvfile = StringIO(csv_data)
+                    # # Read the CSV file using the csv.reader
+                    # csv_reader = csv.reader(csvfile)
 
-                    records_read = 0
-                    for row in csv_reader:
-                        data.append(row)
-                        records_read += 1
-                        if records_read >= n_rows:
-                            break
-                    # data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
-                    # csv_data = StringIO(data_encode)
-                    # # Use the csv.reader to parse the CSV data
-                    # csv_reader = csv.reader(csv_data)
                     # records_read = 0
                     # for row in csv_reader:
                     #     data.append(row)
                     #     records_read += 1
                     #     if records_read >= n_rows:
                     #         break
+                    data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+                    csv_data = StringIO(data_encode)
+                    # Use the csv.reader to parse the CSV data
+                    csv_reader = csv.reader(csv_data)
+                    records_read = 0
+                    for row in csv_reader:
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break
                     log.debug('records_read')
                     log.debug(records_read)
                 except Exception as e:
-                    log.debug("An error occurred:", e)
-                    data = []
+                    log.debug("An error occurred, use pandas to readfile", e)
+                    try:
+                        data_df = pd.read_csv(io.StringIO(data_encode), nrows=n_rows)  # Read CSV data into a DataFrame
+                        if data_df is not None:
+                            data = data_df.values.tolist()
+                            data[:0] = [list(data_df.keys())]
+                    except Exception as e:
+                        log.debug("An error occurred:", e)
+                        data = []
                 #-----------------------------------
                 # csv_data = StringIO(response.text)
                 # csv_reader = csv.reader(csv_data)
