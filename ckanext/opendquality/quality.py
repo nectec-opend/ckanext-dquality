@@ -980,20 +980,6 @@ class ResourceFetchData2(object):
                 log.debug('----endcode csv----')    
                 log.debug(encoding)
                 try:
-                    # Set the encoding when decoding the content
-                    # response.encoding = encoding
-                    # csv_data = response.text
-                    # # Open the CSV content as a file-like object
-                    # csvfile = StringIO(csv_data)
-                    # # Read the CSV file using the csv.reader
-                    # csv_reader = csv.reader(csvfile)
-
-                    # records_read = 0
-                    # for row in csv_reader:
-                    #     data.append(row)
-                    #     records_read += 1
-                    #     if records_read >= n_rows:
-                    #         break
                     data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
                     csv_data = StringIO(data_encode)
                     # Use the csv.reader to parse the CSV data
@@ -1045,22 +1031,29 @@ class ResourceFetchData2(object):
                 data = data_df.values.tolist()
 
             elif(resource_format == 'XLSX' or resource_format == 'XLS'):
-                # Load the workbook from the temporary file
-                wb = load_workbook(filename=BytesIO(response.content), read_only=True)
-                # Get the active worksheet
-                ws = wb.active
-                # Iterate over rows and cells to read the data
-                records_read = 0
-                for row in ws.iter_rows(values_only=True):
-                    data.append(row)
-                    records_read += 1
-                    if records_read >= n_rows:
-                        break
-                wb.close()
-                # data_df = pd.read_excel(filepath, nrows=n_rows)  # Read CSV data into a DataFrame
-                # if data_df is not None:
-                #     data = data_df.values.tolist()
-                #     data[:0] = [list(data_df.keys())]
+                try:
+                    # Load the workbook from the temporary file
+                    wb = load_workbook(filename=BytesIO(response.content), read_only=True)
+                    # Get the active worksheet
+                    ws = wb.active
+                    # Iterate over rows and cells to read the data
+                    records_read = 0
+                    for row in ws.iter_rows(values_only=True):
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break
+                    wb.close()
+                except Exception as e:
+                    log.debug("An error occurred, use pandas to readfile", e)
+                    try:
+                        data_df = pd.read_excel(filepath, nrows=n_rows)  # Read CSV data into a DataFrame
+                        if data_df is not None:
+                            data = data_df.values.tolist()
+                            data[:0] = [list(data_df.keys())]
+                    except Exception as e:
+                        log.debug("An error occurred:", e)
+                        data = []
             else:
                 data = []
         else:
@@ -2628,23 +2621,25 @@ def detect_date_format(datestr):
 
     :returns: `str`, the guessed format of the date, otherwise `None`.
     '''
-    datestr = str(datestr)
-    log.debug(datestr)
-    if re.match(r'$\d^', datestr):
-        return 'unix-timestamp'
-    if re.match(r'$\d+\.\d+', datestr):
-        return 'timestamp'
-    if re.match(r'$\d+[\+\-]\d+^', datestr):
-        return 'timestamp-tz'
-    for dt_format in _all_date_formats:
-        try:
-            datetime.strptime(datestr, dt_format)
-            return dt_format
-        except:
-            pass
-    return None
-
-
+    try:
+        datestr = str(datestr)
+        log.debug(datestr)
+        if re.match(r'$\d^', datestr):
+            return 'unix-timestamp'
+        if re.match(r'$\d+\.\d+', datestr):
+            return 'timestamp'
+        if re.match(r'$\d+[\+\-]\d+^', datestr):
+            return 'timestamp-tz'
+        for dt_format in _all_date_formats:
+            try:
+                datetime.strptime(datestr, dt_format)
+                return dt_format
+            except:
+                pass
+    except Exception as e:
+        log.debug("An error occurred in detect_date_format", e)
+        return None 
+          
 def detect_numeric_format(numstr):
     '''Tries to detect the format of a number (int, float, number format with
     specific separator such as comma "," etc).
@@ -2668,7 +2663,7 @@ def detect_numeric_format(numstr):
                 return num_format
         
     except Exception as e:
-        log.debug("An error occurred", e)
+        log.debug("An error occurred in detect_numeric_format", e)
         return None            
 
 # resource validation
