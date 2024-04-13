@@ -18,11 +18,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import click, six
 
 import ckan.plugins.toolkit as toolkit
-from ckan.model import package_table, Session
-import ckanext.opendquality.quality as quality_lib
+from ckan.model import package_table, resource_table, Session
 import ckanext.opendquality.quality as quality_lib
 from logging import getLogger
 import ckan.model as model
+from ckanext.opendquality.model import DataQualityMetrics as qa_table
 
 log = getLogger(__name__)
 
@@ -82,7 +82,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
 
         else:
             pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset).first()
-            metrics.calculate_metrics_for_dataset(pkg)
+            metrics.calculate_metrics_for_dataset(pkg[0])
 
     #------------------------------
     if organization:  
@@ -177,35 +177,21 @@ def org_packages(handler,org_name):
             log.exception(e)
 
 
-# @quality.command(u'delete', help='Delete data quality metrics')
-# def org_packages(org_name): #handler,
-#     offset = 0
-#     limit = 64
-#     # while True:
-#     log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
-
-#     group = model.Group.get(org_name)
-#     query = Session.query(package_table.c.id).filter(package_table.c.owner_org == group.id)
-#     # query = Session.query(package_table.c.id)
-#     query = query.offset(offset).limit(limit)
-#     log.debug('---Query--')
-#     log.debug(query)
-#     count = 0
-#     packages = []
-#     for result in query.all():
-#         packages.append(result[0])
-#         count += 1
-#         log.debug(result[0])
-    
-    # if not count:
-    #     log.debug('No more packages to process.')
-    #     break
-
-    # offset += limit
-
-    # try:
-    #     log.debug('Processing %d packages in current batch.', count)
-    #     handler(packages)
-    # except Exception as e:
-    #     log.error('Failed to process package batch. Error: %s', str(e))
-    #     log.exception(e)
+@quality.command(u'delete', help='Delete data quality metrics')
+@click.option('--organization',
+              default='all',
+              help='Delete quality metrics by organization')
+def del_metrict(organization):
+    if organization == 'all':
+        obj = Session.query(qa_table).delete()
+        Session.commit()
+    else:
+        org = model.Group.get(organization)
+        pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
+        
+        list_ref = pkg.all()
+        for result in pkg.all():
+            res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
+            list_ref += res
+        qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
+        Session.commit()
