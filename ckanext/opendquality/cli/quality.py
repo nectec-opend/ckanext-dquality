@@ -81,7 +81,8 @@ def calculate(organization=None, dataset=None,dimension='all'):
             all_packages(_process_batch)
 
         else:
-            metrics.calculate_metrics_for_dataset(dataset)
+            pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset).first()
+            metrics.calculate_metrics_for_dataset(pkg)
 
     #------------------------------
     if organization:  
@@ -175,6 +176,8 @@ def org_packages(handler,org_name):
             log.error('Failed to process package batch. Error: %s', str(e))
             log.exception(e)
 
+
+# @quality.command(u'delete', help='Delete data quality metrics')
 # def org_packages(org_name): #handler,
 #     offset = 0
 #     limit = 64
