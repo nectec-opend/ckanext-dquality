@@ -31,17 +31,15 @@ def quality():
     pass
 
 @quality.command(u'calculate', help='Calculate data quality metrics')
-# @click.option('--dataset',
-#               default='all',
-#               help='Calculate quality metrics for dataset.')
+@click.option('--dataset',
+              help='Calculate quality metrics for dataset by datasett name.')
 @click.option('--organization',
-              default='all',
-              help='Calculate quality metrics for dataset.')
+              help='Calculate quality metrics for dataset by organization name.')
 @click.option('--dimension',
               default='all',
               help='Which metric to calculate.')
 # def calculate(dataset, dimension):
-def calculate(organization=None,dimension=None):
+def calculate(organization=None, dataset=None,dimension='all'):
     if six.PY2:
         _register_mock_translator()
     # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
@@ -68,22 +66,22 @@ def calculate(organization=None,dimension=None):
         calculators = [dimension_calculators[dimension]]
 
     metrics = quality_lib.DataQualityMetrics(metrics=calculators)
+    
+    if dataset:
+        if dataset == 'all':
+            def _process_batch(packages):
+                for pkg in packages:
+                    try:
+                        metrics.calculate_metrics_for_dataset(pkg)
+                    except Exception as e:
+                        log.error('Failed to calculate metrics for %s. Error: %s',
+                                pkg, str(e))
+                        log.exception(e)
 
-    # if dataset == 'all':
+            all_packages(_process_batch)
 
-    #     def _process_batch(packages):
-    #         for pkg in packages:
-    #             try:
-    #                 metrics.calculate_metrics_for_dataset(pkg)
-    #             except Exception as e:
-    #                 log.error('Failed to calculate metrics for %s. Error: %s',
-    #                           pkg, str(e))
-    #                 log.exception(e)
-
-    #     all_packages(_process_batch)
-
-    # else:
-    #     metrics.calculate_metrics_for_dataset(dataset)
+        else:
+            metrics.calculate_metrics_for_dataset(dataset)
 
     #------------------------------
     if organization:  
