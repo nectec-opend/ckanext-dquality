@@ -189,9 +189,9 @@ def del_metrict(organization):
         org = model.Group.get(organization)
         pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
         
-        list_ref = pkg.all()
+        list_ref = [ row[0] for row in pkg.all()]
         for result in pkg.all():
             res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
-            list_ref += res
+            list_ref += [ rw[0] for rw in res]
         qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
         Session.commit()
