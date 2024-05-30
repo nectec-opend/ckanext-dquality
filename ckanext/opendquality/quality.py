@@ -571,12 +571,14 @@ class DataQualityMetrics(object):
                         else:
                             if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
+                            elif(metric.name == 'machine_readable'):
+                                log.debug('----machine_readable_val------')       
+                                results[metric.name] = metric.calculate_metric_machine(resource,0,{})
                             elif(metric.name == 'timeliness'):
                                 results[metric.name] = metric.calculate_metric(resource)
-
+                            #do not execute big file for consistency and validty
                             results['consistency'] = { 'value': 0}
                             results['validity']    =    { 'value': 0}
-                            results['machine_readable'] = { 'value': 0}
                             if not connection_url:
                                 results['connection_url'] = { 'error': True}
                         
@@ -970,7 +972,7 @@ class ResourceFetchData2(object):
         timeout = 5
         response = requests.get(filepath, timeout=timeout)
         if self.is_url_file(filepath,timeout) and response.status_code == 200 :
-            n_rows = 5000
+            n_rows = 5001
             if(resource_format =='CSV'):
                 log.debug('----csv----')     
                 log.debug(filepath)
@@ -1347,7 +1349,7 @@ class Openness():#DimensionMetric
             score =  openness_score.get(data_format)
         # data type is not in the list
         if (score == None):
-            score = -1
+            score = 0
         return score
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
@@ -1681,7 +1683,7 @@ class MachineReadable():#DimensionMetric
         '''
         #--------------Machine Readable-----------------
         machine_readable_format = ['CSV','XLSX','XLS','JSON','XML'] #'JSON','XML' 
-        documenct_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT','ODS','ODP'] #-50
+        document_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT','ODS','ODP'] #-50
         image_format = ['PNG','JPEG','GIF','TIFF']#-60
         openness_5_star_format = ['RDF','TTL','N3','GeoJSON','WMS','GML','KML','SHP','Esri REST']#100
         validity_chk = True
@@ -1705,7 +1707,7 @@ class MachineReadable():#DimensionMetric
         if data_format in machine_readable_format:
             encoding = validity_report.get('encoding')
             valid    = validity_report.get('valid')          
-            # log.debug('-----Check Valid -----Report ------')
+            log.debug('-----machine_readable_format------')
             # log.debug(valid)
             # log.debug(encoding_utf8)
             # log.debug(validity_chk)
@@ -1713,8 +1715,11 @@ class MachineReadable():#DimensionMetric
 
             if "utf-8" in encoding:
                 encoding_utf8 = True
-            if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
-                        validity_report.get('extra-value') > 0 or validity_report.get('schema-error') > 0):
+            # if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
+            #    validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
+            #    validity_report.get('extra-value') > 0 or validity_report.get('schema-error') > 0):
+            if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
+               validity_report.get('extra-value') ):
                 validity_chk = False
             
             if(consistency_val >= 0 and consistency_val < 100):
@@ -1737,7 +1742,7 @@ class MachineReadable():#DimensionMetric
             }
         elif data_format in openness_5_star_format:
             machine_readable_score = 100
-        elif data_format in documenct_format:
+        elif data_format in document_format:
             machine_readable_score = machine_readable_score-50
         elif data_format in image_format:
             machine_readable_score = machine_readable_score-60
@@ -1745,9 +1750,7 @@ class MachineReadable():#DimensionMetric
             machine_readable_score = machine_readable_score-60
             
         return {
-            'consistency': 0,
-            'validity': {},
-            'encoding': data_format,
+            'format': data_format,
             'value': machine_readable_score
         }
 
@@ -2344,19 +2347,26 @@ class Consistency():#DimensionMetric
         '''
         validators = self.get_consistency_validators()
         fields = {f['id']: f for f in data['fields']}
-        report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}   
+        report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}  
+        # log.debug('-----chk consistency--------')
+        # log.debug(fields)
         count_row=0
+        # log.debug('-----consistency record--------')
         for row in data['records']:
             count_row=count_row+1
             for field, value in row.items():
                 field_type = fields.get(field, {}).get('type')
                 validator = validators.get(field_type)
                 field_report = report[field]
+                # log.debug(field)
+                # log.debug(value)
+                # log.debug(field_type)
+                # log.debug('-------------')
                 if validator:
                     validator(field, value, field_type, field_report)
                     field_report['count'] += 1
-        log.debug('---number of records----')
-        log.debug(count_row)
+        # log.debug('---number of records----')
+        # log.debug(count_row)
         for field, field_report in report.items():        
             if field_report['formats']:
                 most_consistent = max([count if fmt != 'unknown' else 0
@@ -2380,7 +2390,7 @@ class Consistency():#DimensionMetric
             'total': total,
             'consistent': consistent,
             'value': value,
-            'report': report,
+            'report': report
         }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the total percentage of consistent values in the data for
