@@ -2297,32 +2297,9 @@ class Consistency():#DimensionMetric
 
     def validate_numeric(self, field, value, _type, report):
         num_format = detect_numeric_format(value) or 'unknown'
-        formats = report['formats']
-        # Keys to be merged------------------
-        
-        # log.debug('formats')
-        # log.debug(value)
-        # log.debug(formats)
-        # keys_to_merge = {'int', 'float', 'unknown'}
-        # # # New dictionary to store the merged result
-        # merged_data = {'numeric': 0}
-        # # # Iterate through the original dictionary
-        # for key, value in formats.items():
-        #     if key in keys_to_merge:
-        #         merged_data['numeric'] += value
-        # # formats = merged_data
-        # # log.debug('new formats')
-        # log.debug(merged_data)
-        
-        # # num_format = 'numeric'
-        # # merged_data[num_format] = merged_data.get(num_format, 0) + 1
-        # if(num_format == 'int' or num_format == 'float'):
-        #     num_format = 'mu'
-        # formats['numeric'] = formats.get(num_format, 0) + 1    
-        #----------------------------------  
+        formats = report['formats']  
         formats[num_format] = formats.get(num_format, 0) + 1
-     
-
+    
     # def validate_int(self, field, value, _type, report):
     #     num_format = detect_numeric_format(value) or 'unknown'
     #     formats = report['formats']
