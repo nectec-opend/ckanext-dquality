@@ -2351,7 +2351,7 @@ class Consistency():#DimensionMetric
         # log.debug('-----chk consistency--------')
         # log.debug(fields)
         count_row=0
-        log.debug('-----consistency record--------')
+        # log.debug('-----consistency record--------')
         for row in data['records']:
             count_row=count_row+1
             for field, value in row.items():
@@ -2382,7 +2382,7 @@ class Consistency():#DimensionMetric
             if(chk_numeric):
                 field_report['formats'] = merged_data
             # log.debug(field_report['formats']) 
-            #--------------------------------------------------------------------
+            #[End Pang Edit]--------------------------------------------------------------------
             if field_report['formats']:
                 #เลือก count format ที่มีค่ามากสุด เช่น int 30 float 4 แปลว่าคอลัมน์นี้คือ int
                 most_consistent = max([count if fmt != 'unknown' else 0
