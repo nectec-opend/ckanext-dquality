@@ -164,8 +164,8 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-                  str(self), self.total, self.column_names, self.fields)
+        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+        #           str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -222,9 +222,9 @@ class ResourceCSVData(object):
                 row_dict = {self.column_names[j]: value
                             for j, value in enumerate(data_row)}
                 items.append(row_dict)
-        log.debug('ResourceCSVData.fetch_page: '
-                  'page=%d, limit=%d, of total %d. Got %d results.',
-                  page, limit, self.total, len(items))
+        # log.debug('ResourceCSVData.fetch_page: '
+        #           'page=%d, limit=%d, of total %d. Got %d results.',
+        #           page, limit, self.total, len(items))
         return {
             'total': self.total,
             'records': items,
@@ -992,8 +992,8 @@ class ResourceFetchData2(object):
                         records_read += 1
                         if records_read >= n_rows:
                             break
-                    log.debug('records_read')
-                    log.debug(records_read)
+                    # log.debug('records_read')
+                    # log.debug(records_read)
                 except Exception as e:
                     log.debug("An error occurred, use pandas to readfile", e)
                     try:
@@ -2298,12 +2298,35 @@ class Consistency():#DimensionMetric
     def validate_numeric(self, field, value, _type, report):
         num_format = detect_numeric_format(value) or 'unknown'
         formats = report['formats']
+        # Keys to be merged------------------
+        
+        # log.debug('formats')
+        # log.debug(value)
+        # log.debug(formats)
+        # keys_to_merge = {'int', 'float', 'unknown'}
+        # # # New dictionary to store the merged result
+        # merged_data = {'numeric': 0}
+        # # # Iterate through the original dictionary
+        # for key, value in formats.items():
+        #     if key in keys_to_merge:
+        #         merged_data['numeric'] += value
+        # # formats = merged_data
+        # # log.debug('new formats')
+        # log.debug(merged_data)
+        
+        # # num_format = 'numeric'
+        # # merged_data[num_format] = merged_data.get(num_format, 0) + 1
+        # if(num_format == 'int' or num_format == 'float'):
+        #     num_format = 'mu'
+        # formats['numeric'] = formats.get(num_format, 0) + 1    
+        #----------------------------------  
         formats[num_format] = formats.get(num_format, 0) + 1
+     
 
-    def validate_int(self, field, value, _type, report):
-        num_format = detect_numeric_format(value) or 'unknown'
-        formats = report['formats']
-        formats[num_format] = formats.get(num_format, 0) + 1
+    # def validate_int(self, field, value, _type, report):
+    #     num_format = detect_numeric_format(value) or 'unknown'
+    #     formats = report['formats']
+    #     formats[num_format] = formats.get(num_format, 0) + 1
 
     def validate_string(self, field, value, _type, report):
         formats = report['formats']
@@ -2313,7 +2336,7 @@ class Consistency():#DimensionMetric
         return {
             'timestamp': self.validate_date,
             'numeric': self.validate_numeric,
-            'int': self.validate_int,
+            # 'int': self.validate_int,
             'string': self.validate_string,
             'text': self.validate_string,
         }
@@ -2351,24 +2374,40 @@ class Consistency():#DimensionMetric
         # log.debug('-----chk consistency--------')
         # log.debug(fields)
         count_row=0
-        # log.debug('-----consistency record--------')
+        log.debug('-----consistency record--------')
         for row in data['records']:
             count_row=count_row+1
             for field, value in row.items():
                 field_type = fields.get(field, {}).get('type')
                 validator = validators.get(field_type)
                 field_report = report[field]
+                # log.debug('-------------')
                 # log.debug(field)
                 # log.debug(value)
-                # log.debug(field_type)
-                # log.debug('-------------')
+                # log.debug(field_type)          
                 if validator:
                     validator(field, value, field_type, field_report)
                     field_report['count'] += 1
-        # log.debug('---number of records----')
-        # log.debug(count_row)
-        for field, field_report in report.items():        
+        for field, field_report in report.items():
+            #------------------------------------------------------------------
+            #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
+            format_dict = field_report['formats']   
+            keys_to_merge = {'int', 'float', 'unknown'}
+            # # New dictionary to store the merged result
+            merged_data = {'numeric': 0}
+            # # Iterate through the original dictionary
+            chk_numeric = False
+            for key, value in format_dict.items():
+                if key in keys_to_merge:
+                    merged_data['numeric'] += value
+                    chk_numeric = True
+            # log.debug(merged_data) 
+            if(chk_numeric):
+                field_report['formats'] = merged_data
+            # log.debug(field_report['formats']) 
+            #--------------------------------------------------------------------
             if field_report['formats']:
+                #เลือก count format ที่มีค่ามากสุด เช่น int 30 float 4 แปลว่าคอลัมน์นี้คือ int
                 most_consistent = max([count if fmt != 'unknown' else 0
                                     for fmt, count
                                     in field_report['formats'].items()])
@@ -2670,6 +2709,7 @@ def detect_numeric_format(numstr):
         for num_format in _all_numeric_formats:
             m = re.match(num_format, str(numstr))
             if m:
+                log.debug(num_format)
                 return num_format
         
     except Exception as e:
