@@ -1562,6 +1562,25 @@ class AccessAPI():#DimensionMetric
 
     def __init__(self):
         self.name = 'access_api'
+    def check_api(url):
+    try:
+        response = requests.get(url)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.ok:
+            try:
+                data = response.json()
+                print("Valid JSON Response:", data)
+                return True
+            except ValueError:
+                print("Response is not valid JSON.")
+                return False
+        else:
+            print(f"Error Response: {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"Request Exception: {e}")
+        return False
     def calculate_metric(self, resource):
         '''Calculates the API Accesssibility dimension metric for the given resource
         from the resource data.
@@ -1586,6 +1605,14 @@ class AccessAPI():#DimensionMetric
             access_api_score = 2
         elif(resource['datastore_active'] == False and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')): 
             access_api_score = 1
+        elif(resource['format'] == 'API'):
+            is_valid_api = self.check_api(resource['format'])
+            if is_valid_api:
+                access_api_score = 2
+                log.debug ("The URL is a valid API endpoint.")
+            else:
+                access_api_score = 0
+                log.debug ("The URL is not a valid API endpoint.")
         else:
             access_api_score = 0
         # log.debug('Accessibility API score: %f%%', access_api_score)
