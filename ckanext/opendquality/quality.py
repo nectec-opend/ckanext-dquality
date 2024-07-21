@@ -1563,24 +1563,24 @@ class AccessAPI():#DimensionMetric
     def __init__(self):
         self.name = 'access_api'
     def check_api(url):
-    try:
-        response = requests.get(url)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.ok:
-            try:
-                data = response.json()
-                print("Valid JSON Response:", data)
-                return True
-            except ValueError:
-                print("Response is not valid JSON.")
+        try:
+            response = requests.get(url)
+            print(f"Status Code: {response.status_code}")
+            
+            if response.ok:
+                try:
+                    data = response.json()
+                    print("Valid JSON Response:", data)
+                    return True
+                except ValueError:
+                    print("Response is not valid JSON.")
+                    return False
+            else:
+                print(f"Error Response: {response.status_code}")
                 return False
-        else:
-            print(f"Error Response: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request Exception: {e}")
             return False
-    except requests.exceptions.RequestException as e:
-        print(f"Request Exception: {e}")
-        return False
     def calculate_metric(self, resource):
         '''Calculates the API Accesssibility dimension metric for the given resource
         from the resource data.
