@@ -2082,21 +2082,22 @@ class Validity():#DimensionMetric
 
         total_rows = 0
         total_errors = 0
-        # errors_code = ''
         encoding = ''
         valid = ''
-
+        headers = []
+        table_count = 0
+        relevant_errors = 0
         dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0,'encoding':''}
+        error_types=['blank-header', 'duplicate-header', 'extra-value']
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
             total_errors += table.get('error-count', 0)
-            # log.debug('-----Check Validity---')
-            # log.debug(type(table))
             for error in table.get('errors', []):
-                # errors_code += error.get('code')
                 item_code = error.get('code')
                 count_val = dict_error[item_code]+1
                 dict_error[item_code] = count_val
+                if error['code'] in error_types:
+                    relevant_errors += 1
             encoding = table.get('encoding')
             valid = table.get('valid')
             log.debug("---encoding---")
@@ -2104,14 +2105,6 @@ class Validity():#DimensionMetric
             # log.debug(table.get('errors'))
             dict_error['encoding'] = encoding
             dict_error['valid']    = valid
-            # log.debug(dict_error)
-            # log.debug(table.get('valid'))
-            # log.debug(table.get('format'))
-            # log.debug(table.get('encoding'))
-            # log.debug(table.get('headers'))
-            # errors = table.get('errors', [0])
-            # errors_message = errors.get('message')
-            # errors_code = errors.get('code')
         if total_rows == 0:
             return {
                 'value': 0.0,
@@ -2119,16 +2112,29 @@ class Validity():#DimensionMetric
                 'valid': 0,
                 'report': dict_error
             }
-
-        valid = total_rows - total_errors
-        value = float(valid)/float(total_rows) * 100.0
-
+            
+        log.debug('-----Check Validity---:row and error----')
+        # valid = total_rows - total_errors
+        # value = float(valid)/float(total_rows) * 100.0
+        valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
+        validity_score = (valid_rows / total_rows) * 100
+        # Ensure the score is between 0 and 100
+        validity_score = max(min(validity_score, 100), 0)
+        log.debug(relevant_errors)
+        log.debug(dict_error)
+        log.debug(validity_score)
         return {
-            'value': value,
+            'value': validity_score,
             'total': total_rows,
-            'valid': valid,
+            'valid': valid_rows,
             'report': dict_error
         }
+        # return {
+        #     'value': value,
+        #     'total': total_rows,
+        #     'valid': valid,
+        #     'report': dict_error
+        # }
 
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the percentage of valid records in all the data for the
