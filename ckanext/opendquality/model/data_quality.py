@@ -86,8 +86,11 @@ class DataQualityMetrics(DomainObject):
 
     @classmethod
     def remove(cls, _type, ref_id):
-        pass
-
+        #pass
+        obj = Session.query(cls).filter_by(type=_type, ref_id=ref_id).first()
+        if obj:
+            Session.delete(obj)
+            Session.commit()
 
 mapper(DataQualityMetrics, data_quality_metrics_table)
 

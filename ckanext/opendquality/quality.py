@@ -374,6 +374,8 @@ class DataQualityMetrics(object):
         return metrics
     def _new_metrics_record(self, ref_type, ref_id):
         return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
+    def _delete_metrics_record(self, ref_type, ref_id):
+        return DataQualityMetricsModel.remove(ref_type, ref_id)
     #-- check file size ---
     def get_file_size(self, url):
         timeout = 5
@@ -408,10 +410,11 @@ class DataQualityMetrics(object):
             return False   
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
-        last_modified = datetime.strptime((resource.get('last_modified') or
-                                           resource.get('created')),
-                                          '%Y-%m-%dT%H:%M:%S.%f')
-        # self.logger.debug ('Resource last modified on: %s', last_modified)
+        last_modified = datetime.strptime(resource.get('metadata_modified'),'%Y-%m-%dT%H:%M:%S.%f')
+        # last_modified = datetime.strptime((resource.get('last_modified') or
+        #                                    resource.get('created')),
+        #                                   '%Y-%m-%dT%H:%M:%S.%f')                            
+        self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
         resource_url = resource['url']
         resource_name = resource['name']
@@ -448,7 +451,17 @@ class DataQualityMetrics(object):
                     self.logger.debug('Data Quality calculated for '
                                     'version modified on: %s',
                                     data_quality.resource_last_modified)
-                    if data_quality.resource_last_modified >= last_modified:
+                    # if data_quality.resource_last_modified >= last_modified:
+                    if data_quality.resource_last_modified < last_modified:
+                        cached_calculation = True
+                        log.debug('--delete and run new updated file--')
+                        #delete record
+                        self._delete_metrics_record('resource', resource['id'])
+                        #calculate new record
+                        data_quality = self._new_metrics_record('resource', resource['id'])
+                        data_quality.resource_last_modified = last_modified
+                        self.logger.debug('Re-calculation.')
+                    elif (data_quality.resource_last_modified == last_modified):
                         cached_calculation = True
                         # check if all metrics have been calculated or some needs to be
                         # calculated again
@@ -469,6 +482,7 @@ class DataQualityMetrics(object):
                             self.logger.debug('Data Quality not calculated for '
                                             'all dimensions.')
                     else:
+                        #calculate new record
                         data_quality = self._new_metrics_record('resource',
                                                                 resource['id'])
                         data_quality.resource_last_modified = last_modified
@@ -531,8 +545,9 @@ class DataQualityMetrics(object):
                       
                         # data_stream2 = self._fetch_resource_data2(resource)
                         #------ Check Meta Data --------------------------------
-                        log.debug('------ Resource URL-----')
+                        log.debug('------ Resource URL: Data Stream2-----')
                         log.debug(resource['url'])
+                        # log.debug(data_stream2)
                         #using metadata for calculate metrics
                                         
                         if (file_size_mb <= 5 and connection_url):
@@ -671,6 +686,10 @@ class DataQualityMetrics(object):
                           package_id)
         data_quality = self._get_metrics_record('package', package_id)
         if not data_quality:
+            data_quality = self._new_metrics_record('package', package_id)
+        else:
+            self.logger.debug('delete package record-->')
+            self._delete_metrics_record('package', package_id)
             data_quality = self._new_metrics_record('package', package_id)
         cumulative = {}
         dataset_results = data_quality.metrics or {}
@@ -967,20 +986,30 @@ class ResourceFetchData2(object):
     
     def _download_resource_from_url(self, url, headers=None):
         data = []
+        log.debug('----resource format-----')
         filepath = self.resource['url']
-        resource_format = self.resource['format']
+        format_url = filepath.split(".")[-1]
+        resource_format = format_url.upper()
+        log.debug(resource_format)
+        # resource_format = self.resource['format']
+        mimetype = self.resource['mimetype']
+        log.debug('----mimetype-----')
+        log.debug(mimetype)
+        log.debug(filepath)
+    
         timeout = 5
         response = requests.get(filepath, timeout=timeout)
         if self.is_url_file(filepath,timeout) and response.status_code == 200 :
+            log.debug('----is_url_file-----')
             n_rows = 5001
-            if(resource_format =='CSV'):
-                log.debug('----csv----')     
-                log.debug(filepath)
+            if(mimetype == 'text/csv' or resource_format =='CSV'): #if(resource_format =='CSV'):
+                # log.debug('----csv----')     
+                # log.debug(filepath)
                 #-----------------------------------      
                 # Create a StringIO object to treat the response content as a file-like object
                 encoding = self.detect_encoding(filepath)
-                log.debug('----endcode csv----')    
-                log.debug(encoding)
+                # log.debug('----endcode csv----')    
+                # log.debug(encoding)
                 try:
                     data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
                     csv_data = StringIO(data_encode)
@@ -1020,7 +1049,7 @@ class ResourceFetchData2(object):
                 #     data = data_df.values.tolist()
                 #     data[:0] = [list(data_df.keys())]
 
-            elif(resource_format == 'JSON'):
+            elif(mimetype == 'application/json' or resource_format =='JSON' ): #elif(resource_format == 'JSON'):
                 # Read JSON data in chunks
                 data_chunks = []
                 for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
@@ -1032,7 +1061,7 @@ class ResourceFetchData2(object):
                 data_df = pd.concat(data_chunks, ignore_index=True)
                 data = data_df.values.tolist()
 
-            elif(resource_format == 'XLSX' or resource_format == 'XLS'):
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimetype == 'application/vnd.ms-excel' or resource_format == 'XLSX' or resource_format == 'XLS'):#elif(resource_format == 'XLSX' or resource_format == 'XLS'):
                 try:
                     # Load the workbook from the temporary file
                     wb = load_workbook(filename=BytesIO(response.content), read_only=True)
@@ -1059,18 +1088,60 @@ class ResourceFetchData2(object):
             else:
                 data = []
         else:
+            log.debug('----is_not_url_file-----')
             data = []
         return data
 
+    # def is_url_file(self,url,timeout):
+    #     try:
+    #         response = requests.head(url,timeout=timeout)
+    #         content_type = response.headers.get('Content-Type')
+    #         if content_type:
+    #             mime_type, _ = mimetypes.guess_type(url)
+    #             if mime_type and mime_type != 'application/octet-stream':
+    #                 return True  # It's a file
+    #         return False  # It's not a file or has unknown content type
+    #     except Exception as e:
+    #         log.debug("An error occurred:", e)
+    #         return False  # Error occurred, not a file
     def is_url_file(self,url,timeout):
         try:
-            response = requests.head(url,timeout=timeout)
+            # Send a HEAD request to get headers
+            response = requests.head(url, timeout=timeout)
             content_type = response.headers.get('Content-Type')
+            
             if content_type:
+                # Check if it's 'application/octet-stream'
+                if content_type == 'application/octet-stream':
+                    log.debug("Content-Type, application/octet-stream...")
+                    # Use the URL extension to guess the MIME type
+                    mime_type, _ = mimetypes.guess_type(url)
+                    if mime_type:
+                        log.debug("Guessed MIME type from URL:", mime_type)
+                        return True  # It's a file based on the guessed MIME type
+                    else:
+                        log.debug("Cannot detect mimetype")
+                        return True
+                else:
+                    log.debug("Content-Type:", content_type)
+                    return True  # It's a valid file based on Content-Type
+            else:
+                # If there's no Content-Type, guess based on URL or file content
+                log.debug("No Content-Type, guessing from URL...")
                 mime_type, _ = mimetypes.guess_type(url)
-                if mime_type and mime_type != 'application/octet-stream':
-                    return True  # It's a file
-            return False  # It's not a file or has unknown content type
+                if mime_type:
+                    log.debug("Guessed MIME type:" , mime_type)
+                    return True
+                else:
+                    # As a fallback, attempt a GET request to analyze the content
+                    response = requests.get(url, timeout=timeout, stream=True)
+                    response.raise_for_status()
+                    content_disposition = response.headers.get('Content-Disposition')
+                    if content_disposition:
+                        log.debug("Guessed from Content-Disposition: ",content_disposition)
+                        return True
+                    log.debug("Content-Type could not be determined.")
+                    return False
         except Exception as e:
             log.debug("An error occurred:", e)
             return False  # Error occurred, not a file
@@ -1749,7 +1820,7 @@ class MachineReadable():#DimensionMetric
             #    validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
             #    validity_report.get('extra-value') > 0 or validity_report.get('schema-error') > 0):
             if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
-               validity_report.get('extra-value') ):
+               validity_report.get('extra-value') or validity_report.get('source-error') > 0 ):
                 validity_chk = False
             
             if(consistency_val >= 0 and consistency_val < 100):
@@ -2084,16 +2155,19 @@ class Validity():#DimensionMetric
         total_errors = 0
         encoding = ''
         valid = ''
+        error_message = ''
         headers = []
         table_count = 0
         relevant_errors = 0
-        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0,'encoding':''}
-        error_types=['blank-header', 'duplicate-header', 'extra-value']
+        filepath = resource['url']
+        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
+        error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
         for table in validation.get('tables', []):
             total_rows += table.get('row-count', 0)
             total_errors += table.get('error-count', 0)
             for error in table.get('errors', []):
                 item_code = error.get('code')
+                error_message = error_message + error.get('message')+','
                 count_val = dict_error[item_code]+1
                 dict_error[item_code] = count_val
                 if error['code'] in error_types:
@@ -2105,7 +2179,8 @@ class Validity():#DimensionMetric
             # log.debug(table.get('errors'))
             dict_error['encoding'] = encoding
             dict_error['valid']    = valid
-        if total_rows == 0:
+            dict_error['error'] = error_message
+        if total_rows == 0:            
             return {
                 'value': 0.0,
                 'total': 0,
@@ -2113,16 +2188,16 @@ class Validity():#DimensionMetric
                 'report': dict_error
             }
             
-        log.debug('-----Check Validity---:row and error----')
+        # log.debug('-----Check Validity---:row and error----')
         # valid = total_rows - total_errors
         # value = float(valid)/float(total_rows) * 100.0
         valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
         validity_score = (valid_rows / total_rows) * 100
         # Ensure the score is between 0 and 100
         validity_score = max(min(validity_score, 100), 0)
-        log.debug(relevant_errors)
-        log.debug(dict_error)
-        log.debug(validity_score)
+        # log.debug(relevant_errors)
+        # log.debug(dict_error)
+        # log.debug(validity_score)
         return {
             'value': validity_score,
             'total': total_rows,
@@ -2405,7 +2480,16 @@ class Consistency():#DimensionMetric
             #------------------------------------------------------------------
             #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
             format_dict = field_report['formats']   
-            keys_to_merge = {'int', 'float', 'unknown'}
+            keys_to_merge = {'int', 'float', 'unknown',
+                              '^\\d+$',
+                              '^[+-]\\d+$',
+                              '^(\\d{1,3},)+(\\d{3})$',
+                              '^(\\d{1,3},)+(\\d{3})\\.\\d+$',
+                              '^[+-](\\d{1,3},)(\\d{3})+$',
+                              '^[+-](\\d{1,3},)+(\\d{3})\\.\\d+$',
+                              '^\\d+\\.\\d+$',
+                              '^[+-]\\d+\\.\\d+$'
+                              } 
             # # New dictionary to store the merged result
             merged_data = {'numeric': 0}
             # # Iterate through the original dictionary
@@ -2414,7 +2498,10 @@ class Consistency():#DimensionMetric
                 if key in keys_to_merge:
                     merged_data['numeric'] += value
                     chk_numeric = True
-            # log.debug(merged_data) 
+            # log.debug('--format_dict--')
+            # log.debug(field) 
+            # log.debug(format_dict) 
+            # log.debug(merged_data)
             if(chk_numeric):
                 field_report['formats'] = merged_data
             # log.debug(field_report['formats']) 

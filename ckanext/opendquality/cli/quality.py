@@ -81,7 +81,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
             all_packages(_process_batch)
 
         else:
-            pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset).first()
+            pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset, package_table.c.type == 'dataset', package_table.c.private == False).first()
             metrics.calculate_metrics_for_dataset(pkg[0])
 
     #------------------------------
@@ -127,7 +127,7 @@ def all_packages(handler):
     limit = 64
     while True:
         log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
-        query = Session.query(package_table.c.id)
+        query = Session.query(package_table.c.id).filter(package_table.c.type == 'dataset', package_table.c.private == False)
         query = query.offset(offset).limit(limit)
 
         count = 0
@@ -155,7 +155,7 @@ def org_packages(handler,org_name):
     while True:
         log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
         group = model.Group.get(org_name)
-        query = Session.query(package_table.c.id).filter(package_table.c.owner_org == group.id)
+        query = Session.query(package_table.c.id).filter(package_table.c.owner_org == group.id, package_table.c.type == 'dataset', package_table.c.private == False)
         query = query.offset(offset).limit(limit)
         count = 0
         packages = []
