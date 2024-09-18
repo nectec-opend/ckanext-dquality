@@ -996,7 +996,40 @@ class ResourceFetchData2(object):
         log.debug('----mimetype-----')
         log.debug(mimetype)
         log.debug(filepath)
-    
+
+        # Try to identify mimetype based on content-type from response headers
+        try:
+            log.debug("identify mimetype based on content-type")
+            response = requests.head(filepath, timeout=5)
+            content_type = response.headers.get('Content-Type', None)
+            
+            # Default mimetype and charset if not present in headers
+            mimetype = None
+            charset = 'utf-8'
+            
+            if content_type:
+                # Split Content-Type to separate mimetype and charset (if available)
+                content_parts = content_type.split(";")
+                mimetype = content_parts[0].strip()  # First part is the mimetype
+                
+                # If charset is provided, extract it
+                if len(content_parts) > 1:
+                    for part in content_parts[1:]:
+                        if "charset=" in part:
+                            charset = part.split("=")[-1].strip()
+                            break
+        except Exception as e:
+            log.debug("Error fetching header:")
+            log.debug(e)
+            mimetype = None
+        
+        # If mimetype is not determined from headers, fallback to file extension
+        if not mimetype:
+            mimetype, _ = mimetypes.guess_type(filepath)
+        
+        log.debug('----mimetype-----')
+        log.debug(mimetype)
+
         timeout = 5
         response = requests.get(filepath, timeout=timeout)
         if self.is_url_file(filepath,timeout) and response.status_code == 200 :
@@ -1299,6 +1332,7 @@ class ResourceFetchData2(object):
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
         log.debug('----call fetch_page at ResourceFetchData2-------')
+        log.debug(self.download_resource)
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
@@ -2460,6 +2494,7 @@ class Consistency():#DimensionMetric
         fields = {f['id']: f for f in data['fields']}
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}  
         # log.debug('-----chk consistency--------')
+        # log.debug(data)
         # log.debug(fields)
         count_row=0
         # log.debug('-----consistency record--------')
