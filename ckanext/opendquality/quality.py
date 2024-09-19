@@ -1002,7 +1002,7 @@ class ResourceFetchData2(object):
             log.debug("identify mimetype based on content-type")
             response = requests.head(filepath, timeout=5)
             content_type = response.headers.get('Content-Type', None)
-            
+            content_disposition = response.headers.get('Content-Disposition', None)
             # Default mimetype and charset if not present in headers
             mimetype = None
             charset = 'utf-8'
@@ -1018,6 +1018,22 @@ class ResourceFetchData2(object):
                         if "charset=" in part:
                             charset = part.split("=")[-1].strip()
                             break
+            # Check for "Content-Disposition" header to extract the filename
+            if content_disposition:
+                log.debug('Content-Disposition:')
+                if 'filename=' in content_disposition:
+                    filename = content_disposition.split('filename=')[-1].strip().strip('"')
+                    log.debug("Downloaded filename:")
+                    log.debug(filename)
+                    # Use filename to guess mimetype if needed
+                    mimetype_from_filename, _ = mimetypes.guess_type(filename)
+                    if mimetype_from_filename:
+                        mimetype = mimetype_from_filename
+
+            # If mimetype is 'application/octet-stream' or 'application/download', infer from file extension
+            if mimetype in ['application/octet-stream', 'application/download']:
+                log.debug('Detected application/octet-stream or application/download, guessing mimetype from file extension')
+                mimetype, _ = mimetypes.guess_type(filepath)
         except Exception as e:
             log.debug("Error fetching header:")
             log.debug(e)
@@ -1026,14 +1042,12 @@ class ResourceFetchData2(object):
         # If mimetype is not determined from headers, fallback to file extension
         if not mimetype:
             mimetype, _ = mimetypes.guess_type(filepath)
-        
-        log.debug('----mimetype-----')
-        log.debug(mimetype)
 
         timeout = 5
         response = requests.get(filepath, timeout=timeout)
         if self.is_url_file(filepath,timeout) and response.status_code == 200 :
             log.debug('----is_url_file-----')
+            log.debug(mimetype)
             n_rows = 5001
             if(mimetype == 'text/csv' or resource_format =='CSV'): #if(resource_format =='CSV'):
                 # log.debug('----csv----')     
@@ -1083,17 +1097,79 @@ class ResourceFetchData2(object):
                 #     data[:0] = [list(data_df.keys())]
 
             elif(mimetype == 'application/json' or resource_format =='JSON' ): #elif(resource_format == 'JSON'):
-                # Read JSON data in chunks
-                data_chunks = []
-                for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
-                    data_chunks.append(chunk)
-                    # Break the loop if the specified number of rows have been read
-                    if len(data_chunks) * n_rows >= n_rows:
-                        break
-                # Concatenate the data chunks into a single DataFrame
-                data_df = pd.concat(data_chunks, ignore_index=True)
-                data = data_df.values.tolist()
+                # log.debug('--Read JSON data--')
+                # try:
+                #     data_chunks = []
+                #     log.debug('--chank--')
+                #     for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
+                #         data_chunks.append(chunk)
+                #         # Break the loop if the specified number of rows have been read
+                #         if len(data_chunks) * n_rows >= n_rows:
+                #             break
+                #     # Concatenate the data chunks into a single DataFrame
+                #     data_df = pd.concat(data_chunks, ignore_index=True)
+                #     data = data_df.values.tolist()
+                #     log.debug('--chank2--')  
+                #     log.debug(data)            
+                # except ValueError as e:
+                #     log.debug("Error parsing JSON")
+                #     log.debug(e)
+                #     log.debug("Response content")
+                #     log.debug(response.content)
+                #     data = []
+                #-------------\
+                # data = []
+                # try:
+                #     # Read the entire JSON file into a DataFrame
+                #     log.debug('--Reading JSON file--')
+                #     data_df = pd.read_json(filepath)  # Read the entire JSON content into a DataFrame
+                    
+                #     # Convert DataFrame to list of lists
+                #     data = data_df.values.tolist()
+                    
+                #     log.debug('--Data successfully read--')
+                #     log.debug(data)
+                data = []
+                try:
+                    log.debug('--Reading JSON data--')
+                    
+                    # Check if the filepath is a URL or a file path
+                    if filepath.startswith('http'):  # If it's a URL
+                        response = requests.get(filepath)
+                        response.encoding = 'utf-8'  # Ensure correct encoding
+                        
+                        # Ensure content type is JSON
+                        if 'application/json' in response.headers.get('Content-Type', ''):
+                            # Use `pd.read_json` with a StringIO object for URL content
+                            from io import StringIO
+                            json_data = StringIO(response.text)
+                            data_df = pd.read_json(json_data)
+                        else:
+                            log.debug("Expected JSON but received:")
+                            log.debug(response.headers.get('Content-Type'))                                
+                    else:  # If it's a file path
+                        data_df = pd.read_json(filepath)
 
+                    # Convert DataFrame to list of lists
+                    data = data_df.values.tolist()                  
+                    log.debug('--Data successfully read--')
+                    # log.debug(data)
+                except ValueError as e:
+                    log.debug("Error parsing JSON")
+                    log.debug(e)
+                    log.debug("Response content")
+                    log.debug(response.content)
+                    data = []
+                except json.JSONDecodeError as e:
+                    log.debug("Error decoding JSON")
+                    log.debug(e)
+                    log.debug("Response content")
+                    log.debug(response.content)
+                    data = []
+                except Exception as e:
+                    log.debug("Unexpected error occurred")
+                    log.debug(e)
+                    data = []
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimetype == 'application/vnd.ms-excel' or resource_format == 'XLSX' or resource_format == 'XLS'):#elif(resource_format == 'XLSX' or resource_format == 'XLS'):
                 try:
                     # Load the workbook from the temporary file
