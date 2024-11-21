@@ -1790,7 +1790,8 @@ class AccessAPI():#DimensionMetric
         elif(resource['datastore_active'] == False and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')): 
             access_api_score = 1
         elif(resource['format'] == 'API'):
-            is_valid_api = self.check_api(resource['format'])
+            is_valid_api = self.check_api(resource['url'])
+            # is_valid_api = self.check_api(resource['format'])
             if is_valid_api:
                 access_api_score = 2
                 log.debug ("The URL is a valid API endpoint.")
