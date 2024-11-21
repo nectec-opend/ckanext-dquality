@@ -1743,7 +1743,8 @@ class AccessAPI():#DimensionMetric
 
     def __init__(self):
         self.name = 'access_api'
-    def check_api(url):
+    def check_api(self, url):
+        log.debug("--check_api--")
         try:
             response = requests.get(url)
             log.debug(response.status_code)
