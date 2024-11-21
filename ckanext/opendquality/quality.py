@@ -410,10 +410,14 @@ class DataQualityMetrics(object):
             return False   
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
-        last_modified = datetime.strptime(resource.get('metadata_modified'),'%Y-%m-%dT%H:%M:%S.%f')
-        # last_modified = datetime.strptime((resource.get('last_modified') or
-        #                                    resource.get('created')),
-        #                                   '%Y-%m-%dT%H:%M:%S.%f')                            
+        metadata_modified = resource.get('metadata_modified')
+        if metadata_modified:  # Check if the value is not None
+            last_modified = datetime.strptime(metadata_modified, '%Y-%m-%dT%H:%M:%S.%f')
+        else:
+            last_modified = None  # Handle the case where metadata_modified is None
+            
+        # last_modified = datetime.strptime(resource.get('metadata_modified'),'%Y-%m-%dT%H:%M:%S.%f')
+                           
         self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
         resource_url = resource['url']
