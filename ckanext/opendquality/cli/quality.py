@@ -43,10 +43,10 @@ def calculate(organization=None, dataset=None,dimension='all'):
     if six.PY2:
         _register_mock_translator()
     # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
-    dimensions =  ['validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
+    dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
     dimension_calculators = {
-        # 'completeness': quality_lib.Completeness(),
-        # 'uniqueness'  : quality_lib.Uniqueness(),
+        'completeness': quality_lib.Completeness(),
+        'uniqueness'  : quality_lib.Uniqueness(),
         'validity'    : quality_lib.Validity(),
         'consistency' : quality_lib.Consistency(),
         'openness'    : quality_lib.Openness(),
