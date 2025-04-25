@@ -28,6 +28,7 @@ from io import StringIO
 import chardet
 from six import string_types
 import time
+from functools import reduce
 
 # import db, re
 from ckanext.opendquality.model import (
@@ -470,8 +471,8 @@ class DataQualityMetrics(object):
                         # check if all metrics have been calculated or some needs to be
                         # calculated again
                         if all(map(lambda m: m is not None, [
-                                    # data_quality.completeness,
-                                    # data_quality.uniqueness,
+                                    data_quality.completeness,
+                                    data_quality.uniqueness,
                                     data_quality.validity,
                                     data_quality.timeliness,
                                     data_quality.consistency,
@@ -575,7 +576,16 @@ class DataQualityMetrics(object):
                                 # validity_val = results[metric.name].get('value')
                                 validity_report = results[metric.name].get('report')
                                 # encoding   = results[metric.name].get('encoding')
-    
+                            elif(metric.name == 'completeness'):                           
+                                log.debug('----check completeness------')
+                                log.debug(data_stream2['total'])
+                                results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
+                                completeness_report = results[metric.name].get('report')
+                            elif(metric.name == 'uniqueness'):                           
+                                log.debug('----check completeness------')
+                                log.debug(data_stream2['total'])
+                                results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
+                                cuniqueness_report = results[metric.name].get('report')
                             elif(metric.name == 'machine_readable'):
                                 log.debug('----machine_readable_val------')       
                                 results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
@@ -2035,7 +2045,32 @@ class Completeness():#DimensionMetric
     def __init__(self):
         # super(Completeness, self).__init__('completeness')
         self.name = 'completeness'
+    # def calculate_metric(self, resource, data):
+    #     log.debug('---completeness start----')
+    #     log.debug("Fields: %s", data.get('fields'))
+    #     log.debug("Total records: %s", data.get('total'))
 
+    #     fields = data.get('fields', [])
+    #     records = data.get('records', [])
+    #     columns_count = len(fields)
+    #     rows_count = len(records)
+    #     total_values_count = columns_count * rows_count
+
+    #     log.debug('---Rows: %d, Columns: %d, Total Values: %d',
+    #               rows_count, columns_count, total_values_count)
+
+    #     total_complete_values = sum(self._completeness_row(row) for row in records)
+
+    #     result = (float(total_complete_values) / float(total_values_count) * 100.0) if total_values_count else 0.0
+
+    #     log.debug('Complete (non-empty) values: %d', total_complete_values)
+    #     log.debug('Completeness score: %.2f%%', result)
+
+    #     return {
+    #         'value': result,
+    #         'total': total_values_count,
+    #         'complete': total_complete_values,
+    #     }
     def calculate_metric(self, resource, data):
         '''Calculates the completeness dimension metric for the given resource
         from the resource data.
@@ -2053,13 +2088,16 @@ class Completeness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
+        log.debug('---completeness start----')
+        log.debug(data['fields'])
+        log.debug(data['total'])
         columns_count = len(data['fields'])
         rows_count = data['total']
         total_values_count = columns_count * rows_count
 
-        log.debug('Rows: %d, Columns: %d, Total Values: %d',
+        log.debug('---Rows: %d, Columns: %d, Total Values: %d',
                           rows_count, columns_count, total_values_count)
-        # log.debug(data)
+        log.debug(data)
         total_complete_values = 0
         for row in data['records']:
             total_complete_values += self._completenes_row(row)
@@ -2075,47 +2113,121 @@ class Completeness():#DimensionMetric
             'total': total_values_count,
             'complete': total_complete_values,
         }
-
     def _completenes_row(self, row):
-        count = 0
-        for _, value in row.items():
-            if value is None:
-                continue
-            if isinstance(value, str):
-                if not value.strip():
+            count = 0
+            for _, value in row.items():
+                if value is None:
                     continue
-            count += 1
-        return count
+                if isinstance(value, str):
+                    if not value.strip():
+                        continue
+                count += 1
+            return count
+    # def _completeness_row(self, row):
+    #     return sum(1 for v in row.values() if v is not None and (not isinstance(v, str) or v.strip()))
 
     def calculate_cumulative_metric(self, resources, metrics):
-        '''Calculates the cumulative report for all resources from the
-        calculated results for each resource.
-
-        The calculation is done as `all_complete/all_total * 100`, where
-            * `all_complete` is the total number of completed values in all
-                resources.
-            * all_total is the number of expected values (rows*columns) in all
-                resources.
-        The final value is the percentage of completed values in all resources
-        in the dataset.
-
-        :param resources: `list` of CKAN resources.
-        :param metrics: `list` of `dict` results for each resource.
-
-        :returns: `dict`, a report for the total percentage of complete values:
-            * `value`, `float`, the percentage of complete values in the data.
-            * `total`, `int`, total number of values expected to be populated.
-            * `complete`, `int`, number of cells that have value.
-        '''
-        total, complete = reduce(lambda total, complete, result: (
-            total + result.get('total', 0),
-            complete + result.get('complete', 0)
-        ), metrics, (0, 0))
+        total, complete = reduce(
+            lambda acc, result: (
+                acc[0] + result.get('total', 0),
+                acc[1] + result.get('complete', 0)
+            ),
+            metrics,
+            (0, 0)
+        )
         return {
             'total': total,
             'complete': complete,
-            'value': float(complete)/float(total) * 100.0 if total else 0.0,
+            'value': float(complete) / float(total) * 100.0 if total else 0.0,
         }
+    # def calculate_metric(self, resource, data):
+    #     '''Calculates the completeness dimension metric for the given resource
+    #     from the resource data.
+
+    #     :param resource: `dict`, CKAN resource.
+    #     :param data: `dict`, the resource data as a dict with the following
+    #         values:
+    #             * `total`, `int`, total number of rows.
+    #             * `fields`, `list` of `dict`, column metadata - name, type.
+    #             * `records`, `iterable`, iterable over the rows in the resource
+    #                 where each row is a `dict` itself.
+
+    #     :returns: `dict`, the report contaning the calculated values:
+    #         * `value`, `float`, the percentage of complete values in the data.
+    #         * `total`, `int`, total number of values expected to be populated.
+    #         * `complete`, `int`, number of cells that have value.
+    #     '''
+    #     log.debug('---completeness start----')
+    #     log.debug(data['fields'])
+    #     log.debug(data['total'])
+    #     columns_count = len(data['fields'])
+    #     rows_count = data['total']
+    #     total_values_count = columns_count * rows_count
+
+    #     log.debug('---Rows: %d, Columns: %d, Total Values: %d',
+    #                       rows_count, columns_count, total_values_count)
+    #     log.debug(data)
+    #     total_complete_values = 0
+    #     for row in data['records']:
+    #         total_complete_values += self._completenes_row(row)
+
+    #     result = \
+    #         float(total_complete_values)/float(total_values_count) * 100.0 if \
+    #         total_values_count else 0
+    #     log.debug ('Complete (non-empty) values: %s',
+    #                       total_complete_values)
+    #     log.debug('Completeness score: %f%%', result)
+    #     return {
+    #         'value': result,
+    #         'total': total_values_count,
+    #         'complete': total_complete_values,
+    #     }
+
+    # def _completenes_row(self, row):
+    #     count = 0
+    #     for _, value in row.items():
+    #         if value is None:
+    #             continue
+    #         if isinstance(value, str):
+    #             if not value.strip():
+    #                 continue
+    #         count += 1
+    #     return count
+
+    # def calculate_cumulative_metric(self, resources, metrics):
+    #     '''Calculates the cumulative report for all resources from the
+    #     calculated results for each resource.
+
+    #     The calculation is done as `all_complete/all_total * 100`, where
+    #         * `all_complete` is the total number of completed values in all
+    #             resources.
+    #         * all_total is the number of expected values (rows*columns) in all
+    #             resources.
+    #     The final value is the percentage of completed values in all resources
+    #     in the dataset.
+
+    #     :param resources: `list` of CKAN resources.
+    #     :param metrics: `list` of `dict` results for each resource.
+
+    #     :returns: `dict`, a report for the total percentage of complete values:
+    #         * `value`, `float`, the percentage of complete values in the data.
+    #         * `total`, `int`, total number of values expected to be populated.
+    #         * `complete`, `int`, number of cells that have value.
+    #     '''
+    #     total, complete = reduce(lambda total, complete, result: (
+    #         total + result.get('total', 0),
+    #         complete + result.get('complete', 0)
+    #     ), metrics, (0, 0))
+    #     return {
+    #         'total': total,
+    #         'complete': complete,
+    #         'value': float(complete)/float(total) * 100.0 if total else 0.0,
+    #     }
+    #     # return {
+    #     #     'total': 0,
+    #     #     'complete': 0,
+    #     #     'value': 0,
+    #     # }
 class Uniqueness(): #DimensionMetric
     '''Calculates the uniqueness of the data.
 
@@ -2572,10 +2684,12 @@ class Consistency():#DimensionMetric
             * `report`, `dict`, detailed, per column, report for the
                 consistency of the data.
         '''
+        log.debug('-----consistency start-------')
+        log.debug(data['fields'])
         validators = self.get_consistency_validators()
         fields = {f['id']: f for f in data['fields']}
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}  
-        # log.debug('-----chk consistency--------')
+        #
         # log.debug(data)
         # log.debug(fields)
         count_row=0
