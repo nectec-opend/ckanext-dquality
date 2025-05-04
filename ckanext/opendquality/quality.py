@@ -408,7 +408,33 @@ class DataQualityMetrics(object):
         except Exception as e:
             # Handle other exceptions
             log.debug("Error:", e)
-            return False   
+            return False
+    def _handle_existing_record(self, data_quality, last_modified, resource):
+        """Handle logic when a previous metric record exists."""
+        self.logger.debug("Found previous metric record.")
+
+        if data_quality.resource_last_modified < last_modified:
+            self.logger.debug("Resource has been updated. Recalculating metrics.")
+            self._delete_metrics_record('resource', resource['id'])
+            updated = self._new_metrics_record('resource', resource['id'])
+            updated.resource_last_modified = last_modified
+            return False  # recalculate
+
+        if data_quality.resource_last_modified == last_modified:
+            all_calculated = all(
+                data_quality.metrics.get(m.name) is not None for m in self.metrics
+            )
+            if all_calculated:
+                self.logger.debug("All metrics already calculated. Using cache.")
+                return True
+            else:
+                self.logger.debug("Partial metrics found. Will recalculate missing.")
+                return True
+
+        self.logger.debug("No valid condition met. Creating new record.")
+        data_quality = self._new_metrics_record('resource', resource['id'])
+        data_quality.resource_last_modified = last_modified
+        return False
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
         metadata_modified = resource.get('metadata_modified')
@@ -442,61 +468,66 @@ class DataQualityMetrics(object):
             log.debug(start_time)
             connection_url = True
             file_size = self.get_file_size(resource_url)
-            # file_size = int(response.headers['Content-Length'])
             if file_size is not None:
                 file_size_mb = file_size/1024**2
-                log.debug("--- file_size ----")
-                log.debug(file_size_mb)
-            
-            if not is_datadict: #and file_size_mb <= 10:                                                    
+                log.debug("File size (MB): %s", file_size_mb)
+       
+            if not is_datadict:                                                   
                 #----- connect model: check records----------------------
                 data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
                 cached_calculation = False
+
                 if data_quality:
-                    self.logger.debug('Data Quality calculated for '
-                                    'version modified on: %s',
-                                    data_quality.resource_last_modified)
-                    # if data_quality.resource_last_modified >= last_modified:
-                    if data_quality.resource_last_modified < last_modified:
-                        cached_calculation = True
-                        log.debug('--delete and run new updated file--')
-                        #delete record
-                        self._delete_metrics_record('resource', resource['id'])
-                        #calculate new record
-                        data_quality = self._new_metrics_record('resource', resource['id'])
-                        data_quality.resource_last_modified = last_modified
-                        self.logger.debug('Re-calculation.')
-                    elif (data_quality.resource_last_modified == last_modified):
-                        cached_calculation = True
-                        # check if all metrics have been calculated or some needs to be
-                        # calculated again
-                        if all(map(lambda m: m is not None, [
-                                    data_quality.completeness,
-                                    data_quality.uniqueness,
-                                    data_quality.validity,
-                                    data_quality.timeliness,
-                                    data_quality.consistency,
-                                    data_quality.openness,
-                                    data_quality.downloadable,
-                                    data_quality.access_api,
-                                    data_quality.machine_readable
-                                    ])):
-                            self.logger.debug('Data Quality already calculated.')
-                            return data_quality.metrics
-                        else:
-                            self.logger.debug('Data Quality not calculated for '
-                                            'all dimensions.')
-                    else:
-                        #calculate new record
-                        data_quality = self._new_metrics_record('resource',
-                                                                resource['id'])
-                        data_quality.resource_last_modified = last_modified
-                        self.logger.debug('Resource changed since last calculated. '
-                                        'Calculating data quality again.')
+                    cached_calculation = self._handle_existing_record(data_quality, last_modified, resource)
                 else:
                     data_quality = self._new_metrics_record('resource', resource['id'])
                     data_quality.resource_last_modified = last_modified
-                    self.logger.debug('First data quality calculation.')
+                    self.logger.debug('First time data quality calculation.')
+                # if data_quality:
+                #     self.logger.debug('Data Quality calculated for '
+                #                     'version modified on: %s',
+                #                     data_quality.resource_last_modified)
+                #     # if data_quality.resource_last_modified >= last_modified:
+                #     if data_quality.resource_last_modified < last_modified:
+                #         cached_calculation = True
+                #         log.debug('--delete and run new updated file--')
+                #         #delete record
+                #         self._delete_metrics_record('resource', resource['id'])
+                #         #calculate new record
+                #         data_quality = self._new_metrics_record('resource', resource['id'])
+                #         data_quality.resource_last_modified = last_modified
+                #         self.logger.debug('Re-calculation.')
+                #     elif (data_quality.resource_last_modified == last_modified):
+                #         cached_calculation = True
+                #         # check if all metrics have been calculated or some needs to be
+                #         # calculated again
+                #         if all(map(lambda m: m is not None, [
+                #                     data_quality.completeness,
+                #                     data_quality.uniqueness,
+                #                     data_quality.validity,
+                #                     data_quality.timeliness,
+                #                     data_quality.consistency,
+                #                     data_quality.openness,
+                #                     data_quality.downloadable,
+                #                     data_quality.access_api,
+                #                     data_quality.machine_readable
+                #                     ])):
+                #             self.logger.debug('Data Quality already calculated.')
+                #             return data_quality.metrics
+                #         else:
+                #             self.logger.debug('Data Quality not calculated for '
+                #                             'all dimensions.')
+                #     else:
+                #         #calculate new record
+                #         data_quality = self._new_metrics_record('resource',
+                #                                                 resource['id'])
+                #         data_quality.resource_last_modified = last_modified
+                #         self.logger.debug('Resource changed since last calculated. '
+                #                         'Calculating data quality again.')
+                # else:
+                #     data_quality = self._new_metrics_record('resource', resource['id'])
+                #     data_quality.resource_last_modified = last_modified
+                #     self.logger.debug('First data quality calculation.')
                 #----------------Calculate Metrics--------------------
                 data_quality.ref_id = resource['id']
                 data_quality.resource_last_modified = last_modified
@@ -1151,16 +1182,24 @@ class ResourceFetchData2(object):
                     if filepath.startswith('http'):  # If it's a URL
                         response = requests.get(filepath)
                         response.encoding = 'utf-8'  # Ensure correct encoding
-                        
+                        content_type = response.headers.get('Content-Type', '')
+                        log.debug(content_type)
                         # Ensure content type is JSON
-                        if 'application/json' in response.headers.get('Content-Type', ''):
+                        if 'application/json' in content_type or 'application/octet-stream' in content_type:
+                        # if 'application/json' in response.headers.get('Content-Type', ''):
                             # Use `pd.read_json` with a StringIO object for URL content
                             from io import StringIO
                             json_data = StringIO(response.text)
                             data_df = pd.read_json(json_data)
                         else:
-                            log.debug("Expected JSON but received:")
-                            log.debug(response.headers.get('Content-Type'))                                
+                            try:
+                                json_obj = json.loads(response.text)
+                                data_df = pd.json_normalize(json_obj)
+                                log.debug("Parsed as JSON despite invalid Content-Type")
+                            except json.JSONDecodeError:
+                                log.debug("Expected JSON but received:")
+                                log.debug("Response content preview:")
+                                raise ValueError("Unsupported Content-Type and invalid JSON")                                
                     else:  # If it's a file path
                         data_df = pd.read_json(filepath)
 
@@ -1170,9 +1209,6 @@ class ResourceFetchData2(object):
                     # log.debug(data)
                 except ValueError as e:
                     log.debug("Error parsing JSON")
-                    log.debug(e)
-                    log.debug("Response content")
-                    log.debug(response.content)
                     data = []
                 except json.JSONDecodeError as e:
                     log.debug("Error decoding JSON")
@@ -1246,7 +1282,7 @@ class ResourceFetchData2(object):
                         log.debug("Cannot detect mimetype")
                         return True
                 else:
-                    log.debug("Content-Type:", content_type)
+                    log.debug("Content-Type: %s", content_type)
                     return True  # It's a valid file based on Content-Type
             else:
                 # If there's no Content-Type, guess based on URL or file content
@@ -2415,29 +2451,34 @@ class Validity():#DimensionMetric
                 'valid': 0,
                 'report': dict_error
             }
-            
-        # log.debug('-----Check Validity---:row and error----')
-        # valid = total_rows - total_errors
-        # value = float(valid)/float(total_rows) * 100.0
-        valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
-        validity_score = (valid_rows / total_rows) * 100
-        # Ensure the score is between 0 and 100
-        validity_score = max(min(validity_score, 100), 0)
-        # log.debug(relevant_errors)
-        # log.debug(dict_error)
-        # log.debug(validity_score)
+        blank_header = 1
+        duplicate_header = 1
+        extra_value =  1
+        if dict_error.get('blank-header', 0) > 0 :
+            blank_header = 0
+        if dict_error.get('duplicate-header', 0) > 0 :
+            duplicate_header = 0
+        if dict_error.get('extra-value', 0) > 0 :
+            extra_value = 0
+        
+        validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
+        log.debug("---validity_score---")
+        log.debug(blank_header)
+        log.debug(duplicate_header)
+        log.debug(extra_value)
+        log.debug(validity_score)
+        # valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
+        # validity_score = (valid_rows / total_rows) * 100
+        # validity_score = max(min(validity_score, 100), 0)
+         # ถือว่าถ้า dataset นี้ผ่าน validation ทั้งหมด ก็ valid = 1, ถ้าไม่ก็ 0
+        is_valid = 1 if validity_score == 100 else 0
+
         return {
             'value': validity_score,
-            'total': total_rows,
-            'valid': valid_rows,
+            'total': 1,        # นับเป็น 1 dataset
+            'valid': is_valid, # 1 = valid, 0 = invalid
             'report': dict_error
         }
-        # return {
-        #     'value': value,
-        #     'total': total_rows,
-        #     'valid': valid,
-        #     'report': dict_error
-        # }
 
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the percentage of valid records in all the data for the
@@ -2463,12 +2504,16 @@ class Validity():#DimensionMetric
                 'total': 0,
                 'valid': 0,
             }
-
         return {
-            'value': float(valid)/float(total) * 100.0,
-            'total': total,
-            'valid': valid,
-        }
+                'value': float(valid)/float(total) * 100.0 if total else 0.0,
+                'total': total,
+                'valid': valid,
+            }
+        # return {
+        #     'value': float(valid)/float(total) * 100.0,
+        #     'total': total,
+        #     'valid': valid,
+        # }
 # class Accuracy():#DimensionMetric
 #     '''Calculates Data Qualtiy dimension accuracy.
 
