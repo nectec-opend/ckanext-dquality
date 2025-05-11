@@ -29,7 +29,7 @@ import chardet
 from six import string_types
 import time
 from functools import reduce
-
+import numpy as np
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -252,7 +252,7 @@ class DataQualityMetrics(object):
     def _data_quality_settings(self, resource):
         settings = {}
         #'completeness', 'uniqueness'
-        for dimension in ['validity', 'consistency','openness','downloadable','machine_readable', 'timeliness']:
+        for dimension in ['validity', 'consistency','openness','availablity','downloadable','machine_readable', 'timeliness']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -588,8 +588,9 @@ class DataQualityMetrics(object):
                                         
                         if (file_size_mb <= 5 and connection_url):
                             log.debug('------ check all metrics-----')
-                            if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
-                                log.debug('------ check openness-----')
+                            if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api'):
+                                log.debug('------ check metric-----')
+                                log.debug(metric.name)
                                 results[metric.name] = metric.calculate_metric(resource)
 
                             elif(metric.name == 'consistency'):
@@ -598,8 +599,6 @@ class DataQualityMetrics(object):
                                 consistency_val = results[metric.name].get('value')
                                 log.debug(consistency_val)
                             elif(metric.name == 'validity'):
-                               
-                                # results[metric.name] = metric.calculate_metric(resource,data_stream)
                                 log.debug('----check validity------')
                                 log.debug(data_stream2['total'])
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)         
@@ -629,7 +628,7 @@ class DataQualityMetrics(object):
                                 results[metric.name] = metric.calculate_metric(resource) #,data_stream
 
                         else:
-                            if(metric.name == 'openness' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                            if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
                             elif(metric.name == 'machine_readable'):
                                 log.debug('----machine_readable_val------')       
@@ -691,9 +690,10 @@ class DataQualityMetrics(object):
                 data_quality.modified_at = datetime.now()
                 #----------------------
                 data_quality.openness = 0
+                data_quality.availability = 0
                 data_quality.downloadable = 0
                 data_quality.access_api = 0
-                data_quality.timeliness = 999
+                data_quality.timeliness = -1 # 999
                 data_quality.openness = 0
                 data_quality.consistency = 0
                 data_quality.validity = 0
@@ -1753,26 +1753,40 @@ class Downloadable():#DimensionMetric
         '''
         # log.debug('-------------Calculate downloadable metrics -----------')
         # log.debug(metrics)
-        downloadable_list = []
-        total = 0
+        # downloadable_list = []
+        # total = 0
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     if item_metric:
+        #         downloadable_score = item_metric.get('value')
+        #         total = total+downloadable_score
+        #         downloadable_list.append(downloadable_score)
+        
+        # if downloadable_list:
+        #     result_score = max(downloadable_list)
+        #     return {
+        #         'total': total,
+        #         'value': result_score,
+        #     }
+        # else:
+        #     return {
+        #         'total': 0,
+        #         'value': 0,
+        #     }
+        N_total = len(resources)
+        N_downloadable = 0 
         for item_metric in metrics:
             #check dict is not Empty
             if item_metric:
                 downloadable_score = item_metric.get('value')
-                total = total+downloadable_score
-                downloadable_list.append(downloadable_score)
-        
-        if downloadable_list:
-            result_score = max(downloadable_list)
-            return {
-                'total': total,
-                'value': result_score,
-            }
-        else:
-            return {
-                'total': 0,
-                'value': 0,
-            }
+                N_downloadable = N_downloadable+downloadable_score
+        downloadable_score = (N_downloadable / N_total * 100) if N_total > 0 else 0.0
+
+        return {
+            "N_total": N_total,
+            "N_available": N_downloadable,
+            "value": round(downloadable_score, 2)
+        }
 class AccessAPI():#DimensionMetric
     '''Calculates the Downloadable Data Qualtiy dimension.
 
@@ -1833,18 +1847,18 @@ class AccessAPI():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        # log.debug ('-----Access API-----')
-        access_api_score = 2 
+        log.debug ('-----Access API-----')
+        access_api_score = 1 #2 
         log.debug (resource['format'])
-        if(resource['datastore_active'] == True and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')):
-            access_api_score = 2
-        elif(resource['datastore_active'] == False and  (resource['format'] == 'CSV' or resource['format'] == 'XLSX')): 
+        if(resource['datastore_active'] == True):
             access_api_score = 1
+        elif(resource['datastore_active'] == False): 
+            access_api_score = 0
         elif(resource['format'] == 'API'):
             is_valid_api = self.check_api(resource['url'])
             # is_valid_api = self.check_api(resource['format'])
             if is_valid_api:
-                access_api_score = 2
+                access_api_score = 1 #2
                 log.debug ("The URL is a valid API endpoint.")
             else:
                 access_api_score = 0
@@ -1880,26 +1894,157 @@ class AccessAPI():#DimensionMetric
         '''
         # log.debug('-------------Calculate accessibility metrics -----------')
         # log.debug(metrics)
-        access_api_list = []
-        total = 0
+        # access_api_list = []
+        # total = 0
         
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     if item_metric:
+        #         access_api_score = item_metric.get('value')
+        #         total = total+access_api_score
+        #         access_api_list.append(access_api_score)
+        # if access_api_list:
+        #     result_score = max(access_api_list)
+        #     return {
+        #         'total': total,
+        #         'value': result_score,
+        #     }
+        # else:
+        #     return {
+        #         'total': 0,
+        #         'value': 0,
+        #     }
+        N_total = len(resources)
+        N_access_api = 0 #sum(1 for r in resources if r.get('value') == 1)
         for item_metric in metrics:
             #check dict is not Empty
             if item_metric:
                 access_api_score = item_metric.get('value')
-                total = total+access_api_score
-                access_api_list.append(access_api_score)
-        if access_api_list:
-            result_score = max(access_api_list)
-            return {
-                'total': total,
-                'value': result_score,
-            }
+                N_access_api = N_access_api+access_api_score
+        access_api_score = (N_access_api / N_total * 100) if N_total > 0 else 0.0
+
+        return {
+            "N_total": N_total,
+            "N_available": N_access_api,
+            "value": round(access_api_score, 2)
+        }
+class Availability():
+    '''Calculates the Availability Data Qualtiy dimension.
+
+    The calculation is performed over all values in the resource data.
+    In each row, ever cell is inspected if there is a value present in it.
+
+    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+        * `cells_with_value` is the number of cells containing a value. A cell
+            contains a value if the value in the cell is not `None` or an empty
+            string or a string containing only whitespace.
+        * `total_numbr_of_cells` is the total number of cells expected to be
+            populted. This is calculated from the number of rows multiplied by
+            the number of columns in the tabular data.
+
+    The return value is a percentage of cells that are populated from the total
+    number of cells.
+    '''
+
+    def __init__(self):
+        self.name = 'availability'
+
+    def calculate_metric(self, resource):
+        '''Calculates the openness dimension metric for the given resource
+        from the resource data.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, the report contaning the calculated values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        #---------- Setting --------------------
+        access   = AccessAPI()       # สร้าง object ของ AccessAPI
+        download = Downloadable()    # สร้าง object ของ Downloadable
+        #---------- Downloadable --------------------
+        downloadable_score = 1
+        resource_data_format = resource['format'] 
+        resource_url    = resource['url']
+        
+        if download.is_downloadable(resource_url):
+            downloadable_score = 1 
+        else: 
+            downloadable_score = 0 
+
+        #---------- Access Api -----------------------
+        
+        access_api_score = 1 
+        log.debug (resource['format'])
+        if(resource['datastore_active'] == True):
+            access_api_score = 1
+        elif(resource['datastore_active'] == False): 
+            access_api_score = 0
+        elif(resource['format'] == 'API'):
+            is_valid_api = access.check_api(resource['url'])
+            if is_valid_api:
+                access_api_score = 1 
+                log.debug ("The URL is a valid API endpoint.")
+            else:
+                access_api_score = 0
+                log.debug ("The URL is not a valid API endpoint.")
         else:
-            return {
-                'total': 0,
-                'value': 0,
-            }
+            access_api_score = 0
+
+        #----------------------------------------------
+        availability_score = 1
+        if downloadable_score == 1 or access_api_score == 1 :
+            availability_score = 1
+        else:
+            availability_score = 0
+        return {
+            'downloadable': downloadable_score,
+            'access_api': access_api_score,
+            'value': availability_score,
+        }
+        
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the cumulative report for all resources from the
+        calculated results for each resource.
+
+        The calculation is done as `all_complete/all_total * 100`, where
+            * `all_complete` is the total number of completed values in all
+                resources.
+            * all_total is the number of expected values (rows*columns) in all
+                resources.
+        The final value is the percentage of completed values in all resources
+        in the dataset.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of complete values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        N_total = len(resources)
+        N_available = 0 #sum(1 for r in resources if r.get('value') == 1)
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric:
+                available_score = item_metric.get('value')
+                N_available = N_available+available_score
+        availability_score = (N_available / N_total * 100) if N_total > 0 else 0.0
+
+        return {
+            "N_total": N_total,
+            "N_available": N_available,
+            "value": round(availability_score, 2)
+        }
+
 class MachineReadable():#DimensionMetric
     '''Calculates the MachineReadable Data Qualtiy dimension.
 
@@ -2127,38 +2272,65 @@ class Completeness():#DimensionMetric
         log.debug('---completeness start----')
         log.debug(data['fields'])
         log.debug(data['total'])
-        columns_count = len(data['fields'])
-        rows_count = data['total']
-        total_values_count = columns_count * rows_count
+        # columns_count = len(data['fields'])
+        # rows_count = data['total']
+        # total_values_count = columns_count * rows_count
+
+        # log.debug('---Rows: %d, Columns: %d, Total Values: %d',
+        #                   rows_count, columns_count, total_values_count)
+        # total_complete_values = 0
+        # for row in data['records']:
+        #     log.debug('---row---')
+        #     log.debug(row)
+        #     total_complete_values += self._completenes_row(row)
+
+        # result = \
+        #     float(total_complete_values)/float(total_values_count) * 100.0 if \
+        #     total_values_count else 0
+        # log.debug ('Complete (non-empty) values: %s',
+        #                   total_complete_values)
+        # log.debug('Completeness score: %f%%', result)
+        # return {
+        #     'value': round(result,2),
+        #     'total': total_values_count,
+        #     'complete': total_complete_values,
+        # }
+
+        # สร้าง DataFrame จาก records
+        df = pd.DataFrame(data['records'])
+
+        # ลบช่องว่างและจัดการค่าว่างใน string
+        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+
+        # แปลงค่าว่างให้กลายเป็น NaN
+        df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN"], value=np.nan, inplace=True)
+
+        rows_count, columns_count = df.shape
+        total_values_count = rows_count * columns_count
+        total_complete_values = df.notna().sum().sum()
 
         log.debug('---Rows: %d, Columns: %d, Total Values: %d',
-                          rows_count, columns_count, total_values_count)
-        log.debug(data)
-        total_complete_values = 0
-        for row in data['records']:
-            total_complete_values += self._completenes_row(row)
+                rows_count, columns_count, total_values_count)
+        log.debug('Complete (non-empty) values: %d', total_complete_values)
 
-        result = \
-            float(total_complete_values)/float(total_values_count) * 100.0 if \
-            total_values_count else 0
-        log.debug ('Complete (non-empty) values: %s',
-                          total_complete_values)
+        result = float(total_complete_values) / float(total_values_count) * 100.0 if total_values_count else 0
         log.debug('Completeness score: %f%%', result)
+
         return {
-            'value': result,
+            'value': round(result, 2),
             'total': total_values_count,
-            'complete': total_complete_values,
+            'complete': int(total_complete_values),
         }
-    def _completenes_row(self, row):
-            count = 0
-            for _, value in row.items():
-                if value is None:
-                    continue
-                if isinstance(value, str):
-                    if not value.strip():
-                        continue
-                count += 1
-            return count
+    # def _completenes_row(self, row):
+    #         count = 0
+    #         for _, value in row.items():
+    #             if value is None:
+    #                 continue
+    #             if isinstance(value, str):
+    #                 if not value.strip():
+    #                     continue
+    #             count += 1
+    #         return count
     # def _completeness_row(self, row):
     #     return sum(1 for v in row.values() if v is not None and (not isinstance(v, str) or v.strip()))
 
@@ -2174,7 +2346,7 @@ class Completeness():#DimensionMetric
         return {
             'total': total,
             'complete': complete,
-            'value': float(complete) / float(total) * 100.0 if total else 0.0,
+            'value': round(float(complete) / float(total) * 100.0,2) if total else 0.0,
         }
     # def calculate_metric(self, resource, data):
     #     '''Calculates the completeness dimension metric for the given resource
@@ -2320,8 +2492,8 @@ class Uniqueness(): #DimensionMetric
             'columns': {},
         }
         if result['total'] > 0:
-            result['value'] = (100.0 *
-                               float(result['unique'])/float(result['total']))
+            result['value'] = round(100.0 *
+                               float(result['unique'])/float(result['total']),2)
         else:
             result['value'] = 0.0
 
@@ -2330,7 +2502,7 @@ class Uniqueness(): #DimensionMetric
             result['columns'][col] = {
                 'total': tot,
                 'unique': unique,
-                'value': 100.0*float(unique)/float(tot) if tot > 0 else 0.0,
+                'value': round(100.0*float(unique)/float(tot),2) if tot > 0 else 0.0,
             }
         return result
 
@@ -2354,8 +2526,8 @@ class Uniqueness(): #DimensionMetric
         result['total'] = sum([r.get('total', 0) for r in metrics])
         result['unique'] = sum([r.get('unique', 0) for r in metrics])
         if result['total'] > 0:
-            result['value'] = (100.0 *
-                               float(result['unique'])/float(result['total']))
+            result['value'] = round(100.0 *
+                               float(result['unique'])/float(result['total']),2)
         else:
             result['value'] = 0.0
 
@@ -2474,7 +2646,7 @@ class Validity():#DimensionMetric
         is_valid = 1 if validity_score == 100 else 0
 
         return {
-            'value': validity_score,
+            'value': round(validity_score,2),
             'total': 1,        # นับเป็น 1 dataset
             'valid': is_valid, # 1 = valid, 0 = invalid
             'report': dict_error
@@ -2505,7 +2677,7 @@ class Validity():#DimensionMetric
                 'valid': 0,
             }
         return {
-                'value': float(valid)/float(total) * 100.0 if total else 0.0,
+                'value': round(float(valid)/float(total) * 100.0,2) if total else 0.0,
                 'total': total,
                 'valid': valid,
             }
@@ -2903,49 +3075,123 @@ class Timeliness():#DimensionMetric
             created = dateutil.parser.parse(resource.get('created'))
 
 
+        # measured_count = 0
+        # total_delta = 0
+        # diff_date = (created.date() - datetime.now().date()).days
+        # tln = abs((created.date() - datetime.now().date()).days)
+        # if update_frequency_unit.value == u'วัน':
+        #     if update_frequency_interval.value != '':
+        #         tln_val = int(update_frequency_interval.value) - tln
+        #     else:
+        #         tln_val = 1 - tln
+        # elif update_frequency_unit.value == u'สัปดาห์':
+        #     if update_frequency_interval.value != '':
+        #         tln_val = (7*int(update_frequency_interval.value)) - tln
+        #     else:
+        #         tln_val = 7 - tln
+        # elif update_frequency_unit.value == u'เดือน':
+        #     if update_frequency_interval.value != '':
+        #         tln_val = (30 * int(update_frequency_interval.value)) - tln
+        #     else:
+        #         tln_val = 30 - tln
+        # elif update_frequency_unit.value == u'ไตรมาส':
+        #     if update_frequency_interval.value != '':
+        #         tln_val = (90 * int(update_frequency_interval.value)) - tln
+        #     else:
+        #         tln_val = 90 - tln
+        # elif update_frequency_unit.value == u'ครึ่งปี':
+        #     if update_frequency_interval.value != '':
+        #         tln_val = (180 * int(update_frequency_interval.value)) - tln
+        #     else:
+        #         tln_val = 180 - tln
+        # elif update_frequency_unit.value == u'ปี':
+        #     if update_frequency_interval.value != '':
+        #         tln_val =  (365 * int(update_frequency_interval.value)) - tln
+        #     else:
+        #         tln_val = 365 - tln
+        # else:
+        #     tln_val = 999
+
+        # return {         
+        #     'frequency': update_frequency_unit.value,
+        #     'value': tln_val,
+        #     'date_diff': diff_date
+        # }
         measured_count = 0
         total_delta = 0
-        diff_date = (created.date() - datetime.now().date()).days
-        tln = abs((created.date() - datetime.now().date()).days)
+        elapsed_days = (created.date() - datetime.now().date()).days
+        overdue_day =  0
+        update_cycle_days = 0
+        freshness = 0
         if update_frequency_unit.value == u'วัน':
             if update_frequency_interval.value != '':
-                tln_val = int(update_frequency_interval.value) - tln
+                update_cycle_days = int(update_frequency_interval.value)
             else:
-                tln_val = 1 - tln
+                update_cycle_days = 1
         elif update_frequency_unit.value == u'สัปดาห์':
             if update_frequency_interval.value != '':
-                tln_val = (7*int(update_frequency_interval.value)) - tln
+                update_cycle_days = (7*int(update_frequency_interval.value))
             else:
-                tln_val = 7 - tln
+                update_cycle_days = 7
         elif update_frequency_unit.value == u'เดือน':
             if update_frequency_interval.value != '':
-                tln_val = (30 * int(update_frequency_interval.value)) - tln
+                update_cycle_days = (30 * int(update_frequency_interval.value)) 
             else:
-                tln_val = 30 - tln
+                update_cycle_days = 30
         elif update_frequency_unit.value == u'ไตรมาส':
             if update_frequency_interval.value != '':
-                tln_val = (90 * int(update_frequency_interval.value)) - tln
+                update_cycle_days = (90 * int(update_frequency_interval.value))
             else:
-                tln_val = 90 - tln
+                update_cycle_days = 90 
         elif update_frequency_unit.value == u'ครึ่งปี':
             if update_frequency_interval.value != '':
-                tln_val = (180 * int(update_frequency_interval.value)) - tln
+                update_cycle_days = (180 * int(update_frequency_interval.value))
             else:
-                tln_val = 180 - tln
+                update_cycle_days = 180
         elif update_frequency_unit.value == u'ปี':
             if update_frequency_interval.value != '':
-                tln_val =  (365 * int(update_frequency_interval.value)) - tln
+                update_cycle_days =  (365 * int(update_frequency_interval.value))
             else:
-                tln_val = 365 - tln
+                update_cycle_days = 365
+        overdue_day =  elapsed_days - update_cycle_days
+        safe_overdue = max(0, overdue_day)
+        
+        log.debug('elapsed_days')
+        log.debug(elapsed_days)
+        log.debug('overdue_day')
+        log.debug(overdue_day)
+        log.debug('update_cycle_days')
+        log.debug(update_frequency_unit.value)
+        if update_cycle_days > 0:
+            acceptable_latency = (safe_overdue / update_cycle_days) * 100
+            #freshness = ข้อมูลใหม่แค่ไหน, 100% = เพิ่งอัปเดต, 0% ถึงรอบพอดี, ติดลบข้อมูลล่าช้า
+            freshness = (update_cycle_days - elapsed_days) / update_cycle_days * 100
         else:
-            tln_val = 999
-
+            acceptable_latency = -1  # หรือคุณจะตั้งให้เป็น None หรือ -1 แล้วแต่กรณี
+            freshness = -1
+       
+        #(update_cycle_days-elapsed_days)/update_cycle_days * 100
+        #----Timeliness------------
+        timeliness = 0
+        if acceptable_latency == 0:
+            timeliness = 0 # อัพเดทตรงเวลา
+        elif acceptable_latency>0 and acceptable_latency <= 25:
+            timeliness = 1 # รบกวนปรับปรุง
+        elif acceptable_latency>25 and acceptable_latency <= 50:
+            timeliness = 3 # ควรปรับปรุง
+        elif acceptable_latency>50 and acceptable_latency <= 100:
+            timeliness = 4 # ต้องปรับปรุง
+        elif acceptable_latency > 100:
+            timeliness = 5 # ล้าสมัยเกินไป
+        elif acceptable_latency == -1:
+            timeliness = -1 # ไม่ได้กำหนด
+        
         return {         
             'frequency': update_frequency_unit.value,
-            'value': tln_val,
-            'date_diff': diff_date
+            'value': timeliness,
+            'acceptable_latency': acceptable_latency,
+            'freshness':freshness
         }
-
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the timeliness of all data in all of the given resources
         based on the results for each individual resource.
@@ -2976,7 +3222,8 @@ class Timeliness():#DimensionMetric
                 total = total+timeliness_score
                 timeliness_list.append(timeliness_score)
         if timeliness_list:
-            result_score = min(timeliness_list)
+            result_score = 0
+            #result_score = min(timeliness_list)
             return {
                 'total': total,
                 'value': result_score,
