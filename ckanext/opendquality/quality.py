@@ -251,8 +251,8 @@ class DataQualityMetrics(object):
     
     def _data_quality_settings(self, resource):
         settings = {}
-        #'completeness', 'uniqueness'
-        for dimension in ['validity', 'consistency','openness','availablity','downloadable','machine_readable', 'timeliness']:
+        #,'machine_readable'
+        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','availablity','downloadable', 'timeliness','utf8']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -462,6 +462,7 @@ class DataQualityMetrics(object):
         execute_time = 0
         timeout = 5  # in seconds
         connection_url = False
+        today = datetime.today().strftime("%Y-%m-%d")
         # Check if the request was successful
         if self.check_connection_url(resource_url, timeout):     
             start_time = time.time()
@@ -531,7 +532,6 @@ class DataQualityMetrics(object):
                 #----------------Calculate Metrics--------------------
                 data_quality.ref_id = resource['id']
                 data_quality.resource_last_modified = last_modified
-                
                 data_stream2 = None
                 if self.force_recalculate:
                     log.info('Forcing recalculation of the data metrics '
@@ -562,14 +562,6 @@ class DataQualityMetrics(object):
                         
                         self.logger.debug('Calculating dimension: %s...', metric)
                     #------------------------------------------------------
-                        # if not data_stream:
-                        #     data_stream = self._fetch_resource_data(resource)
-                        # else:
-                        #     if data_stream.get('records') and \
-                        #             hasattr(data_stream['records'], 'rewind'):
-                        #         data_stream['records'].rewind()
-                        #     else:
-                        #         data_stream = self._fetch_resource_data(resource)
                         if not data_stream2:
                             data_stream2 = self._fetch_resource_data2(resource)
                         else:
@@ -578,8 +570,7 @@ class DataQualityMetrics(object):
                                 data_stream2['records'].rewind()
                             else:
                                 data_stream2 = self._fetch_resource_data2(resource)
-                      
-                        # data_stream2 = self._fetch_resource_data2(resource)
+                
                         #------ Check Meta Data --------------------------------
                         log.debug('------ Resource URL: Data Stream2-----')
                         log.debug(resource['url'])
@@ -616,9 +607,12 @@ class DataQualityMetrics(object):
                                 log.debug(data_stream2['total'])
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                 cuniqueness_report = results[metric.name].get('report')
-                            elif(metric.name == 'machine_readable'):
-                                log.debug('----machine_readable_val------')       
-                                results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
+                            elif(metric.name == 'utf8'):
+                                log.debug('----utf8_val------')       
+                                results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
+                            # elif(metric.name == 'machine_readable'):
+                            #     log.debug('----machine_readable_val------')       
+                            #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
                             elif (metric.name == 'timeliness'):     
                                 log.debug('----timeliness------')                                         
                                 results[metric.name] = metric.calculate_metric(resource) #,data_stream
@@ -630,9 +624,12 @@ class DataQualityMetrics(object):
                         else:
                             if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
-                            elif(metric.name == 'machine_readable'):
-                                log.debug('----machine_readable_val------')       
-                                results[metric.name] = metric.calculate_metric_machine(resource,0,{})
+                            # elif(metric.name == 'machine_readable'):
+                            #     log.debug('----machine_readable_val------')       
+                            #     results[metric.name] = metric.calculate_metric_machine(resource,0,{})
+                            elif(metric.name == 'utf8'):
+                                log.debug('----utf8_val------')       
+                                results[metric.name] = metric.calculate_metric_utf8(resource,{})
                             elif(metric.name == 'timeliness'):
                                 results[metric.name] = metric.calculate_metric(resource)
                             #do not execute big file for consistency and validty
@@ -664,11 +661,13 @@ class DataQualityMetrics(object):
                 log.debug(execute_time)
                 #---- add filepath ----
                 upload = uploader.get_resource_uploader(resource)
-                filepath = upload.get_path(resource['id'])
-                data_quality.filepath = filepath
+                # filepath = upload.get_path(resource['id'])
+                # data_quality.filepath = filepath
+                data_quality.error   = ''
+                data_quality.version = today
                 data_quality.url = resource['url']
-                data_quality.file_size = file_size_mb
-                data_quality.execute_time = execute_time
+                data_quality.file_size    = round(file_size_mb,3)
+                data_quality.execute_time = round(execute_time,3)
                 data_quality.save()
                 self.logger.debug('Metrics calculated for resource: %s',
                                 resource['id'])
@@ -697,9 +696,11 @@ class DataQualityMetrics(object):
                 data_quality.openness = 0
                 data_quality.consistency = 0
                 data_quality.validity = 0
-                data_quality.machine_readable = 0      
+                # data_quality.machine_readable = 0      
                 #---- add filepath ----
-                data_quality.filepath = ''
+                # data_quality.filepath = ''
+                data_quality.error = 'connection timed out'
+                data_quality.version = today
                 data_quality.url = resource['url']
                 data_quality.file_size = 0
                 data_quality.execute_time = 0
@@ -1778,8 +1779,8 @@ class Downloadable():#DimensionMetric
         for item_metric in metrics:
             #check dict is not Empty
             if item_metric:
-                downloadable_score = item_metric.get('value')
-                N_downloadable = N_downloadable+downloadable_score
+                downloadable_value = item_metric.get('value')
+                N_downloadable = N_downloadable+downloadable_value
         downloadable_score = (N_downloadable / N_total * 100) if N_total > 0 else 0.0
 
         return {
@@ -1919,8 +1920,8 @@ class AccessAPI():#DimensionMetric
         for item_metric in metrics:
             #check dict is not Empty
             if item_metric:
-                access_api_score = item_metric.get('value')
-                N_access_api = N_access_api+access_api_score
+                access_api_value = item_metric.get('value')
+                N_access_api = N_access_api+access_api_value
         access_api_score = (N_access_api / N_total * 100) if N_total > 0 else 0.0
 
         return {
@@ -2044,9 +2045,8 @@ class Availability():
             "N_available": N_available,
             "value": round(availability_score, 2)
         }
-
-class MachineReadable():#DimensionMetric
-    '''Calculates the MachineReadable Data Qualtiy dimension.
+class EncodingUTF8():
+    '''Calculates the Encoding UTF-8 dimension.
 
     The calculation is performed over all values in the resource data.
     In each row, ever cell is inspected if there is a value present in it.
@@ -2064,7 +2064,7 @@ class MachineReadable():#DimensionMetric
     '''
 
     def __init__(self):
-        self.name = 'machine_readable'
+        self.name = 'utf8'
     def calculate_metric(self,resource,data): 
         return {
             'consistency': 0,
@@ -2072,7 +2072,7 @@ class MachineReadable():#DimensionMetric
             'encoding': '',
             'value': 0
         }
-    def calculate_metric_machine(self,resource,consistency_val,validity_report): 
+    def calculate_metric_utf8(self,resource,validity_report): 
         '''Calculates the openness dimension metric for the given resource
         from the resource data.
 
@@ -2095,10 +2095,10 @@ class MachineReadable():#DimensionMetric
         image_format = ['PNG','JPEG','GIF','TIFF']#-60
         openness_5_star_format = ['RDF','TTL','N3','GeoJSON','WMS','GML','KML','SHP','Esri REST']#100
         validity_chk = True
-        encoding_utf8 = False
+        encoding_utf8 = 0
         data_format = resource['format'] 
         mimetype    = resource['mimetype']   
-        machine_readable_score = 100
+       
         # log.debug('-----Machine Readable ------')
         # log.debug(data_format)
         # log.debug(resource['mimetype'])
@@ -2112,54 +2112,31 @@ class MachineReadable():#DimensionMetric
         #---- Tabular Data -------------#
         data_format = data_format.replace(".", "")
         data_format = data_format.upper()
+        file_type = ''
         if data_format in machine_readable_format:
             encoding = validity_report.get('encoding')
             valid    = validity_report.get('valid')          
-            log.debug('-----machine_readable_format------')
+            log.debug('-----tabular_format------')
             # log.debug(valid)
             # log.debug(encoding_utf8)
             # log.debug(validity_chk)
             # log.debug(consistency_val)
-
+            file_type = 'tabular'
             if "utf-8" in encoding:
-                encoding_utf8 = True
-            # if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
-            #    validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
-            #    validity_report.get('extra-value') > 0 or validity_report.get('schema-error') > 0):
-            if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
-               validity_report.get('extra-value') or validity_report.get('source-error') > 0 ):
-                validity_chk = False
-            
-            if(consistency_val >= 0 and consistency_val < 100):
-                machine_readable_score = machine_readable_score-15
-            if(validity_chk == False):
-                machine_readable_score = machine_readable_score-20
-            if(encoding_utf8 == False):
-                machine_readable_score = machine_readable_score-10
-                    
-            # log.debug('----machine_readable_val in------')
-            # log.debug('MachineReadable score: %f%%', machine_readable_score)
-            # log.debug(encoding_utf8)
-            # log.debug(consistency_val)
-            # log.debug(validity_chk)
-            return {
-                'consistency': consistency_val,
-                'validity': validity_chk,
-                'encoding': encoding_utf8,
-                'value': machine_readable_score
-            }
+                encoding_utf8 = 1          
         elif data_format in openness_5_star_format:
-            machine_readable_score = 100
+            file_type = 'spacial types'
         elif data_format in document_format:
-            machine_readable_score = machine_readable_score-50
+            file_type = 'document'
         elif data_format in image_format:
-            machine_readable_score = machine_readable_score-60
+            file_type = 'image'
         else:
-            machine_readable_score = machine_readable_score-60
+            file_type = 'other'
             
         return {
             'format': data_format,
-            'value': machine_readable_score
+            'file_type': file_type,
+            'value': encoding_utf8
         }
 
     def calculate_cumulative_metric(self, resources, metrics):
@@ -2183,29 +2160,186 @@ class MachineReadable():#DimensionMetric
             * `complete`, `int`, number of cells that have value.
         '''
         # log.debug('-------------Calculate machine metrics -----------')
-        # log.debug(metrics)
-        machine_readable_list = []
-        total = 0
-        
+        N_total = len(resources)
+        N_encoding_utf8 = 0 
+
         for item_metric in metrics:
-            #check dict is not Empty
-            if item_metric:
-                machine_readable_score = item_metric.get('value')
-                if isinstance(machine_readable_score, int):
-                    total = total+machine_readable_score
-                    machine_readable_list.append(machine_readable_score)
-        if machine_readable_list:
-            result_score = max(machine_readable_list)
-            return {
-                'total': total,
-                'avg_score': total/len(machine_readable_list),
-                'value': result_score,
-            }
-        else:
-            return {
-                'total': 0,
-                'value': 0,
-            }
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_encoding_utf8 += val
+                
+            else:
+                N_total -= 1
+
+        encoding_utf8_score = (N_encoding_utf8 / N_total * 100) if N_total > 0 else 0.0
+
+        return {
+            "N_total": N_total,
+            "N_encoding_utf8": N_encoding_utf8,
+            "value": round(encoding_utf8_score, 2)
+        }
+# class MachineReadable():#DimensionMetric
+#     '''Calculates the MachineReadable Data Qualtiy dimension.
+
+#     The calculation is performed over all values in the resource data.
+#     In each row, ever cell is inspected if there is a value present in it.
+
+#     The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+#         * `cells_with_value` is the number of cells containing a value. A cell
+#             contains a value if the value in the cell is not `None` or an empty
+#             string or a string containing only whitespace.
+#         * `total_numbr_of_cells` is the total number of cells expected to be
+#             populted. This is calculated from the number of rows multiplied by
+#             the number of columns in the tabular data.
+
+#     The return value is a percentage of cells that are populated from the total
+#     number of cells.
+#     '''
+
+#     def __init__(self):
+#         self.name = 'machine_readable'
+#     def calculate_metric(self,resource,data): 
+#         return {
+#             'consistency': 0,
+#             'validity': '',
+#             'encoding': '',
+#             'value': 0
+#         }
+#     def calculate_metric_machine(self,resource,consistency_val,validity_report): 
+#         '''Calculates the openness dimension metric for the given resource
+#         from the resource data.
+
+#         :param resource: `dict`, CKAN resource.
+#         :param data: `dict`, the resource data as a dict with the following
+#             values:
+#                 * `total`, `int`, total number of rows.
+#                 * `fields`, `list` of `dict`, column metadata - name, type.
+#                 * `records`, `iterable`, iterable over the rows in the resource
+#                     where each row is a `dict` itself.
+
+#         :returns: `dict`, the report contaning the calculated values:
+#             * `value`, `float`, the percentage of complete values in the data.
+#             * `total`, `int`, total number of values expected to be populated.
+#             * `complete`, `int`, number of cells that have value.
+#         '''
+#         #--------------Machine Readable-----------------
+#         machine_readable_format = ['CSV','XLSX','XLS','JSON','XML'] #'JSON','XML' 
+#         document_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT','ODS','ODP'] #-50
+#         image_format = ['PNG','JPEG','GIF','TIFF']#-60
+#         openness_5_star_format = ['RDF','TTL','N3','GeoJSON','WMS','GML','KML','SHP','Esri REST']#100
+#         validity_chk = True
+#         encoding_utf8 = False
+#         data_format = resource['format'] 
+#         mimetype    = resource['mimetype']   
+#         machine_readable_score = 100
+#         # log.debug('-----Machine Readable ------')
+#         # log.debug(data_format)
+#         # log.debug(resource['mimetype'])
+#         # log.debug(resource['id'])
+#         #if data format and mimetype is null, find format from url
+#         if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
+#             resource_url = resource['url']   
+#             format_url = resource_url.split(".")[-1]
+#             data_format = format_url.upper()
+#             # log.debug(data_format)
+#         #---- Tabular Data -------------#
+#         data_format = data_format.replace(".", "")
+#         data_format = data_format.upper()
+#         if data_format in machine_readable_format:
+#             encoding = validity_report.get('encoding')
+#             valid    = validity_report.get('valid')          
+#             log.debug('-----machine_readable_format------')
+#             # log.debug(valid)
+#             # log.debug(encoding_utf8)
+#             # log.debug(validity_chk)
+#             # log.debug(consistency_val)
+
+#             if "utf-8" in encoding:
+#                 encoding_utf8 = True
+#             # if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
+#             #    validity_report.get('blank-row') > 0 or validity_report.get('duplicate-row') > 0 or 
+#             #    validity_report.get('extra-value') > 0 or validity_report.get('schema-error') > 0):
+#             if(validity_report.get('blank-header') > 0 or validity_report.get('duplicate-header') > 0 or 
+#                validity_report.get('extra-value') or validity_report.get('source-error') > 0 ):
+#                 validity_chk = False
+            
+#             if(consistency_val >= 0 and consistency_val < 100):
+#                 machine_readable_score = machine_readable_score-15
+#             if(validity_chk == False):
+#                 machine_readable_score = machine_readable_score-20
+#             if(encoding_utf8 == False):
+#                 machine_readable_score = machine_readable_score-10
+                    
+#             # log.debug('----machine_readable_val in------')
+#             # log.debug('MachineReadable score: %f%%', machine_readable_score)
+#             # log.debug(encoding_utf8)
+#             # log.debug(consistency_val)
+#             # log.debug(validity_chk)
+#             return {
+#                 'consistency': consistency_val,
+#                 'validity': validity_chk,
+#                 'encoding': encoding_utf8,
+#                 'value': machine_readable_score
+#             }
+#         elif data_format in openness_5_star_format:
+#             machine_readable_score = 100
+#         elif data_format in document_format:
+#             machine_readable_score = machine_readable_score-50
+#         elif data_format in image_format:
+#             machine_readable_score = machine_readable_score-60
+#         else:
+#             machine_readable_score = machine_readable_score-60
+            
+#         return {
+#             'format': data_format,
+#             'value': machine_readable_score
+#         }
+
+#     def calculate_cumulative_metric(self, resources, metrics):
+#         '''Calculates the cumulative report for all resources from the
+#         calculated results for each resource.
+
+#         The calculation is done as `all_complete/all_total * 100`, where
+#             * `all_complete` is the total number of completed values in all
+#                 resources.
+#             * all_total is the number of expected values (rows*columns) in all
+#                 resources.
+#         The final value is the percentage of completed values in all resources
+#         in the dataset.
+
+#         :param resources: `list` of CKAN resources.
+#         :param metrics: `list` of `dict` results for each resource.
+
+#         :returns: `dict`, a report for the total percentage of complete values:
+#             * `value`, `float`, the percentage of complete values in the data.
+#             * `total`, `int`, total number of values expected to be populated.
+#             * `complete`, `int`, number of cells that have value.
+#         '''
+#         # log.debug('-------------Calculate machine metrics -----------')
+#         # log.debug(metrics)
+#         machine_readable_list = []
+#         total = 0
+        
+#         for item_metric in metrics:
+#             #check dict is not Empty
+#             if item_metric:
+#                 machine_readable_score = item_metric.get('value')
+#                 if isinstance(machine_readable_score, int):
+#                     total = total+machine_readable_score
+#                     machine_readable_list.append(machine_readable_score)
+#         if machine_readable_list:
+#             result_score = max(machine_readable_list)
+#             return {
+#                 'total': total,
+#                 'avg_score': total/len(machine_readable_list),
+#                 'value': result_score,
+#             }
+#         else:
+#             return {
+#                 'total': 0,
+#                 'value': 0,
+#             }
 class Completeness():#DimensionMetric
     '''Calculates the completeness Data Qualtiy dimension.
 
@@ -2476,36 +2610,51 @@ class Uniqueness(): #DimensionMetric
             * `unique`, `int`, number unique values in the data.
             * `columns`, `dict`, detailed report for each column in the data.
         '''
-        total = {}
-        distinct = {}
+        # total = {}
+        # distinct = {}
 
-        for row in data['records']:
-            for col, value in row.items():
-                total[col] = total.get(col, 0) + 1
-                if distinct.get(col) is None:
-                    distinct[col] = set()
-                distinct[col].add(value)
+        # for row in data['records']:
+        #     for col, value in row.items():
+        #         total[col] = total.get(col, 0) + 1
+        #         if distinct.get(col) is None:
+        #             distinct[col] = set()
+        #         distinct[col].add(value)
 
-        result = {
-            'total': sum(v for _, v in total.items()),
-            'unique': sum([len(s) for _, s in distinct.items()]),
-            'columns': {},
+        # result = {
+        #     'total': sum(v for _, v in total.items()),
+        #     'unique': sum([len(s) for _, s in distinct.items()]),
+        #     'columns': {},
+        # }
+        # if result['total'] > 0:
+        #     result['value'] = round(100.0 *
+        #                        float(result['unique'])/float(result['total']),2)
+        # else:
+        #     result['value'] = 0.0
+
+        # for col, tot in total.items():
+        #     unique = len(distinct.get(col, set()))
+        #     result['columns'][col] = {
+        #         'total': tot,
+        #         'unique': unique,
+        #         'value': round(100.0*float(unique)/float(tot),2) if tot > 0 else 0.0,
+        #     }
+        # return result
+        # แปลง data['records'] เป็น DataFrame
+        df = pd.DataFrame(data['records'])
+        total_rows = len(df)
+        unique_rows = len(df.drop_duplicates())
+
+        uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
+        log.debug("----Uniqueness start----")
+        log.debug("Total rows: %d", total_rows)
+        log.debug("Unique rows: %d", unique_rows)
+        log.debug("Uniqueness score: %.2f%%", uniqueness_score)
+
+        return {
+            'value': round(uniqueness_score, 2),
+            'total': total_rows,
+            'unique': unique_rows
         }
-        if result['total'] > 0:
-            result['value'] = round(100.0 *
-                               float(result['unique'])/float(result['total']),2)
-        else:
-            result['value'] = 0.0
-
-        for col, tot in total.items():
-            unique = len(distinct.get(col, set()))
-            result['columns'][col] = {
-                'total': tot,
-                'unique': unique,
-                'value': round(100.0*float(unique)/float(tot),2) if tot > 0 else 0.0,
-            }
-        return result
-
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates uniqueness for all resources based on the metrics
         calculated in the previous phase for each resource.

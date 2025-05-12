@@ -43,7 +43,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
     if six.PY2:
         _register_mock_translator()
     # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']
-    dimensions =  ['completeness','uniqueness','validity','consistency','openness','availability','downloadable','access_api','machine_readable','timeliness']
+    dimensions =  ['completeness','uniqueness','validity','consistency','openness','availability','downloadable','access_api','timeliness','utf8']
     dimension_calculators = {
         'completeness': quality_lib.Completeness(),
         'uniqueness'  : quality_lib.Uniqueness(),
@@ -53,8 +53,9 @@ def calculate(organization=None, dataset=None,dimension='all'):
         'availability' : quality_lib.Availability(),
         'downloadable' : quality_lib.Downloadable(),
         'access_api' : quality_lib.AccessAPI(),
-        'machine_readable' : quality_lib.MachineReadable(),
-        'timeliness': quality_lib.Timeliness()
+        # 'machine_readable' : quality_lib.MachineReadable(),
+        'timeliness': quality_lib.Timeliness(),
+        'utf8': quality_lib.EncodingUTF8()
     }
  
 
