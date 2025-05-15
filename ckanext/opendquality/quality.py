@@ -437,14 +437,17 @@ class DataQualityMetrics(object):
         return False
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
-        metadata_modified = resource.get('metadata_modified')
-        if metadata_modified:  # Check if the value is not None
-            last_modified = datetime.strptime(metadata_modified, '%Y-%m-%dT%H:%M:%S.%f')
+        if resource.get('last_modified') is not None:
+            last_modified = dateutil.parser.parse(resource.get('last_modified') or resource.get('created'))
         else:
-            last_modified = None  # Handle the case where metadata_modified is None
-            
-        # last_modified = datetime.strptime(resource.get('metadata_modified'),'%Y-%m-%dT%H:%M:%S.%f')
-                           
+            last_modified = dateutil.parser.parse(resource.get('created'))
+        #-----old version----------------------
+        # metadata_modified = resource.get('metadata_modified')
+        # if metadata_modified:  # Check if the value is not None
+        #     last_modified = datetime.strptime(metadata_modified, '%Y-%m-%dT%H:%M:%S.%f')
+        # else:
+        #     last_modified = None  # Handle the case where metadata_modified is None
+                        
         self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
         resource_url = resource['url']
@@ -3268,7 +3271,7 @@ class Timeliness():#DimensionMetric
         # }
         measured_count = 0
         total_delta = 0
-        elapsed_days = (created.date() - datetime.now().date()).days
+        elapsed_days = (datetime.now().date() - created.date()).days
         overdue_day =  0
         update_cycle_days = 0
         freshness = 0
@@ -3302,21 +3305,29 @@ class Timeliness():#DimensionMetric
                 update_cycle_days =  (365 * int(update_frequency_interval.value))
             else:
                 update_cycle_days = 365
+
         overdue_day =  elapsed_days - update_cycle_days
-        safe_overdue = max(0, overdue_day)
+        safe_overdue = max(0, overdue_day) #abs(overdue_day)#
         
+        log.debug('resource.id')
+        log.debug(resource.get('id'))
+        log.debug('created.date()')
+        log.debug(created.date())
         log.debug('elapsed_days')
         log.debug(elapsed_days)
         log.debug('overdue_day')
         log.debug(overdue_day)
+        log.debug('safe_overdue')
+        log.debug(safe_overdue)
         log.debug('update_cycle_days')
+        log.debug(update_cycle_days)
         log.debug(update_frequency_unit.value)
         if update_cycle_days > 0:
             acceptable_latency = (safe_overdue / update_cycle_days) * 100
             #freshness = ข้อมูลใหม่แค่ไหน, 100% = เพิ่งอัปเดต, 0% ถึงรอบพอดี, ติดลบข้อมูลล่าช้า
             freshness = (update_cycle_days - elapsed_days) / update_cycle_days * 100
         else:
-            acceptable_latency = -1  # หรือคุณจะตั้งให้เป็น None หรือ -1 แล้วแต่กรณี
+            acceptable_latency = -1  # ไม่ได้กำหนดค่า หรือกำหนดเป็นค่าอื่นๆ
             freshness = -1
        
         #(update_cycle_days-elapsed_days)/update_cycle_days * 100
@@ -3327,19 +3338,19 @@ class Timeliness():#DimensionMetric
         elif acceptable_latency>0 and acceptable_latency <= 25:
             timeliness = 1 # รบกวนปรับปรุง
         elif acceptable_latency>25 and acceptable_latency <= 50:
-            timeliness = 3 # ควรปรับปรุง
+            timeliness = 2 # ควรปรับปรุง
         elif acceptable_latency>50 and acceptable_latency <= 100:
-            timeliness = 4 # ต้องปรับปรุง
+            timeliness = 3 # ต้องปรับปรุง
         elif acceptable_latency > 100:
-            timeliness = 5 # ล้าสมัยเกินไป
+            timeliness = 4 # ล้าสมัยเกินไป
         elif acceptable_latency == -1:
             timeliness = -1 # ไม่ได้กำหนด
         
         return {         
             'frequency': update_frequency_unit.value,
             'value': timeliness,
-            'acceptable_latency': acceptable_latency,
-            'freshness':freshness
+            'acceptable_latency': round(acceptable_latency,2),
+            'freshness':round(freshness,2)
         }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the timeliness of all data in all of the given resources
