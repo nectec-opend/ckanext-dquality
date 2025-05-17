@@ -447,7 +447,7 @@ class DataQualityMetrics(object):
         #     last_modified = datetime.strptime(metadata_modified, '%Y-%m-%dT%H:%M:%S.%f')
         # else:
         #     last_modified = None  # Handle the case where metadata_modified is None
-                        
+
         self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
         resource_url = resource['url']
@@ -595,8 +595,7 @@ class DataQualityMetrics(object):
                             elif(metric.name == 'validity'):
                                 log.debug('----check validity------')
                                 log.debug(data_stream2['total'])
-                                results[metric.name] = metric.calculate_metric(resource,data_stream2)         
-                                
+                                results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
                                 # validity_val = results[metric.name].get('value')
                                 validity_report = results[metric.name].get('report')
                                 # encoding   = results[metric.name].get('encoding')
@@ -606,7 +605,7 @@ class DataQualityMetrics(object):
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                 completeness_report = results[metric.name].get('report')
                             elif(metric.name == 'uniqueness'):                           
-                                log.debug('----check completeness------')
+                                log.debug('----check uniqueness------')
                                 log.debug(data_stream2['total'])
                                 results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                 cuniqueness_report = results[metric.name].get('report')
@@ -618,7 +617,14 @@ class DataQualityMetrics(object):
                             #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
                             elif (metric.name == 'timeliness'):     
                                 log.debug('----timeliness------')                                         
-                                results[metric.name] = metric.calculate_metric(resource) #,data_stream
+                                results[metric.name] = metric.calculate_metric(resource)
+                                timeliness_val = results[metric.name]
+                                # resutls['acc_latency'] = results[metric.name].get('acceptable_latency')
+                                # resutls['freshness'] = results[metric.name].get('freshness')
+                            elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
+                                log.debug('----acc_latency------')                                         
+                                results[metric.name] = metric.calculate_metric(resource,timeliness_val)
+                           
                             else:
                                 log.debug('----else----')    
                                 log.debug(metric.name)                                         
@@ -635,6 +641,9 @@ class DataQualityMetrics(object):
                                 results[metric.name] = metric.calculate_metric_utf8(resource,{})
                             elif(metric.name == 'timeliness'):
                                 results[metric.name] = metric.calculate_metric(resource)
+                                resutls['acc_latency'] = results[metric.name].get('acceptable_latency')
+                                resutls['freshness'] = results[metric.name].get('freshness')
+ 
                             #do not execute big file for consistency and validty
                             results['consistency'] = { 'value': 0}
                             results['validity']    =    { 'value': 0}
@@ -1781,11 +1790,15 @@ class Downloadable():#DimensionMetric
         N_downloadable = 0 
         for item_metric in metrics:
             #check dict is not Empty
-            if item_metric:
-                downloadable_value = item_metric.get('value')
-                N_downloadable = N_downloadable+downloadable_value
-        downloadable_score = (N_downloadable / N_total * 100) if N_total > 0 else 0.0
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_downloadable += val
+                
+            else:
+                N_total -= 1
 
+        downloadable_score = (N_downloadable / N_total * 100) if N_total > 0 else 0.0
         return {
             "N_total": N_total,
             "N_available": N_downloadable,
@@ -1922,10 +1935,19 @@ class AccessAPI():#DimensionMetric
         N_access_api = 0 #sum(1 for r in resources if r.get('value') == 1)
         for item_metric in metrics:
             #check dict is not Empty
-            if item_metric:
-                access_api_value = item_metric.get('value')
-                N_access_api = N_access_api+access_api_value
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_access_api += val
+                
+            else:
+                N_total -= 1
+
         access_api_score = (N_access_api / N_total * 100) if N_total > 0 else 0.0
+        #     if item_metric:
+        #         access_api_value = item_metric.get('value')
+        #         N_access_api = N_access_api+access_api_value
+        # access_api_score = (N_access_api / N_total * 100) if N_total > 0 else 0.0
 
         return {
             "N_total": N_total,
@@ -2037,11 +2059,21 @@ class Availability():
         N_total = len(resources)
         N_available = 0 #sum(1 for r in resources if r.get('value') == 1)
         for item_metric in metrics:
-            #check dict is not Empty
-            if item_metric:
-                available_score = item_metric.get('value')
-                N_available = N_available+available_score
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_available += val
+                
+            else:
+                N_total -= 1
+
         availability_score = (N_available / N_total * 100) if N_total > 0 else 0.0
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     if item_metric:
+        #         available_score = item_metric.get('value')
+        #         N_available = N_available+available_score
+        # availability_score = (N_available / N_total * 100) if N_total > 0 else 0.0
 
         return {
             "N_total": N_total,
@@ -2472,18 +2504,36 @@ class Completeness():#DimensionMetric
     #     return sum(1 for v in row.values() if v is not None and (not isinstance(v, str) or v.strip()))
 
     def calculate_cumulative_metric(self, resources, metrics):
-        total, complete = reduce(
-            lambda acc, result: (
-                acc[0] + result.get('total', 0),
-                acc[1] + result.get('complete', 0)
-            ),
-            metrics,
-            (0, 0)
-        )
+        # total, complete = reduce(
+        #     lambda acc, result: (
+        #         acc[0] + result.get('total', 0),
+        #         acc[1] + result.get('complete', 0)
+        #     ),
+        #     metrics,
+        #     (0, 0)
+        # )
+        # return {
+        #     'total': total,
+        #     'complete': complete,
+        #     'value': round(float(complete) / float(total) * 100.0,2) if total else 0.0,
+        # }
+        N_total = len(resources)
+        N_complete = 0 
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_complete += val
+                
+            else:
+                N_total -= 1
+
+        completeness_score = (N_complete / N_total ) if N_total > 0 else 0.0
         return {
-            'total': total,
-            'complete': complete,
-            'value': round(float(complete) / float(total) * 100.0,2) if total else 0.0,
+            "N_total": N_total,
+            "N_complete": N_complete,
+            "value": round(completeness_score, 2)
         }
     # def calculate_metric(self, resource, data):
     #     '''Calculates the completeness dimension metric for the given resource
@@ -2674,16 +2724,34 @@ class Uniqueness(): #DimensionMetric
             * `total`, `int`, total number of values in the data.
             * `unique`, `int`, number of unique values.
         '''
-        result = {}
-        result['total'] = sum([r.get('total', 0) for r in metrics])
-        result['unique'] = sum([r.get('unique', 0) for r in metrics])
-        if result['total'] > 0:
-            result['value'] = round(100.0 *
-                               float(result['unique'])/float(result['total']),2)
-        else:
-            result['value'] = 0.0
+        # result = {}
+        # result['total'] = sum([r.get('total', 0) for r in metrics])
+        # result['unique'] = sum([r.get('unique', 0) for r in metrics])
+        # if result['total'] > 0:
+        #     result['value'] = round(100.0 *
+        #                        float(result['unique'])/float(result['total']),2)
+        # else:
+        #     result['value'] = 0.0
 
-        return result
+        # return result
+        N_total = len(resources)
+        N_unique = 0 
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_unique += val
+                
+            else:
+                N_total -= 1
+
+        uniqueness_score = (N_unique / N_total ) if N_total > 0 else 0.0
+        return {
+            "N_total": N_total,
+            "N_unique": N_unique,
+            "value": round(uniqueness_score, 2)
+        }
 class Validity():#DimensionMetric
     '''Calculates Data Quality dimension validity.
 
@@ -2820,24 +2888,37 @@ class Validity():#DimensionMetric
             * `total`, `int`, total number of records.
             * `valid`, `int`, number of valid records.
         '''
-        total = sum([r.get('total', 0) for r in metrics])
-        valid = sum([r.get('valid', 0) for r in metrics])
-        if total == 0:
-            return {
-                'value': 0.0,
-                'total': 0,
-                'valid': 0,
-            }
-        return {
-                'value': round(float(valid)/float(total) * 100.0,2) if total else 0.0,
-                'total': total,
-                'valid': valid,
-            }
+        # total = sum([r.get('total', 0) for r in metrics])
+        # valid = sum([r.get('valid', 0) for r in metrics])
+        # if total == 0:
+        #     return {
+        #         'value': 0.0,
+        #         'total': 0,
+        #         'valid': 0,
+        #     }
         # return {
-        #     'value': float(valid)/float(total) * 100.0,
-        #     'total': total,
-        #     'valid': valid,
-        # }
+        #         'value': round(float(valid)/float(total) * 100.0,2) if total else 0.0,
+        #         'total': total,
+        #         'valid': valid,
+        #     }
+        N_total = len(resources)
+        N_validity = 0 
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_validity += val
+                
+            else:
+                N_total -= 1
+
+        validity_score = (N_validity / N_total ) if N_total > 0 else 0.0
+        return {
+            "N_total": N_total,
+            "N_validity": N_validity,
+            "value": round(validity_score, 2)
+        }
 # class Accuracy():#DimensionMetric
 #     '''Calculates Data Qualtiy dimension accuracy.
 
@@ -3146,16 +3227,34 @@ class Consistency():#DimensionMetric
             * `report`, `dict`, detailed, per column, report for the
                 consistency of the data.
         '''
-        total = sum([r.get('total', 0) for r in metrics])
-        consistent = sum([r.get('consistent', 0) for r in metrics])
+        # total = sum([r.get('total', 0) for r in metrics])
+        # consistent = sum([r.get('consistent', 0) for r in metrics])
 
-        # FIXME: This is not the proper calculation. We need to merge all
-        # data to calculate the consistency properly.
-        value = float(consistent)/float(total) * 100.0 if total else 0.0
+        # # FIXME: This is not the proper calculation. We need to merge all
+        # # data to calculate the consistency properly.
+        # value = float(consistent)/float(total) * 100.0 if total else 0.0
+        # return {
+        #     'total': total,
+        #     'consistent': consistent,
+        #     'value': value,
+        # }
+        N_total = len(resources)
+        N_consistency = 0 
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_consistency += val
+                
+            else:
+                N_total -= 1
+
+        consistency_score = (N_consistency / N_total ) if N_total > 0 else 0.0
         return {
-            'total': total,
-            'consistent': consistent,
-            'value': value,
+            "N_total": N_total,
+            "N_consistency": N_consistency,
+            "value": round(consistency_score, 2)
         }
 class Timeliness():#DimensionMetric
     '''Calculates the timeliness Data Quality dimension.
@@ -3377,13 +3476,12 @@ class Timeliness():#DimensionMetric
         for item_metric in metrics:
             #check dict is not Empty
             # if ((item_metric) or (item_metric is not None)):
-            if item_metric:
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
                 timeliness_score = item_metric.get('value')
                 total = total+timeliness_score
                 timeliness_list.append(timeliness_score)
         if timeliness_list:
-            result_score = 0
-            #result_score = min(timeliness_list)
+            result_score = min(timeliness_list)
             return {
                 'total': total,
                 'value': result_score,
@@ -3393,7 +3491,149 @@ class Timeliness():#DimensionMetric
                 'total': 0,
                 'value': 0,
             }
-        
+class AcceptableLatency():
+    '''Calculates the timeliness Data Quality dimension.
+
+    The timeliness of a records is the difference between the times when the
+    measurement was made and the time that record have entered our system.
+
+    The measurement requires extra configuration - the name of the column in
+    the resource data that holds the time of when the measurement was made. If
+    this time is missing or the setting is not configured, then the calculation
+    cannot be performed automatically.
+
+    The calculation is performed by taking a time delta between the time that
+    the resource have been last modified (the time when the data have entered
+    and was stored in CKAN) and the time in the specified column, for each
+    record.
+
+    The total difference (time delta in resolution of seconds) is then divided
+    by the number of records checked, givin the average time delta in seconds.
+    This average is then used as the value for this dimension.
+    '''
+    def __init__(self):
+        # super(Timeliness, self).__init__('timeliness')
+        self.name = 'acc_latency'
+
+    def calculate_metric(self, resource,timeliness_val): 
+   
+        log.debug('resource.id')
+        log.debug(resource.get('id'))
+       
+        acc_latency = timeliness_val.get('acceptable_latency')
+        return {                   
+            'value': acc_latency,
+        }
+    
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the timeliness of all data in all of the given resources
+        based on the results for each individual resource.
+
+        The average delay is calculated by getting the total number of seconds
+        that all records have been delayed, then dividing that to the number of
+        total records in all the data.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the timeliness of the data:
+            * `value`, `str`, string representation of the average time delta,
+                for example: `'+3:24:00'`, `'+3 days, 3:24:00'`
+            * `total`, `int`, total number of seconds that the measurements
+                have beed delayed.
+            * `average`, `int`, the average delay in seocnds.
+            * `records`, `int`, number of checked records.
+        '''
+        N_total = len(resources)
+        N_acc_latency = 0 
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_acc_latency += val
+                
+            else:
+                N_total -= 1
+        #avg N_acc_latency is percent, so we will not *100
+        acc_latency_score = (N_acc_latency / N_total) if N_total > 0 else 0.0
+        log.debug('acc_latency')
+        log.debug(acc_latency_score)
+        return {
+            "N_total": N_total,
+            "N_acc_latency": N_acc_latency,
+            "value": round(acc_latency_score, 2)
+        }
+class Freshness():
+    '''Calculates the timeliness Data Quality dimension.
+
+    The timeliness of a records is the difference between the times when the
+    measurement was made and the time that record have entered our system.
+
+    The measurement requires extra configuration - the name of the column in
+    the resource data that holds the time of when the measurement was made. If
+    this time is missing or the setting is not configured, then the calculation
+    cannot be performed automatically.
+
+    The calculation is performed by taking a time delta between the time that
+    the resource have been last modified (the time when the data have entered
+    and was stored in CKAN) and the time in the specified column, for each
+    record.
+
+    The total difference (time delta in resolution of seconds) is then divided
+    by the number of records checked, givin the average time delta in seconds.
+    This average is then used as the value for this dimension.
+    '''
+    def __init__(self):
+        # super(Timeliness, self).__init__('timeliness')
+        self.name = 'freshness'
+
+    def calculate_metric(self, resource,timeliness_val): 
+   
+        log.debug('resource.id')
+        log.debug(resource.get('id'))
+       
+        freshness = timeliness_val.get('freshness')
+        return {                   
+            'value': freshness,
+        }
+    
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the timeliness of all data in all of the given resources
+        based on the results for each individual resource.
+
+        The average delay is calculated by getting the total number of seconds
+        that all records have been delayed, then dividing that to the number of
+        total records in all the data.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the timeliness of the data:
+            * `value`, `str`, string representation of the average time delta,
+                for example: `'+3:24:00'`, `'+3 days, 3:24:00'`
+            * `total`, `int`, total number of seconds that the measurements
+                have beed delayed.
+            * `average`, `int`, the average delay in seocnds.
+            * `records`, `int`, number of checked records.
+        '''
+        N_total = len(resources)
+        positive = 0
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if(val >= 0):
+                    positive += 1
+                
+            else:
+                N_total -= 1
+        freshness_score = (positive / N_total) * 100 if N_total else 0.0
+        return {
+                'value': round(freshness_score,2),
+                'total': N_total
+            }
+      
 _all_date_formats = [
     '%Y-%m-%d',
     '%y-%m-%d',

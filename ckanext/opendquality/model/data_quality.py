@@ -42,6 +42,8 @@ data_quality_metrics_table = Table(
     Column('completeness', types.Float),
     Column('uniqueness', types.Float),
     Column('timeliness', types.Float),
+    Column('acc_latency', types.Float),
+    Column('freshness', types.Float),
     Column('validity', types.Float),
     # Column('accuracy', types.Float),
     Column('consistency', types.Float),
