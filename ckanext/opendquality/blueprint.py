@@ -1,20 +1,35 @@
 # encoding: utf-8
 
-from flask import Blueprint
+from flask import Blueprint, request
 import ckan.plugins.toolkit as toolkit 
 from logging import getLogger
 # from ckan.common import config
 from ckan.model import package_table, Session
 import ckanext.opendquality.quality as quality_lib
+import ckan.lib.helpers as h
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
 #     DataQualityMetrics
 # )
 log = getLogger(__name__)
-qa = Blueprint('quality', __name__)
+qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
+EXEMPT_ENDPOINTS = {
+    'opendquality.index',
+    'opendquality.admin_report',
+    'opendquality.dashboard',
+}
+
+
+@qa.before_request
+def request_before():
+    if request.endpoint in EXEMPT_ENDPOINTS:
+        return
+    user = getattr(toolkit.c, 'userobj', None)
+    if not user or not getattr(user, 'is_sysadmin', False):
+        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
 
 #---------------------Call calculate---------------------------------
 #--------------------------------------------------------------------
@@ -103,7 +118,47 @@ def all_packages(handler):
             log.exception(e)
 #-----------------------------------------------------
 def home():
-    return {'msg': 'hello world quality'}
+    extra_vars = {
+        'title': toolkit._('Open Data Quality index'),
+        'home': True,
+        'user': toolkit.c.user,
+        'userobj': toolkit.c.userobj,
+        'site_url': toolkit.request.host_url,
+        'site_title': toolkit.config.get('ckan.site_title'),
+        'ckan_version': toolkit.config.get('ckan.version'),
+        'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        # 'external_dashboard': external_stats
+    }
+    return toolkit.render('ckanext/opendquality/index.html', extra_vars)
+    # return {'msg': 'hello world quality'}
+
+def admin_report():
+    extra_vars = {
+        'title': toolkit._('Open Data Quality Admin Report'),
+        'admin_report': True,
+        'user': toolkit.c.user,
+        'userobj': toolkit.c.userobj,
+        'site_url': toolkit.request.host_url,
+        'site_title': toolkit.config.get('ckan.site_title'),
+        'ckan_version': toolkit.config.get('ckan.version'),
+        'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        # 'external_dashboard': external_stats
+    }
+    return toolkit.render('ckanext/opendquality/index.html', extra_vars)
+
+def dashboard():
+    extra_vars = {
+        'title': toolkit._('Open Data Quality Dashboard'),
+        'dashboard': True,
+        'user': toolkit.c.user,
+        'userobj': toolkit.c.userobj,
+        'site_url': toolkit.request.host_url,
+        'site_title': toolkit.config.get('ckan.site_title'),
+        'ckan_version': toolkit.config.get('ckan.version'),
+        'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        # 'external_dashboard': external_stats
+    }
+    return toolkit.render('ckanext/opendquality/index.html', extra_vars)
 
 def calculate_quality(): #completeness
     return {'msg': 'calculate quality score',
@@ -114,11 +169,16 @@ def calculate_quality(): #completeness
             #metrics.calculate_metrics_for_dataset('bird')  
     }
 
+def quality_reports():
+    return {'msg': 'quality reports'}
 # def top_package_owners(limit=100, page=1):
 #     return {
 #         u'opendstats_data': stats.top_package_owners(),
 #         u'opendstats_page': 'top_package_owners'
 #     }
 
-qa.add_url_rule('/quality', view_func=home)
-qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
+qa.add_url_rule('/calculate', endpoint="index", view_func=home)
+# qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
+# qa.add_url_rule('/reports', endpoint="reports", view_func=quality_reports)
+qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report)
+qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)

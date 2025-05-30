@@ -252,7 +252,7 @@ class DataQualityMetrics(object):
     def _data_quality_settings(self, resource):
         settings = {}
         #,'machine_readable'
-        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','availablity','downloadable', 'timeliness','utf8']:
+        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','availablity','downloadable', 'timeliness','relevance','utf8']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -348,8 +348,8 @@ class DataQualityMetrics(object):
 
         results = []
         for resource in dataset['resources']:
-            # self.logger.debug ('Calculating data quality for resource: %s',
-            #                   resource['id'])
+            self.logger.debug ('Calculating data quality for resource: %s',
+                              resource['id'])
             # self.logger.debug ('Calculating data quality for resource: %s',
             #                   resource)
             resource['data_quality_settings'] = self._data_quality_settings(
@@ -409,6 +409,36 @@ class DataQualityMetrics(object):
             # Handle other exceptions
             log.debug("Error:", e)
             return False
+    def is_tabular(self,resource):
+        machine_readable_formats = ['CSV', 'XLSX', 'XLS', 'JSON', 'XML']
+        mimetype_to_format = {
+            'text/csv': 'CSV',
+            'application/vnd.ms-excel': 'XLS',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+            'application/json': 'JSON',
+            'application/xml': 'XML',
+            'text/xml': 'XML'
+        }
+
+        data_format = (resource.get('format') or '').strip().upper()
+        mimetype = (resource.get('mimetype') or '').strip().lower()
+
+        # หาจาก mimetype ถ้า format ยังว่าง
+        if not data_format and mimetype in mimetype_to_format:
+            data_format = mimetype_to_format[mimetype]
+
+        # หาจาก URL ถ้า format ยังว่าง
+        if not data_format:
+            resource_url = resource.get('url', '').strip()
+            if '.' in resource_url:
+                clean_url = resource_url.split('?')[0]
+                extension = clean_url.split('.')[-1]
+                data_format = extension.upper()
+
+        # ลบจุดและเช็คว่าคือ tabular หรือไม่
+        data_format = data_format.replace('.', '').upper()
+        is_file_tabular = data_format in machine_readable_formats
+        return is_file_tabular
     def _handle_existing_record(self, data_quality, last_modified, resource):
         """Handle logic when a previous metric record exists."""
         self.logger.debug("Found previous metric record.")
@@ -455,7 +485,7 @@ class DataQualityMetrics(object):
         resource_name = resource_name.lower()
         log.debug(resource_url)
         # initializing test list
-        datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary']
+        datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary','คำอธิบายชุดข้อมูล']
         # using list comprehension
         # checking if string contains list element
         res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
@@ -586,67 +616,88 @@ class DataQualityMetrics(object):
                                 log.debug('------ check metric-----')
                                 log.debug(metric.name)
                                 results[metric.name] = metric.calculate_metric(resource)
-
-                            elif(metric.name == 'consistency'):
-                                log.debug('------Call consistency -----')                           
-                                results[metric.name] = metric.calculate_metric(resource,data_stream2)
-                                consistency_val = results[metric.name].get('value')
-                                log.debug(consistency_val)
-                            elif(metric.name == 'validity'):
-                                log.debug('----check validity------')
-                                log.debug(data_stream2['total'])
-                                results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
-                                # validity_val = results[metric.name].get('value')
-                                validity_report = results[metric.name].get('report')
-                                # encoding   = results[metric.name].get('encoding')
-                            elif(metric.name == 'completeness'):                           
-                                log.debug('----check completeness------')
-                                log.debug(data_stream2['total'])
-                                results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
-                                completeness_report = results[metric.name].get('report')
-                            elif(metric.name == 'uniqueness'):                           
-                                log.debug('----check uniqueness------')
-                                log.debug(data_stream2['total'])
-                                results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
-                                cuniqueness_report = results[metric.name].get('report')
-                            elif(metric.name == 'utf8'):
-                                log.debug('----utf8_val------')       
-                                results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
-                            # elif(metric.name == 'machine_readable'):
-                            #     log.debug('----machine_readable_val------')       
-                            #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
+                            
                             elif (metric.name == 'timeliness'):     
                                 log.debug('----timeliness------')                                         
                                 results[metric.name] = metric.calculate_metric(resource)
                                 timeliness_val = results[metric.name]
-                                # resutls['acc_latency'] = results[metric.name].get('acceptable_latency')
-                                # resutls['freshness'] = results[metric.name].get('freshness')
                             elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
                                 log.debug('----acc_latency------')                                         
                                 results[metric.name] = metric.calculate_metric(resource,timeliness_val)
-                           
+                            elif( metric.name == 'relevance'):
+                                log.debug('------relevance-----')
+                                #ถ้าตรวจแบบ organization
+                                level_name = 'nectec'
+                                execute_type = 'organization'
+                                results[metric.name] = metric.calculate_metric(resource,level_name,execute_type)
+                            # elif(metric.name == 'machine_readable'):
+                            #     log.debug('----machine_readable_val------')       
+                            #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
+                            tabular_format = self.is_tabular(resource)
+                            log.debug(f"[check tabular_format] => {tabular_format}")
+                            if(tabular_format):
+                                if(metric.name == 'consistency'):
+                                    log.debug('------Call consistency -----')                           
+                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)
+                                    consistency_val = results[metric.name].get('value')
+                                    log.debug(consistency_val)
+                                elif(metric.name == 'validity'):
+                                    log.debug('----check validity------')
+                                    log.debug(data_stream2['total'])
+                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
+                                    # validity_val = results[metric.name].get('value')
+                                    validity_report = results[metric.name].get('report')
+                                    # encoding   = results[metric.name].get('encoding')
+                                elif(metric.name == 'completeness'):                           
+                                    log.debug('----check completeness------')
+                                    log.debug(data_stream2['total'])
+                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
+                                    completeness_report = results[metric.name].get('report')
+                                elif(metric.name == 'uniqueness'):                           
+                                    log.debug('----check uniqueness------')
+                                    log.debug(data_stream2['total'])
+                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
+                                    uniqueness_report = results[metric.name].get('report')
+                                elif(metric.name == 'utf8'):
+                                    log.debug('----utf8_val------')       
+                                    results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
                             else:
-                                log.debug('----else----')    
-                                log.debug(metric.name)                                         
-                                results[metric.name] = metric.calculate_metric(resource) #,data_stream
-
+                                results['consistency'] = { 'value': None }
+                                results['validity']    =    { 'value': None }
+                                results['completeness'] = { 'value': None }
+                                results['uniqueness'] = { 'value': None }
+                                results['preview'] = { 'value': None } #---------------------------**-------
+                            # else:
+                            #     log.debug('----else----')    
+                            #     log.debug(metric.name)                                         
+                            #     results[metric.name] = metric.calculate_metric(resource) #,data_stream
+                        #file_size > 5 MB
                         else:
                             if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api'):
                                 results[metric.name] = metric.calculate_metric(resource)
-                            # elif(metric.name == 'machine_readable'):
-                            #     log.debug('----machine_readable_val------')       
-                            #     results[metric.name] = metric.calculate_metric_machine(resource,0,{})
-                            elif(metric.name == 'utf8'):
-                                log.debug('----utf8_val------')       
-                                results[metric.name] = metric.calculate_metric_utf8(resource,{})
-                            elif(metric.name == 'timeliness'):
+                            # elif(metric.name == 'utf8'):
+                            #     log.debug('----utf8_val------')       
+                            #     results[metric.name] = metric.calculate_metric_utf8(resource,{})
+                            elif (metric.name == 'timeliness'):     
+                                log.debug('----timeliness------')                                         
                                 results[metric.name] = metric.calculate_metric(resource)
-                                resutls['acc_latency'] = results[metric.name].get('acceptable_latency')
-                                resutls['freshness'] = results[metric.name].get('freshness')
+                                timeliness_val = results[metric.name]
+                            elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
+                                log.debug('----acc_latency------')                                         
+                                results[metric.name] = metric.calculate_metric(resource,timeliness_val)
+                            elif( metric.name == 'relevance'):
+                                log.debug('------relevance-----')
+                                #ถ้าตรวจแบบ organization
+                                org_name = 'nectec'
+                                execute_type = 'organization'
+                                results[metric.name] = metric.calculate_metric(resource,org_name,execute_type)
  
                             #do not execute big file for consistency and validty
-                            results['consistency'] = { 'value': 0}
-                            results['validity']    =    { 'value': 0}
+                            results['consistency'] = { 'value': None }
+                            results['validity']    =    { 'value': None }
+                            results['completeness'] = { 'value': None }
+                            results['uniqueness'] = { 'value': None }
+                            results['utf8'] = { 'value': None }
                             if not connection_url:
                                 results['connection_url'] = { 'error': True}
                         
@@ -654,16 +705,28 @@ class DataQualityMetrics(object):
                         self.logger.error('Failed to calculate metric: %s. Error: %s',
                                         metric, str(e))
                         self.logger.exception(e)
+                        results['error'] = "Failed to calculate metric:"+metric.name
                         results[metric.name] = {
                             'failed': True,
                             'error': str(e),
                         }
-                # set results
-                for metric, result in results.items():
-                    if result.get('value') is not None:
-                        setattr(data_quality, metric, result['value'])
+                # set results -- old version
+                # for metric, result in results.items():
+                #     if result.get('value') is not None:
+                #         setattr(data_quality, metric, result['value'])
+                # set results -- new version
+                # หลังจากได้ results มา
+                for metric, result in list(results.items()):
+                    if not isinstance(result, dict):
+                        # ห่อข้อความผิดพลาดไว้ใน dict
+                        results[metric] = {'value': None, 'error': str(result)}
 
-                data_quality.metrics = results
+                # จากนั้นจึงตั้ง attribute ได้อย่างปลอดภัย
+                for metric, result in results.items():
+                    value = result.get('value')
+                    setattr(data_quality, metric, value)
+
+                
                 data_quality.modified_at = datetime.now()
                 #---- add execute time--
                 end_time = time.time()   
@@ -675,9 +738,14 @@ class DataQualityMetrics(object):
                 upload = uploader.get_resource_uploader(resource)
                 # filepath = upload.get_path(resource['id'])
                 # data_quality.filepath = filepath
-                data_quality.error   = ''
+                if 'error' in results and results['error']:
+                    data_quality.error = results['error'].get('error')
+                else:
+                    data_quality.error = ''
                 data_quality.version = today
                 data_quality.url = resource['url']
+                data_quality.metrics = results
+                data_quality.preview = 0 #--------****------------
                 data_quality.file_size    = round(file_size_mb,3)
                 data_quality.execute_time = round(execute_time,3)
                 data_quality.save()
@@ -700,22 +768,23 @@ class DataQualityMetrics(object):
                 data_quality.metrics = {'error':'connection timed out'}
                 data_quality.modified_at = datetime.now()
                 #----------------------
-                data_quality.openness = 0
-                data_quality.availability = 0
-                data_quality.downloadable = 0
-                data_quality.access_api = 0
-                data_quality.timeliness = -1 # 999
-                data_quality.openness = 0
-                data_quality.consistency = 0
-                data_quality.validity = 0
+                data_quality.openness = None
+                data_quality.availability = None
+                data_quality.downloadable = None
+                data_quality.access_api = None
+                data_quality.timeliness = None #-1, 999
+                data_quality.openness = None
+                data_quality.consistency = None
+                data_quality.validity = None
+                data_quality.preview = None #--------****------------
                 # data_quality.machine_readable = 0      
                 #---- add filepath ----
                 # data_quality.filepath = ''
                 data_quality.error = 'connection timed out'
                 data_quality.version = today
                 data_quality.url = resource['url']
-                data_quality.file_size = 0
-                data_quality.execute_time = 0
+                data_quality.file_size = None
+                data_quality.execute_time = None
                 data_quality.save()
                 self.logger.debug('Metrics calculated for resource: %s',
                                     resource['id'])
@@ -759,10 +828,17 @@ class DataQualityMetrics(object):
                 cumulative[metric.name] = cached
                 continue
             metric_results = [res.get(metric.name, {}) for res in results]
-            cumulative[metric.name] = metric.calculate_cumulative_metric(
-                resources,
-                metric_results
-            )
+            if metric.name == 'relevance':
+                cumulative[metric.name] = metric.calculate_cumulative_metric(
+                    package_id,
+                    resources,
+                    metric_results
+                )
+            else:
+                cumulative[metric.name] = metric.calculate_cumulative_metric(
+                    resources,
+                    metric_results
+                )
 
         if cumulative != dataset_results:
             data_quality = self._new_metrics_record('package', package_id)
@@ -2124,6 +2200,7 @@ class EncodingUTF8():
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
+        
         #--------------Machine Readable-----------------
         machine_readable_format = ['CSV','XLSX','XLS','JSON','XML'] #'JSON','XML' 
         document_format = ['PDF','DOC','DOCX','PPTX','PPT','ODT','ODS','ODP'] #-50
@@ -2132,12 +2209,9 @@ class EncodingUTF8():
         validity_chk = True
         encoding_utf8 = 0
         data_format = resource['format'] 
-        mimetype    = resource['mimetype']   
-       
-        # log.debug('-----Machine Readable ------')
-        # log.debug(data_format)
-        # log.debug(resource['mimetype'])
-        # log.debug(resource['id'])
+        mimetype    = resource['mimetype'] 
+        file_type = ''  
+      
         #if data format and mimetype is null, find format from url
         if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
             resource_url = resource['url']   
@@ -2147,18 +2221,16 @@ class EncodingUTF8():
         #---- Tabular Data -------------#
         data_format = data_format.replace(".", "")
         data_format = data_format.upper()
-        file_type = ''
+        
         if data_format in machine_readable_format:
-            encoding = validity_report.get('encoding')
-            valid    = validity_report.get('valid')          
+            encoding = validity_report.get('encoding')     
             log.debug('-----tabular_format------')
-            # log.debug(valid)
-            # log.debug(encoding_utf8)
-            # log.debug(validity_chk)
-            # log.debug(consistency_val)
             file_type = 'tabular'
-            if "utf-8" in encoding:
-                encoding_utf8 = 1          
+            if encoding and "utf-8" in encoding.lower():
+                encoding_utf8 = 1
+            else:
+                encoding_utf8 = 0
+            log.debug(encoding_utf8) 
         elif data_format in openness_5_star_format:
             file_type = 'spacial types'
         elif data_format in document_format:
@@ -2167,13 +2239,12 @@ class EncodingUTF8():
             file_type = 'image'
         else:
             file_type = 'other'
-            
+        
         return {
             'format': data_format,
             'file_type': file_type,
             'value': encoding_utf8
         }
-
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the cumulative report for all resources from the
         calculated results for each resource.
@@ -2471,11 +2542,12 @@ class Completeness():#DimensionMetric
         # ลบช่องว่างและจัดการค่าว่างใน string
         df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 
-        # แปลงค่าว่างให้กลายเป็น NaN
+        # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
         df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN"], value=np.nan, inplace=True)
-
-        rows_count, columns_count = df.shape
+        # คำนวณจำนวนช่องทั้งหมดในตาราง
+        rows_count, columns_count = df.shape 
         total_values_count = rows_count * columns_count
+        # คำนวณจำนวนค่าที่ ไม่เป็น NaN
         total_complete_values = df.notna().sum().sum()
 
         log.debug('---Rows: %d, Columns: %d, Total Values: %d',
@@ -2771,7 +2843,18 @@ class Validity():#DimensionMetric
         rc['validation_options'] = {
             'row_limit': total_rows,
         }
-        return validate_resource_data(rc)
+        # return validate_resource_data(rc)
+        try:
+            return validate_resource_data(rc)
+        except ValueError as ve:
+            log.error(f"Validation failed for resource {resource.get('id')}: {ve}")
+            # บางกรณี อาจเจอ unmatched '{' ให้ตรวจว่าข้อความมี curly braces
+            if "unmatched '{'" in str(ve):
+                log.warning("Found unmatched '{' in validation message. Skipping validation.")
+            return None
+        except Exception as e:
+            log.exception(f"Unexpected error during validation of resource {resource.get('id')}")
+            return None
 
     def calculate_metric(self, resource, data):
         '''Calculates the percentage of valid records in the resource data.
@@ -2805,8 +2888,7 @@ class Validity():#DimensionMetric
             return {
                 'failed': True,
                 'error': str(e),
-            }
-
+            }      
         total_rows = 0
         total_errors = 0
         encoding = ''
@@ -2816,61 +2898,69 @@ class Validity():#DimensionMetric
         table_count = 0
         relevant_errors = 0
         filepath = resource['url']
-        dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
-        error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
-        for table in validation.get('tables', []):
-            total_rows += table.get('row-count', 0)
-            total_errors += table.get('error-count', 0)
-            for error in table.get('errors', []):
-                item_code = error.get('code')
-                error_message = error_message + error.get('message')+','
-                count_val = dict_error[item_code]+1
-                dict_error[item_code] = count_val
-                if error['code'] in error_types:
-                    relevant_errors += 1
-            encoding = table.get('encoding')
-            valid = table.get('valid')
-            log.debug("---encoding---")
-            log.debug(encoding)
-            # log.debug(table.get('errors'))
-            dict_error['encoding'] = encoding
-            dict_error['valid']    = valid
-            dict_error['error'] = error_message
-        if total_rows == 0:            
+        if validation:
+            dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
+            error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
+            for table in validation.get('tables', []):
+                total_rows += table.get('row-count', 0)
+                total_errors += table.get('error-count', 0)
+                for error in table.get('errors', []):
+                    item_code = error.get('code')
+                    error_message = error_message + error.get('message')+','
+                    count_val = dict_error[item_code]+1
+                    dict_error[item_code] = count_val
+                    if error['code'] in error_types:
+                        relevant_errors += 1
+                encoding = table.get('encoding')
+                valid = table.get('valid')
+                log.debug("---encoding---")
+                log.debug(encoding)
+                # log.debug(table.get('errors'))
+                dict_error['encoding'] = encoding
+                dict_error['valid']    = valid
+                dict_error['error'] = error_message
+            if total_rows == 0:            
+                return {
+                    'value': 0.0,
+                    'total': 0,
+                    'valid': 0,
+                    'report': dict_error
+                }
+            blank_header = 1
+            duplicate_header = 1
+            extra_value =  1
+            if dict_error.get('blank-header', 0) > 0 :
+                blank_header = 0
+            if dict_error.get('duplicate-header', 0) > 0 :
+                duplicate_header = 0
+            if dict_error.get('extra-value', 0) > 0 :
+                extra_value = 0
+            
+            validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
+            log.debug("---validity_score---")
+            log.debug(blank_header)
+            log.debug(duplicate_header)
+            log.debug(extra_value)
+            log.debug(validity_score)
+            # valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
+            # validity_score = (valid_rows / total_rows) * 100
+            # validity_score = max(min(validity_score, 100), 0)
+            # ถือว่าถ้า dataset นี้ผ่าน validation ทั้งหมด ก็ valid = 1, ถ้าไม่ก็ 0
+            is_valid = 1 if validity_score == 100 else 0
+
             return {
-                'value': 0.0,
-                'total': 0,
-                'valid': 0,
+                'value': round(validity_score,2),
+                'total': 1,        # นับเป็น 1 dataset
+                'valid': is_valid, # 1 = valid, 0 = invalid
                 'report': dict_error
             }
-        blank_header = 1
-        duplicate_header = 1
-        extra_value =  1
-        if dict_error.get('blank-header', 0) > 0 :
-            blank_header = 0
-        if dict_error.get('duplicate-header', 0) > 0 :
-            duplicate_header = 0
-        if dict_error.get('extra-value', 0) > 0 :
-            extra_value = 0
-        
-        validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
-        log.debug("---validity_score---")
-        log.debug(blank_header)
-        log.debug(duplicate_header)
-        log.debug(extra_value)
-        log.debug(validity_score)
-        # valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
-        # validity_score = (valid_rows / total_rows) * 100
-        # validity_score = max(min(validity_score, 100), 0)
-         # ถือว่าถ้า dataset นี้ผ่าน validation ทั้งหมด ก็ valid = 1, ถ้าไม่ก็ 0
-        is_valid = 1 if validity_score == 100 else 0
-
-        return {
-            'value': round(validity_score,2),
-            'total': 1,        # นับเป็น 1 dataset
-            'valid': is_valid, # 1 = valid, 0 = invalid
-            'report': dict_error
-        }
+        else:
+            dict_error['encoding'] = None
+            dict_error['error'] = 'Validation failed'
+            return {
+                'value': None,
+                'report': dict_error
+            }
 
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the percentage of valid records in all the data for the
@@ -2918,6 +3008,159 @@ class Validity():#DimensionMetric
             "N_total": N_total,
             "N_validity": N_validity,
             "value": round(validity_score, 2)
+        }
+class Relevance(): #DimensionMetric
+    '''Calculates the Relevance of the data.
+
+    The general calculation is: `unique_values/total_values * 100`, where:
+        * `unique_values` is the number of unique values
+        * `total_values` is the total number of value
+
+    The dimension value is a percentage of unique values in the data.
+    '''
+    def __init__(self):
+        # super(Uniqueness, self).__init__('uniqueness')
+        self.name = 'relevance'
+
+    def get_organization_id(self,base_url, org_name):
+        url = f"{base_url}/api/3/action/organization_show?id={org_name}"
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data.get('success'):
+                return data['result']['id'], None
+            return None, f"API responded success=False: {data}"
+        except Exception as e:
+            return None, f"Error fetching organization ID: {str(e)}"
+
+    def get_first_harvest_source(self,base_url, org_id):
+        url = f"{base_url}/api/3/action/harvest_source_list?organization_id={org_id}"
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data.get('success') and data['result']:
+                return data['result'][0], None  # ดึงตัวแรก
+            return None, "No harvest sources found"
+        except Exception as e:
+            return None, f"Error fetching harvest source: {str(e)}"
+
+    def get_package_from_url(self,harvest_url, package_id):
+        url = f"{harvest_url}/api/3/action/package_show?id={package_id}&include_tracking=true"
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data.get('success'):
+                return data['result'], None
+            return None, f"API returned success=False: {data}"
+        except Exception as e:
+            return None, f"Error fetching package data: {str(e)}"
+    def analyze_package_statistics(self, package_data):
+        resources = package_data.get("resources", [])
+        total_download = 0
+
+        for res in resources:
+            tracking = res.get("tracking_summary", {})
+            downloads = tracking.get("total", 0)
+            total_download += downloads
+
+        total_view = package_data.get("tracking_summary", {}).get("total", 0)
+
+        relevance = (total_download / total_view * 100) if total_view > 0 else 0
+
+        return {
+            "total_download": total_download,
+            "total_view": total_view,
+            "relevance_percent": round(relevance, 2)
+        }
+    def calculate_metric(self, resource, level_name, execute_type):
+        '''Calculates the relevance of the values in the data for the given
+        resource.
+
+        For each column of the data, the number of unique values is calculated
+        and the total number of values (basically the number of rows).
+
+        Then, to calculate the number of unique values in the data, the sum of
+        all unique values is calculated and the sum of the total number of
+        values for each column. The the percentage is calculated from those two
+        values.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, a report on the uniqueness metrics for the given
+            resource data:
+            * `value`, `float`, the percentage of unique values in the data.
+            * `total`, `int`, total number of values in the data.
+            * `unique`, `int`, number unique values in the data.
+            * `columns`, `dict`, detailed report for each column in the data.
+        '''
+
+        return {
+            'value': None
+        }
+    def calculate_cumulative_metric(self, package_id, resources, metrics):
+        '''Calculates uniqueness for all resources based on the metrics
+        calculated in the previous phase for each resource.
+
+        The calculation is performed based on the total unique values as a
+        percentage of the total number of values present in all data from all
+        given resources.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of unique values:
+            * `value`, `float`, the percentage of unique values in the data.
+            * `total`, `int`, total number of values in the data.
+            * `unique`, `int`, number of unique values.
+        '''
+        # collect download in resource level
+        # if execute_type == 'organization'
+        #     org_name = level_name
+        # elif execute_type == 'dataset'
+        #     dataset_name = level_name
+        org_name = 'mrta'
+        base_url = "https://ckan-dev.opend.cloud"
+
+        # Step 1: Get org ID
+        org_id, err1 = self.get_organization_id(base_url, org_name)
+        if err1:
+            return {"error": f"Step 1 failed: {err1}"}
+
+        # Step 2: Get first harvest source
+        harvest, err2 = self.get_first_harvest_source(base_url, org_id)
+        if err2:
+            return {"error": f"Step 2 failed: {err2}", "org_id": org_id}
+
+        harvest_url = harvest.get("url")
+
+        if not harvest_url or not package_id:
+            return {"error": "Missing url or resource_id in harvest source", "org_id": org_id, "harvest": harvest}
+
+        # Step 3: Call package_show on that external harvest_url
+        package_data, err3 = self.get_package_from_url(harvest_url, package_id)
+        if err3:
+            return {"error": f"Step 3 failed: {err3}", "harvest_url": harvest_url, "package_id": package_id}
+
+
+        stats = self.analyze_package_statistics(package_data)
+        
+        return {
+            "error": None,
+            "org_id": org_id,
+            "harvest_url": harvest_url,
+            "package_id": package_id,
+            "N_download": stats['total_download'],
+            "N_view": stats['total_view'],
+            "value": stats['relevance_percent']
         }
 # class Accuracy():#DimensionMetric
 #     '''Calculates Data Qualtiy dimension accuracy.

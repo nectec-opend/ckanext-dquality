@@ -1,0 +1,49 @@
+{% extends "my_page.html" %}
+
+{% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+{% block breadcrumb_content %}
+<li class="active">{{ _('Data Quality') }}</li>
+{% endblock %}
+
+{% block custom_styles %}
+  <style>
+    /* .main */
+    .container {
+      max-width: 95%;
+    }
+    .main .wrapper:before {
+      border-right: 0;
+    }
+    .main .secondary {
+      border-right: 1px solid #ddd;
+    }
+  </style>
+{% endblock %}
+
+{% block page_header %}
+{% endblock %}
+{% block primary_content_inner %}
+<h1>{{ title }}</h1>
+{% endblock %}
+
+{% block secondary_content %}
+<section class="module module-narrow module-shallow">
+  <h2 class="module-heading"><i class="fa fa-info-circle"></i> {{ _("คุณภาพชุดข้อมูล") }}</h2>
+  <nav aria-label="{{ _("คุณภาพชุดข้อมูล") }}">
+    <ul class="list-unstyled nav nav-simple nav-facet">
+      {#% if h.check_access('sysadmin') %#}
+      <li class="nav-item{% if home %} active{% endif %}"><a href="{{ h.url_for('opendquality.index') }}">
+          <span class="item-label">{{ _("วัดผลคุณภาพชุดข้อมูล") }}</span>
+        </a></li>
+      <li class="nav-item{% if admin_report %} active{% endif %}"><a href="{{ h.url_for('opendquality.admin_report') }}">
+          <span class="item-label">{{ _("รายงานผลการตรวจวัดคุณภาพข้อมูล") }}</span>
+        </a></li>
+      {#% endif %#}
+      <li class="nav-item{% if dashboard %} active{% endif %}"><a href="{{ h.url_for('opendquality.dashboard') }}">
+          <span class="item-label">{{ _("รายงานและติดตามคุณภาพข้อมูล (Dashboard)") }}</span>
+        </a></li>
+    </ul>
+  </nav>
+  <p class="module-footer"></p>
+</section>
+{% endblock %}
