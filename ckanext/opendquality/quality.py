@@ -34,6 +34,7 @@ import numpy as np
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
+from ckan.plugins.toolkit import config
 
 log = getLogger(__name__)
 # cache_enabled = p.toolkit.asbool(
@@ -3128,7 +3129,8 @@ class Relevance(): #DimensionMetric
         # elif execute_type == 'dataset'
         #     dataset_name = level_name
         org_name = 'mrta'
-        base_url = "https://ckan-dev.opend.cloud"
+        base_url = config.get("ckan.site_url")
+        # base_url = "https://ckan-dev.opend.cloud"
 
         # Step 1: Get org ID
         org_id, err1 = self.get_organization_id(base_url, org_name)
