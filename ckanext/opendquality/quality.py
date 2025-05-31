@@ -35,6 +35,7 @@ from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
 from ckan.plugins.toolkit import config
+from ckan.model import Session, Package, Group
 
 log = getLogger(__name__)
 # cache_enabled = p.toolkit.asbool(
@@ -253,7 +254,7 @@ class DataQualityMetrics(object):
     def _data_quality_settings(self, resource):
         settings = {}
         #,'machine_readable'
-        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','availablity','downloadable', 'timeliness','relevance','utf8']:
+        for dimension in ['completeness', 'uniqueness','validity', 'consistency','openness','availablity','downloadable', 'timeliness','relevance','utf8','preview']:
             for key, value in resource.items():
                 prefix = 'dq_%s' % dimension
                 if key.startswith(prefix):
@@ -390,7 +391,7 @@ class DataQualityMetrics(object):
                 log.debug("Error: Could not retrieve file size, status code:", response.status_code)
                 return None
         except Exception as e:
-            log.debug("Error:", e)
+            log.debug("Missing Content-Length header for URL: %s", url)
             return None 
     def check_connection_url(self,url, timeout):
         log.debug('---check_connection_url--')
@@ -408,7 +409,7 @@ class DataQualityMetrics(object):
             return False
         except Exception as e:
             # Handle other exceptions
-            log.debug("Error:", e)
+            log.debug("Error: %s", e)
             return False
     def is_tabular(self,resource):
         machine_readable_formats = ['CSV', 'XLSX', 'XLS', 'JSON', 'XML']
@@ -611,9 +612,9 @@ class DataQualityMetrics(object):
                         # log.debug(data_stream2)
                         #using metadata for calculate metrics
                                         
-                        if (file_size_mb <= 5 and connection_url):
+                        if (file_size_mb <= 8 and connection_url):
                             log.debug('------ check all metrics-----')
-                            if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api'):
+                            if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 log.debug('------ check metric-----')
                                 log.debug(metric.name)
                                 results[metric.name] = metric.calculate_metric(resource)
@@ -667,14 +668,14 @@ class DataQualityMetrics(object):
                                 results['validity']    =    { 'value': None }
                                 results['completeness'] = { 'value': None }
                                 results['uniqueness'] = { 'value': None }
-                                results['preview'] = { 'value': None } #---------------------------**-------
+                                
                             # else:
                             #     log.debug('----else----')    
                             #     log.debug(metric.name)                                         
                             #     results[metric.name] = metric.calculate_metric(resource) #,data_stream
                         #file_size > 5 MB
                         else:
-                            if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api'):
+                            if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 results[metric.name] = metric.calculate_metric(resource)
                             # elif(metric.name == 'utf8'):
                             #     log.debug('----utf8_val------')       
@@ -746,7 +747,6 @@ class DataQualityMetrics(object):
                 data_quality.version = today
                 data_quality.url = resource['url']
                 data_quality.metrics = results
-                data_quality.preview = 0 #--------****------------
                 data_quality.file_size    = round(file_size_mb,3)
                 data_quality.execute_time = round(execute_time,3)
                 data_quality.save()
@@ -1408,7 +1408,7 @@ class ResourceFetchData2(object):
                 log.debug("Failed to download the file. Status code:", response.status_code)
                 return None
         except Exception as e:
-            log.debug("Error:", e)
+            log.debug("Error: %s", e)
             return None   
     def _download_resource_from_ckan(self, resource):       
         upload = uploader.get_resource_uploader(resource)
@@ -1942,7 +1942,7 @@ class AccessAPI():#DimensionMetric
             * `complete`, `int`, number of cells that have value.
         '''
         log.debug ('-----Access API-----')
-        access_api_score = 1 #2 
+        access_api_score = 0 
         log.debug (resource['format'])
         if(resource['datastore_active'] == True):
             access_api_score = 1
@@ -1957,9 +1957,6 @@ class AccessAPI():#DimensionMetric
             else:
                 access_api_score = 0
                 log.debug ("The URL is not a valid API endpoint.")
-        else:
-            access_api_score = 0
-        # log.debug('Accessibility API score: %f%%', access_api_score)
         return {
             'datastore': resource['datastore_active'],
             'format': resource['format'],
@@ -2286,6 +2283,96 @@ class EncodingUTF8():
             "N_encoding_utf8": N_encoding_utf8,
             "value": round(encoding_utf8_score, 2)
         }
+class Preview():
+    '''Calculates the Encoding UTF-8 dimension.
+
+    The calculation is performed over all values in the resource data.
+    In each row, ever cell is inspected if there is a value present in it.
+
+    The calculation is: `cells_with_value/total_numbr_of_cells * 100`, where:
+        * `cells_with_value` is the number of cells containing a value. A cell
+            contains a value if the value in the cell is not `None` or an empty
+            string or a string containing only whitespace.
+        * `total_numbr_of_cells` is the total number of cells expected to be
+            populted. This is calculated from the number of rows multiplied by
+            the number of columns in the tabular data.
+
+    The return value is a percentage of cells that are populated from the total
+    number of cells.
+    '''
+
+    def __init__(self):
+        self.name = 'preview'
+    def calculate_metric(self, resource):
+        '''Calculates the API Accesssibility dimension metric for the given resource
+        from the resource data.
+
+        :param resource: `dict`, CKAN resource.
+        :param data: `dict`, the resource data as a dict with the following
+            values:
+                * `total`, `int`, total number of rows.
+                * `fields`, `list` of `dict`, column metadata - name, type.
+                * `records`, `iterable`, iterable over the rows in the resource
+                    where each row is a `dict` itself.
+
+        :returns: `dict`, the report contaning the calculated values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        log.debug ('-----Preview-----')
+        preview_score = 0
+        log.debug (resource['format'])
+        if(resource['datastore_active'] == True):
+            preview_score = 1
+        elif(resource['datastore_active'] == False): 
+            preview_score = 0
+       
+        return {
+            'datastore': resource['datastore_active'],
+            'value': preview_score
+        }
+   
+    def calculate_cumulative_metric(self, resources, metrics):
+        '''Calculates the cumulative report for all resources from the
+        calculated results for each resource.
+
+        The calculation is done as `all_complete/all_total * 100`, where
+            * `all_complete` is the total number of completed values in all
+                resources.
+            * all_total is the number of expected values (rows*columns) in all
+                resources.
+        The final value is the percentage of completed values in all resources
+        in the dataset.
+
+        :param resources: `list` of CKAN resources.
+        :param metrics: `list` of `dict` results for each resource.
+
+        :returns: `dict`, a report for the total percentage of complete values:
+            * `value`, `float`, the percentage of complete values in the data.
+            * `total`, `int`, total number of values expected to be populated.
+            * `complete`, `int`, number of cells that have value.
+        '''
+        # log.debug('-------------Calculate preview metrics -----------')
+        N_total = len(resources)
+        N_preview = 0 
+        for item_metric in metrics:
+            #check dict is not Empty
+            if item_metric and isinstance(item_metric.get('value'), (int, float)):
+                val = item_metric.get('value')
+                if val:
+                    N_preview += val
+                
+            else:
+                N_total -= 1
+
+        preview_score = (N_preview / N_total * 100) if N_total > 0 else 0.0
+
+        return {
+            "N_total": N_total,
+            "N_preview": N_preview,
+            "value": round(preview_score, 2)
+        }
 # class MachineReadable():#DimensionMetric
 #     '''Calculates the MachineReadable Data Qualtiy dimension.
 
@@ -2544,7 +2631,7 @@ class Completeness():#DimensionMetric
         df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 
         # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
-        df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN"], value=np.nan, inplace=True)
+        df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
         # คำนวณจำนวนช่องทั้งหมดในตาราง
         rows_count, columns_count = df.shape 
         total_values_count = rows_count * columns_count
@@ -3076,6 +3163,11 @@ class Relevance(): #DimensionMetric
             "total_view": total_view,
             "relevance_percent": round(relevance, 2)
         }
+    def get_owner_org_by_package_id(self,package_id):
+        package = Session.query(Package).get(package_id)
+        if package:
+            return package.owner_org
+        return None
     def calculate_metric(self, resource, level_name, execute_type):
         '''Calculates the relevance of the values in the data for the given
         resource.
@@ -3124,12 +3216,9 @@ class Relevance(): #DimensionMetric
             * `unique`, `int`, number of unique values.
         '''
         # collect download in resource level
-        # if execute_type == 'organization'
-        #     org_name = level_name
-        # elif execute_type == 'dataset'
-        #     dataset_name = level_name
-        org_name = 'mrta'
+        # org_name = 'mrta'
         base_url = config.get("ckan.site_url")
+        org_name = self.get_owner_org_by_package_id(package_id)
         # base_url = "https://ckan-dev.opend.cloud"
 
         # Step 1: Get org ID
@@ -3789,26 +3878,48 @@ class AcceptableLatency():
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        N_total = len(resources)
-        N_acc_latency = 0 
+        acc_latency_list = []
+        total = 0
+        
         for item_metric in metrics:
             #check dict is not Empty
             if item_metric and isinstance(item_metric.get('value'), (int, float)):
-                val = item_metric.get('value')
-                if val:
-                    N_acc_latency += val
+                acc_latency_score = item_metric.get('value')
+                total = total+acc_latency_score
+                acc_latency_list.append(acc_latency_score)
+        if acc_latency_list:
+            result_score = min(acc_latency_list)
+            if(result_score < 0):
+                result_score = 0
+            return {
+                'total': total,
+                'value': result_score,
+            }
+        else:
+            return {
+                'total': 0,
+                'value': 0,
+            }
+        # N_total = len(resources)
+        # N_acc_latency = 0 
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     if item_metric and isinstance(item_metric.get('value'), (int, float)):
+        #         val = item_metric.get('value')
+        #         if val:
+        #             N_acc_latency += val
                 
-            else:
-                N_total -= 1
-        #avg N_acc_latency is percent, so we will not *100
-        acc_latency_score = (N_acc_latency / N_total) if N_total > 0 else 0.0
-        log.debug('acc_latency')
-        log.debug(acc_latency_score)
-        return {
-            "N_total": N_total,
-            "N_acc_latency": N_acc_latency,
-            "value": round(acc_latency_score, 2)
-        }
+        #     else:
+        #         N_total -= 1
+        # #avg N_acc_latency is percent, so we will not *100
+        # acc_latency_score = (N_acc_latency / N_total) if N_total > 0 else 0.0
+        # log.debug('acc_latency')
+        # log.debug(acc_latency_score)
+        # return {
+        #     "N_total": N_total,
+        #     "N_acc_latency": N_acc_latency,
+        #     "value": round(acc_latency_score, 2)
+        # }
 class Freshness():
     '''Calculates the timeliness Data Quality dimension.
 
@@ -3862,22 +3973,42 @@ class Freshness():
             * `average`, `int`, the average delay in seocnds.
             * `records`, `int`, number of checked records.
         '''
-        N_total = len(resources)
-        positive = 0
+        freshness_list = []
+        total = 0
+        
         for item_metric in metrics:
             #check dict is not Empty
             if item_metric and isinstance(item_metric.get('value'), (int, float)):
-                val = item_metric.get('value')
-                if(val >= 0):
-                    positive += 1
-                
-            else:
-                N_total -= 1
-        freshness_score = (positive / N_total) * 100 if N_total else 0.0
-        return {
-                'value': round(freshness_score,2),
-                'total': N_total
+                freshness_score = item_metric.get('value')
+                total = total+freshness_score
+                freshness_list.append(freshness_score)
+        if freshness_list:
+            result_score = max(freshness_list)
+            return {
+                'total': total,
+                'value': result_score,
             }
+        else:
+            return {
+                'total': 0,
+                'value': 0,
+            }
+        # N_total = len(resources)
+        # positive = 0
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     if item_metric and isinstance(item_metric.get('value'), (int, float)):
+        #         val = item_metric.get('value')
+        #         if(val >= 0):
+        #             positive += 1
+                
+        #     else:
+        #         N_total -= 1
+        # freshness_score = (positive / N_total) * 100 if N_total else 0.0
+        # return {
+        #         'value': round(freshness_score,2),
+        #         'total': N_total
+        #     }
       
 _all_date_formats = [
     '%Y-%m-%d',
