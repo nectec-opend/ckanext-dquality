@@ -412,7 +412,7 @@ class DataQualityMetrics(object):
             log.debug("Error: %s", e)
             return False
     def is_tabular(self,resource):
-        machine_readable_formats = ['CSV', 'XLSX', 'XLS', 'JSON', 'XML']
+        machine_readable_formats = ['CSV', 'XLSX', 'XLS', 'JSON']
         mimetype_to_format = {
             'text/csv': 'CSV',
             'application/vnd.ms-excel': 'XLS',
@@ -441,6 +441,13 @@ class DataQualityMetrics(object):
         data_format = data_format.replace('.', '').upper()
         is_file_tabular = data_format in machine_readable_formats
         return is_file_tabular
+    def is_openness_5_star_format(self, data_format):
+        OPENNESS_5_STAR_FORMATS = ['RDF', 'TTL', 'N3', 'GEOJSON', 'WMS', 'GML', 'KML', 'SHP', 'ESRI REST']
+        """ตรวจสอบว่า format นี้เป็นประเภท 5-star หรือไม่"""
+        if not data_format:
+            return False
+        normalized_format = data_format.replace('.', '').upper()
+        return normalized_format in OPENNESS_5_STAR_FORMATS
     def _handle_existing_record(self, data_quality, last_modified, resource):
         """Handle logic when a previous metric record exists."""
         self.logger.debug("Found previous metric record.")
@@ -612,7 +619,7 @@ class DataQualityMetrics(object):
                         # log.debug(data_stream2)
                         #using metadata for calculate metrics
                                         
-                        if (file_size_mb <= 8 and connection_url):
+                        if (file_size_mb <= 10 and connection_url):
                             log.debug('------ check all metrics-----')
                             if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 log.debug('------ check metric-----')
@@ -636,6 +643,7 @@ class DataQualityMetrics(object):
                             #     log.debug('----machine_readable_val------')       
                             #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
                             tabular_format = self.is_tabular(resource)
+                            openness_5_star_format = self.is_openness_5_star_format(resource['format'])
                             log.debug(f"[check tabular_format] => {tabular_format}")
                             if(tabular_format):
                                 if(metric.name == 'consistency'):
@@ -663,6 +671,11 @@ class DataQualityMetrics(object):
                                 elif(metric.name == 'utf8'):
                                     log.debug('----utf8_val------')       
                                     results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
+                            elif (openness_5_star_format):
+                                results['consistency'] = { 'value': 100 }
+                                results['validity']    =    { 'value': 100 }
+                                results['completeness'] = { 'value': 100 }
+                                results['uniqueness'] = { 'value': 100 }
                             else:
                                 results['consistency'] = { 'value': None }
                                 results['validity']    =    { 'value': None }
@@ -745,6 +758,7 @@ class DataQualityMetrics(object):
                 else:
                     data_quality.error = ''
                 data_quality.version = today
+                data_quality.format  = resource['format']
                 data_quality.url = resource['url']
                 data_quality.metrics = results
                 data_quality.file_size    = round(file_size_mb,3)
@@ -783,6 +797,7 @@ class DataQualityMetrics(object):
                 # data_quality.filepath = ''
                 data_quality.error = 'connection timed out'
                 data_quality.version = today
+                data_quality.format  = resource['format']
                 data_quality.url = resource['url']
                 data_quality.file_size = None
                 data_quality.execute_time = None

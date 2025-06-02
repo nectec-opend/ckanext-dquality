@@ -55,10 +55,11 @@ data_quality_metrics_table = Table(
     Column('consistency', types.Float),
     # Column('accuracy', types.Float),
     # Column('machine_readable', types.Float),
+    Column('format', types.String),
     Column('file_size', types.Float),
     Column('execute_time', types.Float),
     Column('error', types.String),
-    Column('version', types.String),
+    Column('version', types.Date),
     Column('url', types.String),
     Column('metrics', types.JSON),
 )
