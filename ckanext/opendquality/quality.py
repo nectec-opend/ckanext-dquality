@@ -36,6 +36,7 @@ from ckanext.opendquality.model import (
 )
 from ckan.plugins.toolkit import config
 from ckan.model import Session, Package, Group
+import ckan.logic as logic
 
 log = getLogger(__name__)
 # cache_enabled = p.toolkit.asbool(
@@ -3124,42 +3125,41 @@ class Relevance(): #DimensionMetric
     def __init__(self):
         # super(Uniqueness, self).__init__('uniqueness')
         self.name = 'relevance'
+    # def get_organization_id(self,base_url, org_name):
+    #     url = f"{base_url}/api/3/action/organization_show?id={org_name}"
+    #     try:
+    #         response = requests.get(url, timeout=10)
+    #         response.raise_for_status()
+    #         data = response.json()
+    #         if data.get('success'):
+    #             return data['result']['id'], None
+    #         return None, f"API responded success=False: {data}"
+    #     except Exception as e:
+    #         return None, f"Error fetching organization ID: {str(e)}"
 
-    def get_organization_id(self,base_url, org_name):
-        url = f"{base_url}/api/3/action/organization_show?id={org_name}"
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            if data.get('success'):
-                return data['result']['id'], None
-            return None, f"API responded success=False: {data}"
-        except Exception as e:
-            return None, f"Error fetching organization ID: {str(e)}"
+    # def get_first_harvest_source(self,base_url, org_id):
+    #     url = f"{base_url}/api/3/action/harvest_source_list?organization_id={org_id}"
+    #     try:
+    #         response = requests.get(url, timeout=10)
+    #         response.raise_for_status()
+    #         data = response.json()
+    #         if data.get('success') and data['result']:
+    #             return data['result'][0], None  # ดึงตัวแรก
+    #         return None, "No harvest sources found"
+    #     except Exception as e:
+    #         return None, f"Error fetching harvest source: {str(e)}"
 
-    def get_first_harvest_source(self,base_url, org_id):
-        url = f"{base_url}/api/3/action/harvest_source_list?organization_id={org_id}"
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            if data.get('success') and data['result']:
-                return data['result'][0], None  # ดึงตัวแรก
-            return None, "No harvest sources found"
-        except Exception as e:
-            return None, f"Error fetching harvest source: {str(e)}"
-
-    def get_package_from_url(self,harvest_url, package_id):
-        url = f"{harvest_url}/api/3/action/package_show?id={package_id}&include_tracking=true"
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            if data.get('success'):
-                return data['result'], None
-            return None, f"API returned success=False: {data}"
-        except Exception as e:
-            return None, f"Error fetching package data: {str(e)}"
+    # def get_package_from_url(self,harvest_url, package_id):
+    #     url = f"{harvest_url}/api/3/action/package_show?id={package_id}&include_tracking=true"
+    #     try:
+    #         response = requests.get(url, timeout=10)
+    #         response.raise_for_status()
+    #         data = response.json()
+    #         if data.get('success'):
+    #             return data['result'], None
+    #         return None, f"API returned success=False: {data}"
+    #     except Exception as e:
+    #         return None, f"Error fetching package data: {str(e)}"
     def analyze_package_statistics(self, package_data):
         resources = package_data.get("resources", [])
         total_download = 0
@@ -3178,11 +3178,11 @@ class Relevance(): #DimensionMetric
             "total_view": total_view,
             "relevance_percent": round(relevance, 2)
         }
-    def get_owner_org_by_package_id(self,package_id):
-        package = Session.query(Package).get(package_id)
-        if package:
-            return package.owner_org
-        return None
+    # def get_owner_org_by_package_id(self,package_id):
+    #     package = Session.query(Package).get(package_id)
+    #     if package:
+    #         return package.owner_org
+    #     return None
     def calculate_metric(self, resource, level_name, execute_type):
         '''Calculates the relevance of the values in the data for the given
         resource.
@@ -3230,39 +3230,46 @@ class Relevance(): #DimensionMetric
             * `total`, `int`, total number of values in the data.
             * `unique`, `int`, number of unique values.
         '''
-        # collect download in resource level
-        # org_name = 'mrta'
-        base_url = config.get("ckan.site_url")
-        org_name = self.get_owner_org_by_package_id(package_id)
-        # base_url = "https://ckan-dev.opend.cloud"
+        # # collect download in resource level
+        # # org_name = 'mrta'
+        # base_url = config.get("ckan.site_url")
+        # org_name = self.get_owner_org_by_package_id(package_id)
+        # # base_url = "https://ckan-dev.opend.cloud"
 
-        # Step 1: Get org ID
-        org_id, err1 = self.get_organization_id(base_url, org_name)
-        if err1:
-            return {"error": f"Step 1 failed: {err1}"}
+        # # Step 1: Get org ID
+        # org_id, err1 = self.get_organization_id(base_url, org_name)
+        # if err1:
+        #     return {"error": f"Step 1 failed: {err1}"}
 
-        # Step 2: Get first harvest source
-        harvest, err2 = self.get_first_harvest_source(base_url, org_id)
-        if err2:
-            return {"error": f"Step 2 failed: {err2}", "org_id": org_id}
+        # # Step 2: Get first harvest source
+        # harvest, err2 = self.get_first_harvest_source(base_url, org_id)
+        # if err2:
+        #     return {"error": f"Step 2 failed: {err2}", "org_id": org_id}
 
-        harvest_url = harvest.get("url")
+        # harvest_url = harvest.get("url")
 
-        if not harvest_url or not package_id:
-            return {"error": "Missing url or resource_id in harvest source", "org_id": org_id, "harvest": harvest}
+        # if not harvest_url or not package_id:
+        #     return {"error": "Missing url or resource_id in harvest source", "org_id": org_id, "harvest": harvest}
 
-        # Step 3: Call package_show on that external harvest_url
-        package_data, err3 = self.get_package_from_url(harvest_url, package_id)
-        if err3:
-            return {"error": f"Step 3 failed: {err3}", "harvest_url": harvest_url, "package_id": package_id}
-
+        try:
+            package_data = logic.get_action('package_show')(None, {'id': package_id, 'include_tracking': True})
+        except toolkit.ObjectNotFound:
+            # print(f"Dataset not found: {package_id}")
+            return {"error": f"Dataset not found: {package_id}"}
+            package_data = None
+        except toolkit.NotAuthorized:
+            return {"error": f"Unauthorized to access dataset: {package_id}"}
+            package_data = None
+        except Exception as e:
+            return {"error": f"Unexpected error for package: {package_id}"}
+            package_data = None
 
         stats = self.analyze_package_statistics(package_data)
         
         return {
             "error": None,
-            "org_id": org_id,
-            "harvest_url": harvest_url,
+            # "org_id": org_id,
+            # "harvest_url": harvest_url,
             "package_id": package_id,
             "N_download": stats['total_download'],
             "N_view": stats['total_view'],
