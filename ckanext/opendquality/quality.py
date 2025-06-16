@@ -718,10 +718,10 @@ class DataQualityMetrics(object):
                                 results['connection_url'] = { 'error': True}
                         
                     except Exception as e:
-                        self.logger.error('Failed to calculate metric: %s. Error: %s',
+                        self.logger.error('Failed to calculate: %s. Error: %s',
                                         metric, str(e))
                         self.logger.exception(e)
-                        results['error'] = "Failed to calculate metric:"+metric.name
+                        results['error'] = "Failed to calculate:"+metric.name
                         results[metric.name] = {
                             'failed': True,
                             'error': str(e),
@@ -730,7 +730,8 @@ class DataQualityMetrics(object):
                 # for metric, result in results.items():
                 #     if result.get('value') is not None:
                 #         setattr(data_quality, metric, result['value'])
-                # set results -- new version
+                # set results -- new version-----
+                # ตรวจสอบและจัดรูปแบบผลลัพธ์ ให้เป็น dict ที่มีโครงสร้างเดียวกัน ({'value': ..., 'error': ...})
                 # หลังจากได้ results มา
                 for metric, result in list(results.items()):
                     if not isinstance(result, dict):
@@ -749,13 +750,21 @@ class DataQualityMetrics(object):
                 # Calculate the time taken
                 execute_time = end_time - start_time
                 log.debug("----execute_time----")
-                log.debug(execute_time)
-                #---- add filepath ----
-                upload = uploader.get_resource_uploader(resource)
-                # filepath = upload.get_path(resource['id'])
-                # data_quality.filepath = filepath
-                if 'error' in results and results['error']:
-                    data_quality.error = results['error'].get('error')
+                log.debug(execute_time)    
+                # if 'error' in results and results['error']:
+                #     data_quality.error = results['error'].get('error')
+                # else:
+                #     data_quality.error = ''
+                #รวม error จากหลาย metric ไว้ใน list:
+                error_list = []
+
+                for metric, result in results.items():
+                    if isinstance(result, dict) and result.get('error'):
+                        error_list.append(f"{metric}: {result['error']}")
+
+                if error_list:
+                    results['error'] = {'error': '; '.join(error_list)}
+                    data_quality.error = results['error']['error']
                 else:
                     data_quality.error = ''
                 data_quality.version = today
@@ -2642,30 +2651,35 @@ class Completeness():#DimensionMetric
 
         # สร้าง DataFrame จาก records
         df = pd.DataFrame(data['records'])
+        # เช็คว่าข้อมูลมีหรือไม่
+        if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+            return {
+                'error': 'empty data', 
+                'value': None
+            }
+        else:
+            # ลบช่องว่างและจัดการค่าว่างใน string
+            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+            # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
+            df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
+            # คำนวณจำนวนช่องทั้งหมดในตาราง
+            rows_count, columns_count = df.shape 
+            total_values_count = rows_count * columns_count
+            # คำนวณจำนวนค่าที่ ไม่เป็น NaN
+            total_complete_values = df.notna().sum().sum()
 
-        # ลบช่องว่างและจัดการค่าว่างใน string
-        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+            log.debug('---Rows: %d, Columns: %d, Total Values: %d',
+                    rows_count, columns_count, total_values_count)
+            log.debug('Complete (non-empty) values: %d', total_complete_values)
 
-        # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
-        df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
-        # คำนวณจำนวนช่องทั้งหมดในตาราง
-        rows_count, columns_count = df.shape 
-        total_values_count = rows_count * columns_count
-        # คำนวณจำนวนค่าที่ ไม่เป็น NaN
-        total_complete_values = df.notna().sum().sum()
+            result = float(total_complete_values) / float(total_values_count) * 100.0 if total_values_count else 0
+            log.debug('Completeness score: %f%%', result)
 
-        log.debug('---Rows: %d, Columns: %d, Total Values: %d',
-                rows_count, columns_count, total_values_count)
-        log.debug('Complete (non-empty) values: %d', total_complete_values)
-
-        result = float(total_complete_values) / float(total_values_count) * 100.0 if total_values_count else 0
-        log.debug('Completeness score: %f%%', result)
-
-        return {
-            'value': round(result, 2),
-            'total': total_values_count,
-            'complete': int(total_complete_values),
-        }
+            return {
+                'value': round(result, 2),
+                'total': total_values_count,
+                'complete': int(total_complete_values),
+            }
     # def _completenes_row(self, row):
     #         count = 0
     #         for _, value in row.items():
@@ -2870,20 +2884,26 @@ class Uniqueness(): #DimensionMetric
         # return result
         # แปลง data['records'] เป็น DataFrame
         df = pd.DataFrame(data['records'])
-        total_rows = len(df)
-        unique_rows = len(df.drop_duplicates())
+        if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+            return {
+                'error': 'empty data', 
+                'value': None
+            }
+        else:
+            total_rows = len(df)
+            unique_rows = len(df.drop_duplicates())
 
-        uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
-        log.debug("----Uniqueness start----")
-        log.debug("Total rows: %d", total_rows)
-        log.debug("Unique rows: %d", unique_rows)
-        log.debug("Uniqueness score: %.2f%%", uniqueness_score)
+            uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
+            log.debug("----Uniqueness start----")
+            log.debug("Total rows: %d", total_rows)
+            log.debug("Unique rows: %d", unique_rows)
+            log.debug("Uniqueness score: %.2f%%", uniqueness_score)
 
-        return {
-            'value': round(uniqueness_score, 2),
-            'total': total_rows,
-            'unique': unique_rows
-        }
+            return {
+                'value': round(uniqueness_score, 2),
+                'total': total_rows,
+                'unique': unique_rows
+            }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates uniqueness for all resources based on the metrics
         calculated in the previous phase for each resource.
@@ -3002,6 +3022,7 @@ class Validity():#DimensionMetric
         table_count = 0
         relevant_errors = 0
         filepath = resource['url']
+        dict_error = {}
         if validation:
             dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
             error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
@@ -3060,8 +3081,9 @@ class Validity():#DimensionMetric
             }
         else:
             dict_error['encoding'] = None
-            dict_error['error'] = 'Validation failed'
+            dict_error['error'] = 'Validation failed for resource'
             return {
+                'error': 'Validation failed for resource',
                 'value': None,
                 'report': dict_error
             }
@@ -3500,74 +3522,81 @@ class Consistency():#DimensionMetric
         # log.debug(fields)
         count_row=0
         # log.debug('-----consistency record--------')
-        for row in data['records']:
-            count_row=count_row+1
-            for field, value in row.items():
-                field_type = fields.get(field, {}).get('type')
-                validator = validators.get(field_type)
-                field_report = report[field]
-                # log.debug('-------------')
-                # log.debug(field)
-                # log.debug(value)
-                # log.debug(field_type)          
-                if validator:
-                    validator(field, value, field_type, field_report)
-                    field_report['count'] += 1
-        for field, field_report in report.items():
-            #------------------------------------------------------------------
-            #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
-            format_dict = field_report['formats']   
-            keys_to_merge = {'int', 'float', 'unknown',
-                              '^\\d+$',
-                              '^[+-]\\d+$',
-                              '^(\\d{1,3},)+(\\d{3})$',
-                              '^(\\d{1,3},)+(\\d{3})\\.\\d+$',
-                              '^[+-](\\d{1,3},)(\\d{3})+$',
-                              '^[+-](\\d{1,3},)+(\\d{3})\\.\\d+$',
-                              '^\\d+\\.\\d+$',
-                              '^[+-]\\d+\\.\\d+$'
-                              } 
-            # # New dictionary to store the merged result
-            merged_data = {'numeric': 0}
-            # # Iterate through the original dictionary
-            chk_numeric = False
-            for key, value in format_dict.items():
-                if key in keys_to_merge:
-                    merged_data['numeric'] += value
-                    chk_numeric = True
-            # log.debug('--format_dict--')
-            # log.debug(field) 
-            # log.debug(format_dict) 
-            # log.debug(merged_data)
-            if(chk_numeric):
-                field_report['formats'] = merged_data
-            # log.debug(field_report['formats']) 
-            #[End Pang Edit]--------------------------------------------------------------------
-            if field_report['formats']:
-                #เลือก count format ที่มีค่ามากสุด เช่น int 30 float 4 แปลว่าคอลัมน์นี้คือ int
-                most_consistent = max([count if fmt != 'unknown' else 0
-                                    for fmt, count
-                                    in field_report['formats'].items()])
-                field_report['consistent'] = most_consistent
+        if 'records' in data and data['records']:
+            for row in data['records']:
+                count_row=count_row+1
+                for field, value in row.items():
+                    field_type = fields.get(field, {}).get('type')
+                    validator = validators.get(field_type)
+                    field_report = report[field]
+                    # log.debug('-------------')
+                    # log.debug(field)
+                    # log.debug(value)
+                    # log.debug(field_type)          
+                    if validator:
+                        validator(field, value, field_type, field_report)
+                        field_report['count'] += 1
+            for field, field_report in report.items():
+                #------------------------------------------------------------------
+                #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
+                format_dict = field_report['formats']   
+                keys_to_merge = {'int', 'float', 'unknown',
+                                '^\\d+$',
+                                '^[+-]\\d+$',
+                                '^(\\d{1,3},)+(\\d{3})$',
+                                '^(\\d{1,3},)+(\\d{3})\\.\\d+$',
+                                '^[+-](\\d{1,3},)(\\d{3})+$',
+                                '^[+-](\\d{1,3},)+(\\d{3})\\.\\d+$',
+                                '^\\d+\\.\\d+$',
+                                '^[+-]\\d+\\.\\d+$'
+                                } 
+                # # New dictionary to store the merged result
+                merged_data = {'numeric': 0}
+                # # Iterate through the original dictionary
+                chk_numeric = False
+                for key, value in format_dict.items():
+                    if key in keys_to_merge:
+                        merged_data['numeric'] += value
+                        chk_numeric = True
+                # log.debug('--format_dict--')
+                # log.debug(field) 
+                # log.debug(format_dict) 
+                # log.debug(merged_data)
+                if(chk_numeric):
+                    field_report['formats'] = merged_data
+                # log.debug(field_report['formats']) 
+                #[End Pang Edit]--------------------------------------------------------------------
+                if field_report['formats']:
+                    #เลือก count format ที่มีค่ามากสุด เช่น int 30 float 4 แปลว่าคอลัมน์นี้คือ int
+                    most_consistent = max([count if fmt != 'unknown' else 0
+                                        for fmt, count
+                                        in field_report['formats'].items()])
+                    field_report['consistent'] = most_consistent
 
-        total = sum([f.get('count', 0) for _, f in report.items()])
-        consistent = sum([f.get('consistent', 0) for _, f in report.items()])
-        value = float(consistent)/float(total) * 100.0 if total else 0.0
-        #---- check key in report {} : for excel, if key is not str type, set report null because the data structure is invalid---
-        list_key = report.keys()
-        for key_item in list_key:
-            if not isinstance(key_item, str):
-                report = {}
-                break
-        #------------------------------------------------
-        if (consistent == None):
-            consistent = 0
-        return {
-            'total': total,
-            'consistent': consistent,
-            'value': value,
-            'report': report
-        }
+            total = sum([f.get('count', 0) for _, f in report.items()])
+            consistent = sum([f.get('consistent', 0) for _, f in report.items()])
+            value = float(consistent)/float(total) * 100.0 if total else 0.0
+            #---- check key in report {} : for excel, if key is not str type, set report null because the data structure is invalid---
+            list_key = report.keys()
+            for key_item in list_key:
+                if not isinstance(key_item, str):
+                    report = {}
+                    break
+            #------------------------------------------------
+            if (consistent == None):
+                consistent = 0
+            return {
+                'total': total,
+                'consistent': consistent,
+                'value': value,
+                'report': report
+            }
+        else:
+            return {
+                'error': 'empty data',
+                'value': None,
+                'report': dict_error
+            }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the total percentage of consistent values in the data for
         all the given resources.
