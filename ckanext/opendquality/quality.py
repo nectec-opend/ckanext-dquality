@@ -22,6 +22,7 @@ import requests
 import mimetypes
 import openpyxl
 from openpyxl import load_workbook
+import xlrd
 import io
 from io import BytesIO
 from io import StringIO
@@ -30,6 +31,8 @@ from six import string_types
 import time
 from functools import reduce
 import numpy as np
+import magic
+from urllib.parse import urlparse
 # import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -280,6 +283,7 @@ class DataQualityMetrics(object):
                 return {
                     'total': 0,
                     'records': [],
+                    'error': 'Failed to fetch data for resource'
                 }
        
 
@@ -306,17 +310,26 @@ class DataQualityMetrics(object):
                 self.logger.exception(e)
                 return {
                     'total': 0,
+                    'fields': [],
                     'records': [],
+                    'error': 'Failed to fetch data for resource'
                 }
        
 
         _fetch_page2 = ResourceFetchData2(resource)
-
         result = _fetch_page2(0, 1)  # to calculate the total from start
+        if 'error' in result:
+            return {
+                'total': 0,
+                'records': [],
+                'fields': [],
+                'error': result['error']
+            }
         return {
             'total': result.get('total', 0),
             'records': LazyStreamingList(_fetch_page2),
             'fields': result['fields'],  # metadata
+            'error': ''
         }
     def _fetch_resource_file(self, resource):
         _fetch_page = ResourceFetchData(resource)
@@ -449,6 +462,32 @@ class DataQualityMetrics(object):
             return False
         normalized_format = data_format.replace('.', '').upper()
         return normalized_format in OPENNESS_5_STAR_FORMATS
+    def inspect_file(self,resource):
+        result = {}
+        file_path = resource.get('url')
+        file_format = resource.get('format')
+        # 1. ตรวจสอบนามสกุล
+        filename = os.path.basename(file_path)
+        ext = os.path.splitext(filename)[1].lower()
+        result['filename'] = filename
+        result['extension'] = ext
+        result['format'] = file_format
+
+        # 2. ตรวจ MIME type ด้วย mimetypes (ตามนามสกุล)
+        mime_by_ext, _ = mimetypes.guess_type(file_path)
+        result['mime_from_extension'] = mime_by_ext
+
+        # 3. ตรวจ MIME type จากเนื้อไฟล์จริง
+        try:
+            mime_from_content = magic.from_file(file_path, mime=True)
+        except Exception as e:
+            mime_from_content = f'error: {e}'
+        result['mime_from_content'] = mime_from_content
+
+        # 4. ตรวจสอบว่าตรงกันหรือไม่
+        result['is_match'] = mime_by_ext == mime_from_content
+
+        return result
     def _handle_existing_record(self, data_quality, last_modified, resource):
         """Handle logic when a previous metric record exists."""
         self.logger.debug("Found previous metric record.")
@@ -505,17 +544,23 @@ class DataQualityMetrics(object):
         execute_time = 0
         timeout = 5  # in seconds
         connection_url = False
+        error_fetching_resource = ''
+        error_file_not_match = ''
         today = datetime.today().strftime("%Y-%m-%d")
+        file_info = self.inspect_file(resource)
+        log.debug(file_info)
         # Check if the request was successful
         if self.check_connection_url(resource_url, timeout):     
             start_time = time.time()
             log.debug(start_time)
             connection_url = True
             file_size = self.get_file_size(resource_url)
+            
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("File size (MB): %s", file_size_mb)
-       
+            if not file_info:
+                error_file_not_match = 'file is not match'
             if not is_datadict:                                                   
                 #----- connect model: check records----------------------
                 data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
@@ -613,7 +658,10 @@ class DataQualityMetrics(object):
                                 data_stream2['records'].rewind()
                             else:
                                 data_stream2 = self._fetch_resource_data2(resource)
-                
+                        log.debug('data_stream2--')
+                        # log.debug(data_stream2)
+                        if data_stream2.get('error'):
+                            error_fetching_resource = data_stream2.get('error')
                         #------ Check Meta Data --------------------------------
                         log.debug('------ Resource URL: Data Stream2-----')
                         log.debug(resource['url'])
@@ -757,7 +805,8 @@ class DataQualityMetrics(object):
                 #     data_quality.error = ''
                 #รวม error จากหลาย metric ไว้ใน list:
                 error_list = []
-
+                if error_fetching_resource != '':
+                    error_list.append(error_fetching_resource)  # ถ้า error จาก fetch มีค่า → เพิ่มเข้าไป
                 for metric, result in results.items():
                     if isinstance(result, dict) and result.get('error'):
                         error_list.append(f"{metric}: {result['error']}")
@@ -1132,6 +1181,7 @@ class ResourceFetchData2(object):
                 'total': 0,
                 'records': [],
                 'fields': {},
+                'error': 'Failed to fetch data for resource'
             }
 
     def _fetch_data_datastore(self, page, limit):
@@ -1143,7 +1193,44 @@ class ResourceFetchData2(object):
             'offset': page*limit,
             'limit': limit,
         })
-    
+    def _fetch_data_datastore_defined_row(self, resource):
+        log.debug('--data store--')
+        page = 0
+        limit = 5001
+        log.debug("resource_id")
+        log.debug(resource.get('id'))
+        data = []
+        try:
+            # ตรวจว่ามี datastore จริงหรือไม่ก่อน
+            context = {'ignore_auth': True}
+            data_dict = {'id': resource.get('id')}
+            log.debug("check datastore1")
+            log.debug(f"data_dict: {data_dict}")
+            ds_metadata = toolkit.get_action('datastore_info')(context, data_dict)
+            log.debug("check datastore2")
+            log.debug(ds_metadata)
+            
+            if resource['datastore_active'] == True:
+                
+                result = toolkit.get_action('datastore_search')(
+                    {'ignore_auth': True},  
+                    {'resource_id': resource.get('id'), 'offset': 0, 'limit': limit} 
+                )
+
+                # เปลี่ยน format ให้อยู่ในรูปแบบ rows
+                headers = list(result['records'][0].keys()) if result['records'] else []
+                data.append(headers)
+                for row in result['records']:
+                    data.append([row.get(h, None) for h in headers])
+            else:
+                log.warning("Resource ไม่มีข้อมูลใน datastore")
+        except Exception as e:
+            log.debug(f"cannot read from datastore: {e}")
+            return {
+                'source': 'none',
+                'data': []
+            }
+        return data
     def _download_resource_from_url(self, url, headers=None):
         data = []
         log.debug('----resource format-----')
@@ -1204,7 +1291,14 @@ class ResourceFetchData2(object):
             mimetype, _ = mimetypes.guess_type(filepath)
 
         timeout = 5
-        response = requests.get(filepath, timeout=timeout)
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        # response = requests.get(filepath, timeout=timeout, headers=headers)
+        try:
+            response = requests.get(filepath, headers=headers, timeout=30)
+            response.raise_for_status()  # ถ้าโหลดไม่สำเร็จจะ raise error
+        except requests.exceptions.RequestException as e:
+            log.debug("Cannot download file ----:", e)
         if self.is_url_file(filepath,timeout) and response.status_code == 200 :
             log.debug('----is_url_file-----')
             log.debug(mimetype)
@@ -1216,9 +1310,9 @@ class ResourceFetchData2(object):
                 # Create a StringIO object to treat the response content as a file-like object
                 encoding = self.detect_encoding(filepath)
                 # log.debug('----endcode csv----')    
-                # log.debug(encoding)
+                # log.debug(encoding)       
+                data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
                 try:
-                    data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
                     csv_data = StringIO(data_encode)
                     # Use the csv.reader to parse the CSV data
                     csv_reader = csv.reader(csv_data)
@@ -1335,30 +1429,84 @@ class ResourceFetchData2(object):
                     log.debug("Unexpected error occurred")
                     log.debug(e)
                     data = []
-            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimetype == 'application/vnd.ms-excel' or resource_format == 'XLSX' or resource_format == 'XLS'):#elif(resource_format == 'XLSX' or resource_format == 'XLS'):
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or resource_format == 'XLSX'):
+                log.debug('--Reading XLSX data--')
                 try:
-                    # Load the workbook from the temporary file
-                    wb = load_workbook(filename=BytesIO(response.content), read_only=True)
-                    # Get the active worksheet
-                    ws = wb.active
-                    # Iterate over rows and cells to read the data
-                    records_read = 0
-                    for row in ws.iter_rows(values_only=True):
-                        data.append(row)
-                        records_read += 1
-                        if records_read >= n_rows:
-                            break
-                    wb.close()
+                    if  self.has_valid_filename(url):
+                        log.debug('--load_workbook--')
+                        # Load the workbook from the temporary file
+                        wb = load_workbook(filename=BytesIO(response.content), read_only=True)
+                        # Get the active worksheet
+                        ws = wb.active
+                        # Iterate over rows and cells to read the data
+                        records_read = 0
+                        for row in ws.iter_rows(values_only=True):
+                            data.append(row)
+                            records_read += 1
+                            if records_read >= n_rows:
+                                break
+                        # log.debug(data)
+                        # log.debug("end readfile--")
+                        wb.close()
+                    else:
+                        log.debug('--data store--')
+                        data = self._fetch_data_datastore_defined_row(self.resource)
+                        # page = 0
+                        # limit = 10
+                        # log.debug("resource_id")
+                        # log.debug(self.resource.get('id'))
+                        # try:
+                        #     # ตรวจว่ามี datastore จริงหรือไม่ก่อน
+                        #     context = {'ignore_auth': True}
+                        #     data_dict = {'id': self.resource.get('id')}
+                        #     log.debug("check datastore1")
+                        #     log.debug(f"data_dict: {data_dict}")
+                        #     ds_metadata = toolkit.get_action('datastore_info')(context, data_dict)
+                        #     log.debug("check datastore2")
+                        #     log.debug(ds_metadata)
+                            
+                        #     if self.resource['datastore_active'] == True: #if ds_metadata.get('meta', {}).get('count', 0) > 0: 
+                                
+                        #         result = toolkit.get_action('datastore_search')(
+                        #             {'ignore_auth': True},  
+                        #             {'resource_id': self.resource.get('id'), 'offset': 0, 'limit': 5000} 
+                        #             #{'resource_id': self.resource.get('id'), 'offset': page * limit, 'limit': limit} 
+                        #         )
+
+                        #         # เปลี่ยน format ให้อยู่ในรูปแบบ rows
+                        #         headers = list(result['records'][0].keys()) if result['records'] else []
+                        #         data.append(headers)
+                        #         for row in result['records']:
+                        #             data.append([row.get(h, None) for h in headers])
+                        #     else:
+                        #         log.warning("Resource ไม่มีข้อมูลใน datastore")
+                        # except Exception as e:
+                        #     log.debug(f"cannot read from datastore: {e}")
+                        #     return {
+                        #         'source': 'none',
+                        #         'data': []
+                        #     }
+                       
                 except Exception as e:
                     log.debug("An error occurred, use pandas to readfile", e)
                     try:
-                        data_df = pd.read_excel(filepath, nrows=n_rows)  # Read CSV data into a DataFrame
+                        data_df = pd.read_excel(filepath) 
                         if data_df is not None:
                             data = data_df.values.tolist()
                             data[:0] = [list(data_df.keys())]
                     except Exception as e:
                         log.debug("An error occurred:", e)
                         data = []
+            elif(mimetype == 'application/vnd.ms-excel' or resource_format == 'XLS'):
+                log.debug('--Reading XLS data--')
+                try:
+                    book = xlrd.open_workbook(file_contents=response.content)
+                    sheet = book.sheet_by_index(0)
+
+                    data = [sheet.row_values(i) for i in range(sheet.nrows)]
+                except Exception as e:
+                    log.debug("An error occurred:", e)
+                    data = []
             else:
                 data = []
         else:
@@ -1419,6 +1567,10 @@ class ResourceFetchData2(object):
         except Exception as e:
             log.debug("An error occurred:", e)
             return False  # Error occurred, not a file
+    def has_valid_filename(self, url):
+        parsed = urlparse(url)
+        filename = os.path.basename(parsed.path)
+        return filename and filename.lower() != '.xlsx'
     def detect_encoding(self,url):
         timeout = 5
         sample_size=1024
@@ -1573,13 +1725,12 @@ class ResourceFetchData2(object):
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
         log.debug('----call fetch_page at ResourceFetchData2-------')
-        log.debug(self.download_resource)
+        # log.debug(self.download_resource)
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
                 log.debug('2Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
-            # return self.resource_csv.fetch_page2(page, limit)
         try:
             #------ Pang Edit ------------------       
             self.download_resource = True
@@ -1936,7 +2087,7 @@ class AccessAPI():#DimensionMetric
                 try:
                     data = response.json()
                     log.debug("Valid JSON Response:")
-                    log.debug(data)
+                    # log.debug(data)
                     return True
                 except ValueError:
                     log.debug("Response is not valid JSON.")
@@ -3048,7 +3199,7 @@ class Validity():#DimensionMetric
             if total_rows == 0:            
                 return {
                     'value': None,
-                    'error': 'No data rows found in resource/Invalid file format or structure',
+                    'error': 'Data is empty/Invalid file format or structure',
                     'report': dict_error
                 }
             blank_header = 1
@@ -4223,7 +4374,6 @@ def validate_resource_data(resource):
             schema = json.loads(schema)
 
     _format = resource[u'format'].lower()
-
     report = _validate_table(source, _format=_format, schema=schema, **options)
 
     # Hide uploaded files
