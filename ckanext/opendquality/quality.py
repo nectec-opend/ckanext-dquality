@@ -31,9 +31,8 @@ from six import string_types
 import time
 from functools import reduce
 import numpy as np
-import magic
+from io import StringIO
 from urllib.parse import urlparse
-# import db, re
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
@@ -462,30 +461,80 @@ class DataQualityMetrics(object):
             return False
         normalized_format = data_format.replace('.', '').upper()
         return normalized_format in OPENNESS_5_STAR_FORMATS
-    def inspect_file(self,resource):
-        result = {}
+    def inspect_file(self, resource):
+        result = None
         file_path = resource.get('url')
-        file_format = resource.get('format')
-        # 1. ตรวจสอบนามสกุล
-        filename = os.path.basename(file_path)
-        ext = os.path.splitext(filename)[1].lower()
-        result['filename'] = filename
-        result['extension'] = ext
-        result['format'] = file_format
+        file_format = resource.get('format', '').upper().strip()  # กัน null และ normalize case
 
-        # 2. ตรวจ MIME type ด้วย mimetypes (ตามนามสกุล)
-        mime_by_ext, _ = mimetypes.guess_type(file_path)
-        result['mime_from_extension'] = mime_by_ext
+        # 1. ตรวจสอบ mimetype
+        mimetype = ResourceFetchData2.detect_mimetype(file_path)
 
-        # 3. ตรวจ MIME type จากเนื้อไฟล์จริง
-        try:
-            mime_from_content = magic.from_file(file_path, mime=True)
-        except Exception as e:
-            mime_from_content = f'error: {e}'
-        result['mime_from_content'] = mime_from_content
+        # 2. แมป mimetype ไปยัง format ที่เราสนใจ
+        mimetype_map = {
+            # Excel
+            'application/vnd.ms-excel': 'XLS',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
 
-        # 4. ตรวจสอบว่าตรงกันหรือไม่
-        result['is_match'] = mime_by_ext == mime_from_content
+            # CSV / Text / JSON
+            'text/csv': 'CSV',
+            'application/json': 'JSON',
+            'application/geo+json': 'GEOJSON',
+            'application/vnd.geo+json': 'GEOJSON',
+
+            # PDF
+            'application/pdf': 'PDF',
+
+            # Word documents
+            'application/msword': 'DOC',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+
+            # PowerPoint
+            'application/vnd.ms-powerpoint': 'PPT',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+
+            # Images
+            'image/jpeg': 'JPEG',
+            'image/png': 'PNG',
+            'image/gif': 'GIF',
+            'image/tiff': 'TIFF',
+            'image/svg+xml': 'SVG',
+
+            # Plain text and XML
+            'text/plain': 'TXT',
+            'application/xml': 'XML',
+            'text/xml': 'XML',
+            'application/rdf+xml': 'RDF',
+            'text/turtle': 'TURTLE',
+            'application/n-triples': 'NTRIPLES',
+            'application/ld+json': 'JSONLD',
+            'application/trig': 'TRIG',
+            'application/n-quads': 'NQUADS',
+            # Compressed formats
+            # 'application/zip': 'ZIP',
+            # 'application/x-tar': 'TAR',
+            # 'application/gzip': 'GZ',
+
+            # Default fallback
+            'application/octet-stream': 'BINARY'
+        }
+        # 3. ตรวจสอบว่า mimetype ตรงกับฟอร์แมตหรือไม่
+        mimetype_format = mimetype_map.get(mimetype, None)
+
+        # 4. เปรียบเทียบ (normalize ทั้งสองข้างก่อนเทียบ)
+        log.debug('--inspect file ---')
+        log.debug(file_format)
+        log.debug('--mimetype_format ---')
+        log.debug(mimetype_format)
+        log.debug(result)
+        if file_format in ['XLS','XLSX','CSV','JSON','GEOJSON','PDF','DOC','PPT','PPTX',
+                           'JPEG','PNG','GIF','TIFF','SVG','TXT','XML','RDF']:
+            if file_format and mimetype_format:
+                if file_format.strip().upper() == mimetype_format.strip().upper():
+                    result = True
+                else:
+                    result = False
+            else:
+                result = None  # ถ้าอย่างใดอย่างหนึ่งไม่มีค่า
 
         return result
     def _handle_existing_record(self, data_quality, last_modified, resource):
@@ -559,8 +608,8 @@ class DataQualityMetrics(object):
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("File size (MB): %s", file_size_mb)
-            if not file_info:
-                error_file_not_match = 'file is not match'
+            if file_info == False:
+                error_file_not_match = 'format file is not match'
             if not is_datadict:                                                   
                 #----- connect model: check records----------------------
                 data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
@@ -704,9 +753,7 @@ class DataQualityMetrics(object):
                                     log.debug('----check validity------')
                                     log.debug(data_stream2['total'])
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
-                                    # validity_val = results[metric.name].get('value')
                                     validity_report = results[metric.name].get('report')
-                                    # encoding   = results[metric.name].get('encoding')
                                 elif(metric.name == 'completeness'):                           
                                     log.debug('----check completeness------')
                                     log.debug(data_stream2['total'])
@@ -805,6 +852,8 @@ class DataQualityMetrics(object):
                 #     data_quality.error = ''
                 #รวม error จากหลาย metric ไว้ใน list:
                 error_list = []
+                if error_file_not_match != '':
+                    error_list.append(error_file_not_match)
                 if error_fetching_resource != '':
                     error_list.append(error_fetching_resource)  # ถ้า error จาก fetch มีค่า → เพิ่มเข้าไป
                 for metric, result in results.items():
@@ -1170,13 +1219,13 @@ class ResourceFetchData2(object):
             page = self.fetch_page2(page, limit)
             return page
         except Exception as e:
-            log.error('2Failed to fetch page %d (limit %d) of resource %s. '
-                      'Error: %s',
-                      page,
-                      limit,
-                      self.resource.get('id'),
-                      str(e))
-            log.exception(e)
+            # log.error('2Failed to fetch page %d (limit %d) of resource %s. '
+            #           'Error: %s',
+            #           page,
+            #           limit,
+            #           self.resource.get('id'),
+            #           str(e))
+            # log.exception(e)
             return {
                 'total': 0,
                 'records': [],
@@ -1208,7 +1257,7 @@ class ResourceFetchData2(object):
             log.debug(f"data_dict: {data_dict}")
             ds_metadata = toolkit.get_action('datastore_info')(context, data_dict)
             log.debug("check datastore2")
-            log.debug(ds_metadata)
+            # log.debug(ds_metadata)
             
             if resource['datastore_active'] == True:
                 
@@ -1234,61 +1283,61 @@ class ResourceFetchData2(object):
     def _download_resource_from_url(self, url, headers=None):
         data = []
         log.debug('----resource format-----')
-        filepath = self.resource['url']
+        filepath = url #self.resource['url']
         format_url = filepath.split(".")[-1]
-        resource_format = format_url.upper()
-        log.debug(resource_format)
+        # resource_format = format_url.upper()
+        # log.debug(resource_format)
         # resource_format = self.resource['format']
-        mimetype = self.resource['mimetype']
-        log.debug('----mimetype-----')
-        log.debug(mimetype)
+        # mimetype = self.resource['mimetype']
+        log.debug('----mimetype:_download_resource_from_url-----')
+        mimetype = ResourceFetchData2.detect_mimetype(filepath)
         log.debug(filepath)
-
-        # Try to identify mimetype based on content-type from response headers
-        try:
-            log.debug("identify mimetype based on content-type")
-            response = requests.head(filepath, timeout=5)
-            content_type = response.headers.get('Content-Type', None)
-            content_disposition = response.headers.get('Content-Disposition', None)
-            # Default mimetype and charset if not present in headers
-            mimetype = None
-            charset = 'utf-8'
-            
-            if content_type:
-                # Split Content-Type to separate mimetype and charset (if available)
-                content_parts = content_type.split(";")
-                mimetype = content_parts[0].strip()  # First part is the mimetype
-                
-                # If charset is provided, extract it
-                if len(content_parts) > 1:
-                    for part in content_parts[1:]:
-                        if "charset=" in part:
-                            charset = part.split("=")[-1].strip()
-                            break
-            # Check for "Content-Disposition" header to extract the filename
-            if content_disposition:
-                log.debug('Content-Disposition:')
-                if 'filename=' in content_disposition:
-                    filename = content_disposition.split('filename=')[-1].strip().strip('"')
-                    log.debug("Downloaded filename:")
-                    log.debug(filename)
-                    # Use filename to guess mimetype if needed
-                    mimetype_from_filename, _ = mimetypes.guess_type(filename)
-                    if mimetype_from_filename:
-                        mimetype = mimetype_from_filename
-
-            # If mimetype is 'application/octet-stream' or 'application/download', infer from file extension
-            if mimetype in ['application/octet-stream', 'application/download']:
-                log.debug('Detected application/octet-stream or application/download, guessing mimetype from file extension')
-                mimetype, _ = mimetypes.guess_type(filepath)
-        except Exception as e:
-            log.debug("Error fetching header:")
-            log.debug(e)
-            mimetype = None
+        log.debug(mimetype)
         
-        # If mimetype is not determined from headers, fallback to file extension
-        if not mimetype:
-            mimetype, _ = mimetypes.guess_type(filepath)
+        # try:
+        #     log.debug("identify mimetype based on content-type")
+        #     response = requests.head(filepath, timeout=5)
+        #     content_type = response.headers.get('Content-Type', None)
+        #     content_disposition = response.headers.get('Content-Disposition', None)
+        #     # Default mimetype and charset if not present in headers
+        #     mimetype = None
+        #     charset = 'utf-8'
+            
+        #     if content_type:
+        #         # Split Content-Type to separate mimetype and charset (if available)
+        #         content_parts = content_type.split(";")
+        #         mimetype = content_parts[0].strip()  # First part is the mimetype
+                
+        #         # If charset is provided, extract it
+        #         if len(content_parts) > 1:
+        #             for part in content_parts[1:]:
+        #                 if "charset=" in part:
+        #                     charset = part.split("=")[-1].strip()
+        #                     break
+        #     # Check for "Content-Disposition" header to extract the filename
+        #     if content_disposition:
+        #         log.debug('Content-Disposition:')
+        #         if 'filename=' in content_disposition:
+        #             filename = content_disposition.split('filename=')[-1].strip().strip('"')
+        #             log.debug("Downloaded filename:")
+        #             log.debug(filename)
+        #             # Use filename to guess mimetype if needed
+        #             mimetype_from_filename, _ = mimetypes.guess_type(filename)
+        #             if mimetype_from_filename:
+        #                 mimetype = mimetype_from_filename
+
+        #     # If mimetype is 'application/octet-stream' or 'application/download', infer from file extension
+        #     if mimetype in ['application/octet-stream', 'application/download']:
+        #         log.debug('Detected application/octet-stream or application/download, guessing mimetype from file extension')
+        #         mimetype, _ = mimetypes.guess_type(filepath)
+        # except Exception as e:
+        #     log.debug("Error fetching header:")
+        #     log.debug(e)
+        #     mimetype = None
+        
+        # # If mimetype is not determined from headers, fallback to file extension
+        # if not mimetype:
+        #     mimetype, _ = mimetypes.guess_type(filepath)
 
         timeout = 5
 
@@ -1303,54 +1352,46 @@ class ResourceFetchData2(object):
             log.debug('----is_url_file-----')
             log.debug(mimetype)
             n_rows = 5001
-            if(mimetype == 'text/csv' or resource_format =='CSV'): #if(resource_format =='CSV'):
-                # log.debug('----csv----')     
+            if(mimetype == 'text/csv'): #(resource_format =='CSV'):
+                log.debug('----csv----')     
                 # log.debug(filepath)
                 #-----------------------------------      
-                # Create a StringIO object to treat the response content as a file-like object
-                encoding = self.detect_encoding(filepath)
-                # log.debug('----endcode csv----')    
-                # log.debug(encoding)       
-                data_encode = response.content.decode(encoding)  # Decode content to string, errors='ignore'
+                
                 try:
-                    csv_data = StringIO(data_encode)
-                    # Use the csv.reader to parse the CSV data
-                    csv_reader = csv.reader(csv_data)
-                    records_read = 0
-                    for row in csv_reader:
-                        data.append(row)
-                        records_read += 1
-                        if records_read >= n_rows:
-                            break
-                    # log.debug('records_read')
-                    # log.debug(records_read)
+                    # Create a StringIO object to treat the response content as a file-like object
+                    encoding = self.detect_encoding(filepath)
+                    log.debug('----endcode csv----')    
+                    log.debug(encoding)      
+                    data_encode = response.content.decode(encoding, errors='ignore')  # Decode content to string, errors='ignore'
+                    if  ResourceFetchData2.has_valid_filename(filepath,'.csv'):
+                        csv_data = StringIO(data_encode)
+                        # Use the csv.reader to parse the CSV data
+                        csv_reader = csv.reader(csv_data)
+                        records_read = 0
+                        for row in csv_reader:
+                            data.append(row)
+                            records_read += 1
+                            if records_read >= n_rows:
+                                break
+                        # log.debug('records_read')
+                    else: 
+                        log.debug('--data store--')
+                        data = self._fetch_data_datastore_defined_row(self.resource) 
                 except Exception as e:
-                    log.debug("An error occurred, use pandas to readfile", e)
-                    try:
-                        #use pandas
-                        data_df = pd.read_csv(io.StringIO(data_encode), nrows=n_rows)  # Read CSV data into a DataFrame
-                        if data_df is not None:
-                            data = data_df.values.tolist()
-                            data[:0] = [list(data_df.keys())]
-                    except Exception as e:
-                        log.debug("An error occurred:", e)
-                        data = []
-                #-----------------------------------
-                # csv_data = StringIO(response.text)
-                # csv_reader = csv.reader(csv_data)
-                # records_read = 0
-                # for row in csv_reader:
-                #     data.append(row)
-                #     records_read += 1
-                #     if records_read >= n_rows:
-                #         break
-                #-----------------------------------
-                # data_df = pd.read_csv(io.StringIO(data_encode), nrows=n_rows)  # Read CSV data into a DataFrame
-                # if data_df is not None:
-                #     data = data_df.values.tolist()
-                #     data[:0] = [list(data_df.keys())]
-
-            elif(mimetype == 'application/json' or resource_format =='JSON' ): #elif(resource_format == 'JSON'):
+                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    data = self._fetch_data_datastore_defined_row(self.resource) 
+                    # log.debug("An error occurred, use pandas to readfile", e)
+                    # try:
+                    #     #use pandas
+                    #     data_df = pd.read_csv(io.StringIO(data_encode), nrows=n_rows)  # Read CSV data into a DataFrame
+                    #     if data_df is not None:
+                    #         data = data_df.values.tolist()
+                    #         data[:0] = [list(data_df.keys())]
+                    # except Exception as e:
+                    #     log.debug("An error occurred:", e)
+                    #     data = []
+                
+            elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
                 # log.debug('--Read JSON data--')
                 # try:
                 #     data_chunks = []
@@ -1397,7 +1438,6 @@ class ResourceFetchData2(object):
                         if 'application/json' in content_type or 'application/octet-stream' in content_type:
                         # if 'application/json' in response.headers.get('Content-Type', ''):
                             # Use `pd.read_json` with a StringIO object for URL content
-                            from io import StringIO
                             json_data = StringIO(response.text)
                             data_df = pd.read_json(json_data)
                         else:
@@ -1429,15 +1469,15 @@ class ResourceFetchData2(object):
                     log.debug("Unexpected error occurred")
                     log.debug(e)
                     data = []
-            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or resource_format == 'XLSX'):
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 log.debug('--Reading XLSX data--')
                 try:
-                    if  self.has_valid_filename(url):
+                    if  ResourceFetchData2.has_valid_filename(filepath,'.xlsx'):
                         log.debug('--load_workbook--')
                         # Load the workbook from the temporary file
                         wb = load_workbook(filename=BytesIO(response.content), read_only=True)
                         # Get the active worksheet
-                        ws = wb.active
+                        ws = wb.active # ******
                         # Iterate over rows and cells to read the data
                         records_read = 0
                         for row in ws.iter_rows(values_only=True):
@@ -1450,63 +1490,32 @@ class ResourceFetchData2(object):
                         wb.close()
                     else:
                         log.debug('--data store--')
-                        data = self._fetch_data_datastore_defined_row(self.resource)
-                        # page = 0
-                        # limit = 10
-                        # log.debug("resource_id")
-                        # log.debug(self.resource.get('id'))
-                        # try:
-                        #     # ตรวจว่ามี datastore จริงหรือไม่ก่อน
-                        #     context = {'ignore_auth': True}
-                        #     data_dict = {'id': self.resource.get('id')}
-                        #     log.debug("check datastore1")
-                        #     log.debug(f"data_dict: {data_dict}")
-                        #     ds_metadata = toolkit.get_action('datastore_info')(context, data_dict)
-                        #     log.debug("check datastore2")
-                        #     log.debug(ds_metadata)
-                            
-                        #     if self.resource['datastore_active'] == True: #if ds_metadata.get('meta', {}).get('count', 0) > 0: 
-                                
-                        #         result = toolkit.get_action('datastore_search')(
-                        #             {'ignore_auth': True},  
-                        #             {'resource_id': self.resource.get('id'), 'offset': 0, 'limit': 5000} 
-                        #             #{'resource_id': self.resource.get('id'), 'offset': page * limit, 'limit': limit} 
-                        #         )
-
-                        #         # เปลี่ยน format ให้อยู่ในรูปแบบ rows
-                        #         headers = list(result['records'][0].keys()) if result['records'] else []
-                        #         data.append(headers)
-                        #         for row in result['records']:
-                        #             data.append([row.get(h, None) for h in headers])
-                        #     else:
-                        #         log.warning("Resource ไม่มีข้อมูลใน datastore")
-                        # except Exception as e:
-                        #     log.debug(f"cannot read from datastore: {e}")
-                        #     return {
-                        #         'source': 'none',
-                        #         'data': []
-                        #     }
+                        data = self._fetch_data_datastore_defined_row(self.resource)           
                        
                 except Exception as e:
-                    log.debug("An error occurred, use pandas to readfile", e)
-                    try:
-                        data_df = pd.read_excel(filepath) 
-                        if data_df is not None:
-                            data = data_df.values.tolist()
-                            data[:0] = [list(data_df.keys())]
-                    except Exception as e:
-                        log.debug("An error occurred:", e)
-                        data = []
-            elif(mimetype == 'application/vnd.ms-excel' or resource_format == 'XLS'):
+                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    data = self._fetch_data_datastore_defined_row(self.resource)
+                    # try:
+                    #     data_df = pd.read_excel(filepath) 
+                    #     if data_df is not None:
+                    #         data = data_df.values.tolist()
+                    #         data[:0] = [list(data_df.keys())]
+                    # except Exception as e:
+                    #     log.debug("An error occurred:", e)
+                    #     data = []
+            elif(mimetype == 'application/vnd.ms-excel'):
                 log.debug('--Reading XLS data--')
                 try:
-                    book = xlrd.open_workbook(file_contents=response.content)
-                    sheet = book.sheet_by_index(0)
-
-                    data = [sheet.row_values(i) for i in range(sheet.nrows)]
+                    if  ResourceFetchData2.has_valid_filename(filepath,'.xls'):
+                        book = xlrd.open_workbook(file_contents=response.content)
+                        sheet = book.sheet_by_index(0)
+                        data = [sheet.row_values(i) for i in range(sheet.nrows)]
+                    else: 
+                        log.debug('--data store--')
+                        data = self._fetch_data_datastore_defined_row(self.resource)
                 except Exception as e:
-                    log.debug("An error occurred:", e)
-                    data = []
+                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    data = self._fetch_data_datastore_defined_row(self.resource)
             else:
                 data = []
         else:
@@ -1514,18 +1523,6 @@ class ResourceFetchData2(object):
             data = []
         return data
 
-    # def is_url_file(self,url,timeout):
-    #     try:
-    #         response = requests.head(url,timeout=timeout)
-    #         content_type = response.headers.get('Content-Type')
-    #         if content_type:
-    #             mime_type, _ = mimetypes.guess_type(url)
-    #             if mime_type and mime_type != 'application/octet-stream':
-    #                 return True  # It's a file
-    #         return False  # It's not a file or has unknown content type
-    #     except Exception as e:
-    #         log.debug("An error occurred:", e)
-    #         return False  # Error occurred, not a file
     def is_url_file(self,url,timeout):
         try:
             # Send a HEAD request to get headers
@@ -1567,10 +1564,135 @@ class ResourceFetchData2(object):
         except Exception as e:
             log.debug("An error occurred:", e)
             return False  # Error occurred, not a file
-    def has_valid_filename(self, url):
+    @staticmethod
+    def has_valid_filename(url, format):
         parsed = urlparse(url)
         filename = os.path.basename(parsed.path)
-        return filename and filename.lower() != '.xlsx'
+        return filename and filename.lower() != format
+    @staticmethod
+    def detect_mimetype(url):
+        try:
+            log.debug("identify mimetype based on content-type")
+            response = requests.head(url, timeout=5)
+            content_type = response.headers.get('Content-Type', None)
+            content_disposition = response.headers.get('Content-Disposition', None)
+
+            mimetype = None
+            charset = 'utf-8'
+            filename = None
+
+            # --- Parse Content-Type header ---
+            if content_type:
+                content_parts = content_type.split(";")
+                mimetype = content_parts[0].strip()
+                for part in content_parts[1:]:
+                    if "charset=" in part:
+                        charset = part.split("=")[-1].strip()
+                        break
+
+            # --- Parse Content-Disposition header for filename ---
+            if content_disposition:
+                log.debug(f"Content-Disposition: {content_disposition}")
+                if 'filename=' in content_disposition:
+                    filename = content_disposition.split('filename=')[-1].strip().strip('"')
+                elif 'filename*=' in content_disposition:
+                    filename = content_disposition.split("filename*=")[-1].split("''")[-1]
+                log.debug(f"Downloaded filename: {filename}")
+
+            # --- Try to get filename from URL if not available ---
+            parsed_url = urlparse(url)
+            filename_from_url = os.path.basename(parsed_url.path)
+            log.debug(f"Filename from URL path: {filename_from_url}")
+
+            # --- Select most reliable filename ---
+            if filename and os.path.splitext(filename)[1]:
+                filename_to_check = filename
+            elif filename_from_url and os.path.splitext(filename_from_url)[1]:
+                filename_to_check = filename_from_url
+            else:
+                # กรณีไม่มีชื่อไฟล์หรือไม่มีนามสกุลจริง
+                filename_to_check = None
+
+            # --- If filename_to_check ไม่มีค่า หรือ ไม่มีนามสกุล ให้ fallback ตามเงื่อนไข ---
+            if not filename_to_check or not os.path.splitext(filename_to_check)[1]:
+                # ตั้ง fallback ตามชื่อไฟล์ (ในกรณี source มีคำใน url หรือชื่อไฟล์แอบแฝง)
+                url_lower = url.lower()
+                fallback_extensions = [
+                    'xlsx', 'xls', 'csv', 'json', 'geojson', 'pdf',
+                    'doc', 'docx', 'ppt', 'pptx',
+                    'jpg', 'jpeg', 'png', 'gif', 'tif', 'tiff', 'svg',
+                    'xml', 'txt', 'zip', 'tar', 'gz'
+                ]
+
+                for ext in fallback_extensions:
+                    if ext in url_lower:
+                        filename_to_check = f"fallback.{ext}"
+                        break
+                
+            # --- Check file extension to determine mimetype ---
+            mimetype_map = {
+                # Excel
+                '.xls': 'application/vnd.ms-excel',
+                '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+
+                # CSV / Text / JSON
+                '.csv': 'text/csv',
+                '.json': 'application/json',
+                '.geojson': 'application/geo+json',
+
+                # PDF
+                '.pdf': 'application/pdf',
+
+                # Word documents
+                '.doc': 'application/msword',
+                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+
+                # PowerPoint
+                '.ppt': 'application/vnd.ms-powerpoint',
+                '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+
+                # Images
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.gif': 'image/gif',
+                '.tif': 'image/tiff',
+                '.tiff': 'image/tiff',
+                '.svg': 'image/svg+xml',
+
+                # Plain text and XML
+                '.txt': 'text/plain',
+                '.xml': 'application/xml',
+
+                # Compressed formats
+                '.zip': 'application/zip',
+                '.tar': 'application/x-tar',
+                '.gz': 'application/gzip',
+            }
+            ext = os.path.splitext(filename_to_check)[1].lower()
+            mimetype = mimetype_map.get(ext, 'application/octet-stream') #'application/octet-stream'
+            # ext = os.path.splitext(filename_to_check)[1].lower()
+            # if ext == '.xls':
+            #     mimetype = 'application/vnd.ms-excel'
+            # elif ext == '.xlsx':
+            #     mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            # elif ext == '.csv':
+            #     mimetype = 'text/csv'
+            # elif ext == '.json':
+            #     mimetype = 'application/json'
+            # elif ext == '.pdf':
+            #     mimetype = 'application/pdf'
+            # else:
+            #     mimetype = 'application/octet-stream'  # fallback
+
+            log.debug(f"Determined mimetype from extension '{ext}': {mimetype}")
+
+        except Exception as e:
+            log.debug("Error fetching header:")
+            log.debug(e)
+            mimetype = None
+
+        return mimetype
     def detect_encoding(self,url):
         timeout = 5
         sample_size=1024
@@ -1582,10 +1704,10 @@ class ResourceFetchData2(object):
                 result = chardet.detect(sample)
                 return result['encoding']
             else:
-                log.debug("Failed to download the file. Status code:", response.status_code)
+                log.debug(f"Failed to download the file. Status code: {response.status_code}")
                 return None
         except Exception as e:
-            log.debug("Error: %s", e)
+            log.debug(f"Error: {e}")
             return None   
     def _download_resource_from_ckan(self, resource):       
         upload = uploader.get_resource_uploader(resource)
@@ -3112,7 +3234,7 @@ class Validity():#DimensionMetric
         # super(Validity, self).__init__('validity')
         self.name = 'validity'
 
-    def _perform_validation(self, resource, total_rows):
+    def _perform_validation(self, resource, total_rows,data):
         rc = {}
         rc.update(resource)
         rc['validation_options'] = {
@@ -3120,7 +3242,7 @@ class Validity():#DimensionMetric
         }
         # return validate_resource_data(rc)
         try:
-            return validate_resource_data(rc)
+            return validate_resource_data(rc,data)
         except ValueError as ve:
             log.error(f"Validation failed for resource {resource.get('id')}: {ve}")
             # บางกรณี อาจเจอ unmatched '{' ให้ตรวจว่าข้อความมี curly braces
@@ -3155,7 +3277,7 @@ class Validity():#DimensionMetric
         validation = None
         try:
             validation = self._perform_validation(resource,
-                                                  data.get('total', 0))
+                                                  data.get('total', 0),data)
         except Exception as e:
             log.error('Failed to validate data for resource: %s. '
                               'Error: %s', resource['id'], str(e))
@@ -3169,6 +3291,7 @@ class Validity():#DimensionMetric
         encoding = ''
         valid = ''
         error_message = ''
+        error_message_all = ''
         headers = []
         table_count = 0
         relevant_errors = 0
@@ -3196,10 +3319,14 @@ class Validity():#DimensionMetric
                 dict_error['valid']    = valid
                 dict_error['error'] = error_message
             #โหลดและตรวจสอบไฟล์ได้แล้ว แต่ไม่มีข้อมูลในไฟล์นั้นเลย เช่น ไม่มีข้อมูลในไฟล์เลย หรือมี header แต่ไม่มี row จริง
-            if total_rows == 0:            
+            if total_rows == 0:
+                default_error_message = 'Data is empty/Invalid file format or structure'
+                if dict_error.get('source-error', 0) > 0 :
+                    default_error_message = "source-error("+ error_message+")"
+                   
                 return {
                     'value': None,
-                    'error': 'Data is empty/Invalid file format or structure',
+                    'error': default_error_message,
                     'report': dict_error
                 }
             blank_header = 1
@@ -3211,7 +3338,7 @@ class Validity():#DimensionMetric
                 duplicate_header = 0
             if dict_error.get('extra-value', 0) > 0 :
                 extra_value = 0
-            
+
             validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
             log.debug("---validity_score---")
             log.debug(blank_header)
@@ -3228,12 +3355,13 @@ class Validity():#DimensionMetric
                 'value': round(validity_score,2),
                 'total': 1,        # นับเป็น 1 dataset
                 'valid': is_valid, # 1 = valid, 0 = invalid
-                'report': dict_error
+                'report': dict_error,
+                'error': source_error_message
             }
         else:
             #ไม่สามารถตรวจสอบข้อมูลได้เลย เช่น โหลดไฟล์ไม่สำเร็จ, URL เสีย / response ไม่ใช่ไฟล์จริง
             dict_error['encoding'] = None
-            dict_error['error'] = 'Validation failed for resource'
+            dict_error['error'] = 'Failed to validate the resource'
             return {
                 'error': 'Failed to validate the resource',
                 'value': None,
@@ -3743,7 +3871,7 @@ class Consistency():#DimensionMetric
         return {
             'total': total,
             'consistent': consistent,
-            'value': value,
+            'value': round(value, 2),
             'report': report
         }
         
@@ -4318,7 +4446,7 @@ def detect_numeric_format(numstr):
         return None            
 
 # resource validation
-def validate_resource_data(resource):
+def validate_resource_data(resource,data):
     '''Performs a validation of a resource data, given the resource metadata.
 
     :param resource: CKAN resource data_dict.
@@ -4374,7 +4502,61 @@ def validate_resource_data(resource):
             schema = json.loads(schema)
 
     _format = resource[u'format'].lower()
-    report = _validate_table(source, _format=_format, schema=schema, **options)
+    #----- check mimetype -----------------------------
+    log.debug('--validate: check mimetype--')
+    log.debug('---data records--')
+    # df = pd.DataFrame(data['records'])
+    records = list(data['records']) 
+    # log.debug(records)
+    # log.debug('---dataframe--')
+    # log.debug(df)
+    #--------------------------
+    report = _validate_table_by_list(records)
+    # report = _validate_table_by_datastore(df)
+    log.debug(report)
+    # mimetype =  ResourceFetchData2.detect_mimetype(source)
+    # log.debug('---mimetype--')
+    # log.debug(mimetype)
+    # if (mimetype == 'text/csv'):
+    #     if ResourceFetchData2.has_valid_filename(source,'.csv'):
+    #         log.debug('---validate:readfile csv--')
+    #         report = _validate_table(source, _format=_format, schema=schema, **options)
+    #         report['validate_source'] = 'file'
+    #     else:
+    #         log.debug('---validate:datastore csv--')
+    #         report = _validate_table_by_datastore(df)
+    #         report['validate_source'] = 'datastore'
+
+    # elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ):
+    #     if ResourceFetchData2.has_valid_filename(source,'.xlsx'):
+    #         log.debug('has_valid_filename')
+    #         report = _validate_table(source, _format=_format, schema=schema, **options)
+    #         report['validate_source'] = 'file'
+    #     else:
+    #         log.debug('not has_valid_filename')
+    #         report = _validate_table_by_datastore(df)
+    #         report['validate_source'] = 'datastore'
+
+    # elif(mimetype == 'application/vnd.ms-excel'):
+    #     log.debug(source)
+    #     if ResourceFetchData2.has_valid_filename(source,'.xls'):
+    #         log.debug('has_valid_filename')
+    #         report = _validate_table(source, _format=_format, schema=schema, **options)
+    #         report['validate_source'] = 'file'
+    #     else:
+    #         log.debug('not has_valid_filename')
+    #         report = _validate_table_by_datastore(df)
+    #         report['validate_source'] = 'datastore'
+    # else:
+    #     report = _validate_table(source, _format=_format, schema=schema, **options)
+
+    # log.debug(report)
+    # if (report.get('error') != ''):
+    #     report = _validate_table_by_datastore(df)
+    #     report['validate_source'] = 'datastore'
+    #     log.debug(report)
+    # report = _validate_table(source, _format=_format, schema=schema, **options)
+    # report = _validate_table_by_ByteIO(source, _format=_format, schema=schema, **options)
 
     # Hide uploaded files
     for table in report.get('tables', []):
@@ -4388,10 +4570,16 @@ def validate_resource_data(resource):
 
 def _validate_table(source, _format=u'csv', schema=None, **options):
     report = validate(source, format=_format, schema=schema, **options)
-    log.debug(u'Validating source: {}'.format(source))
-
     return report
 
+    return report
+def _validate_table_by_datastore(df):
+    records = df.to_dict(orient='records')  
+    report = validate(records, format='inline')
+    return report
+def _validate_table_by_list(records):
+    report = validate(records, format='inline')
+    return report
 def _get_site_user_api_key():
     site_user_name = toolkit.get_action('get_site_user')({
         'ignore_auth': True
