@@ -3355,8 +3355,7 @@ class Validity():#DimensionMetric
                 'value': round(validity_score,2),
                 'total': 1,        # นับเป็น 1 dataset
                 'valid': is_valid, # 1 = valid, 0 = invalid
-                'report': dict_error,
-                'error': source_error_message
+                'report': dict_error
             }
         else:
             #ไม่สามารถตรวจสอบข้อมูลได้เลย เช่น โหลดไฟล์ไม่สำเร็จ, URL เสีย / response ไม่ใช่ไฟล์จริง
