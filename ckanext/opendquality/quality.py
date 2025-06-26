@@ -609,7 +609,7 @@ class DataQualityMetrics(object):
                 file_size_mb = file_size/1024**2
                 log.debug("File size (MB): %s", file_size_mb)
             if file_info == False:
-                error_file_not_match = 'format file is not match'
+                error_file_not_match = 'Invalid file format'
             if not is_datadict:                                                   
                 #----- connect model: check records----------------------
                 data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
@@ -1476,8 +1476,11 @@ class ResourceFetchData2(object):
                         log.debug('--load_workbook--')
                         # Load the workbook from the temporary file
                         wb = load_workbook(filename=BytesIO(response.content), read_only=True)
+
+                        # Get the last worksheet instead of the active one
+                        last_sheet_name = wb.sheetnames[-1]
                         # Get the active worksheet
-                        ws = wb.active # ******
+                        # ws = wb.active # ******
                         # Iterate over rows and cells to read the data
                         records_read = 0
                         for row in ws.iter_rows(values_only=True):
@@ -1508,7 +1511,10 @@ class ResourceFetchData2(object):
                 try:
                     if  ResourceFetchData2.has_valid_filename(filepath,'.xls'):
                         book = xlrd.open_workbook(file_contents=response.content)
-                        sheet = book.sheet_by_index(0)
+                        # เลือก sheet สุดท้าย
+                        last_sheet_index = book.nsheets - 1
+                        sheet = book.sheet_by_index(last_sheet_index)
+                        # sheet = book.sheet_by_index(0)
                         data = [sheet.row_values(i) for i in range(sheet.nrows)]
                     else: 
                         log.debug('--data store--')
