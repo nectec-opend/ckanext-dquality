@@ -27,6 +27,5 @@ class OpendqualityPlugin(plugins.SingletonPlugin):
     # IBlueprint
     def get_blueprint(self):
         return blueprint.qa
-    
 
 

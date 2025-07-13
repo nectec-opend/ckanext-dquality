@@ -1,0 +1,116 @@
+{% extends "my_page.html" %}
+
+{% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+{% block breadcrumb_content %}
+<li class="active">{{ _('Data Quality') }}</li>
+{% endblock %}
+
+{% block secondary_content %}
+  {% include "ckanext/opendquality/left_side.html" %}
+{% endblock %}
+
+{% block page_header %}
+{% endblock %}
+{% block primary_content_inner %}
+<h1>{{ title }}</h1>
+<div class="row table-responsive">testttt</div>
+<hr>
+<div class="row table-responsive" style="position: relative; z-index: 2;">
+  <table id="tb-qa-result" class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>{{_("#")}}</th>
+        <th>{{ _("ชื่อชุดข้อมูล") }}</th>
+        <th>{{ _("ชื่อหน่วยงาน") }}</th>
+        <th>{{ _("openess") }}</th>
+        <th>{{ _("timeliness") }}</th>
+        <th>{{ _("acc_latency") }}</th>
+        <th>{{ _("freshness") }}</th>
+        <th>{{ _("availability") }}</th>
+        <th>{{ _("downloadable") }}</th>
+        <th>{{ _("access_api") }}</th>
+        <th>{{ _("relevance") }}</th>
+        <th>{{ _("utf8") }}</th>
+        <th>{{ _("preview") }}</th>
+        <th>{{ _("completeness") }}</th>
+        <th>{{ _("uniqueness") }}</th>
+        <th>{{ _("validity") }}</th>
+        <th>{{ _("consistency") }}</th>
+        <th>{{ _("metrics") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for report in reports %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><a href="{{ h.url_for('opendquality.admin_report', package_id=report.package_id) }}">{{ report.package_title }}</a></td>
+        <td>{{ report.org_title }}</td>
+        <td>{{ report.openness }}</td>
+        <td>{{ report.timeliness }}</td>
+        <td>{{ report.acc_latency }}</td>
+        <td>{{ report.freshness }}</td>
+        <td>{{ report.availability }}</td>
+        <td>{{ report.downloadable }}</td>
+        <td>{{ report.access_api }}</td>
+        <td>{{ report.relevance }}</td>
+        <td>{{ report.utf8 }}</td>
+        <td>{{ report.preview }}</td>
+        <td>{{ report.completeness }}</td>
+        <td>{{ report.uniqueness }}</td>
+        <td>{{ report.validity }}</td>
+        <td>{{ report.consistency }}</td>
+        <td>
+          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#jsonModal"
+            data-json='{{ report.metrics |tojson | safe }}'>
+            Show Metrics
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+  </table>
+</div>
+<div class="modal fade" id="jsonModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="jsonModalLabel">Metrics Data</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="json-content" class="bg-light p-3 rounded small text-break"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.datatables.net/2.3.2/js/dataTables.js"></script>
+<script src="https://cdn.datatables.net/2.3.2/js/dataTables.bootstrap5.js"></script>
+<script>
+  new DataTable('#tb-qa-result', {
+    responsive: true,
+    language: {
+      url: "//cdn.datatables.net/plug-ins/2.0.0/i18n/th.json"
+    }
+  });
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('jsonModal');
+    modal.addEventListener('show.bs.modal', function (event) {
+      var button = event.relatedTarget;
+      var rawJson = button.getAttribute('data-json');
+      try {
+        var jsonObj = JSON.parse(rawJson);
+        var formatted = JSON.stringify(jsonObj, null, 2);
+        document.getElementById('json-content').textContent = formatted;
+      } catch (e) {
+        document.getElementById('json-content').textContent = 'Invalid JSON';
+      }
+    });
+  });
+</script>
+
+{% endblock %}

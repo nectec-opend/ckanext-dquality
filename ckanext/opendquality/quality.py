@@ -454,8 +454,8 @@ class DataQualityMetrics(object):
         data_format = data_format.replace('.', '').upper()
         is_file_tabular = data_format in machine_readable_formats
         return is_file_tabular
-    def is_openness_5_star_format(self, data_format):
-        OPENNESS_5_STAR_FORMATS = ['RDF', 'TTL', 'N3', 'GEOJSON', 'WMS', 'GML', 'KML', 'SHP', 'ESRI REST']
+    def is_openness_5_star_format(self, data_format): #special format 
+        OPENNESS_5_STAR_FORMATS = ['RDF', 'TTL', 'N3', 'GEOJSON',  'GML', 'KML', 'SHP','WMS', 'ESRI REST']
         """ตรวจสอบว่า format นี้เป็นประเภท 5-star หรือไม่"""
         if not data_format:
             return False
@@ -751,7 +751,7 @@ class DataQualityMetrics(object):
                                     log.debug(consistency_val)
                                 elif(metric.name == 'validity'):
                                     log.debug('----check validity------')
-                                    log.debug(data_stream2['total'])
+                                    # log.debug(data_stream2['total'])
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
                                     validity_report = results[metric.name].get('report')
                                 elif(metric.name == 'completeness'):                           
@@ -770,8 +770,8 @@ class DataQualityMetrics(object):
                             elif (openness_5_star_format):
                                 results['consistency'] = { 'value': 100 }
                                 results['validity']    =    { 'value': 100 }
-                                results['completeness'] = { 'value': 100 }
-                                results['uniqueness'] = { 'value': 100 }
+                                results['completeness'] = { 'value': None }
+                                results['uniqueness'] = { 'value': None }
                             else:
                                 results['consistency'] = { 'value': None }
                                 results['validity']    =    { 'value': None }
@@ -903,7 +903,7 @@ class DataQualityMetrics(object):
                 # data_quality.machine_readable = 0      
                 #---- add filepath ----
                 # data_quality.filepath = ''
-                data_quality.error = 'connection timed out'
+                data_quality.error = 'Connection timed out'
                 data_quality.version = today
                 data_quality.format  = resource['format']
                 data_quality.url = resource['url']
@@ -1479,6 +1479,7 @@ class ResourceFetchData2(object):
 
                         # Get the last worksheet instead of the active one
                         last_sheet_name = wb.sheetnames[-1]
+                        ws = wb[last_sheet_name]  # Get the last worksheet
                         # Get the active worksheet
                         # ws = wb.active # ******
                         # Iterate over rows and cells to read the data
@@ -1894,88 +1895,156 @@ class Openness():#DimensionMetric
         self.name = 'openness'
 
     def get_openness_score(self,data_format,mimetype):
-        openness_score = { "JSON-LD": 5,"N3": 5, "SPARQL": 5, "RDF": 5,
-        "TTL": 5, "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,
-        "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
-        "ODS": 3, "JSON": 3,"ODB": 3, "ODF": 3,
-        "ODG": 3, "XML": 3,"WMS": 3, "WMTS": 3,
-        "SVG": 3, "JPEG": 3,"CSV": 3, "Atom Feed": 3,
-        "XYZ": 3, "PNG": 3,"RSS": 3, "GeoJSON": 3,
-        "IATI": 3, "ICS": 3,"XLS": 2, "MDB": 2,
-        "ArcGIS Map Service": 2,"BMP": 2, "TIFF": 2,
-        "XLSX": 2, "GIF": 2,"E00": 2, "MrSID": 2,
-        "ArcGIS Map Preview": 2,"MOP": 2, "Esri REST": 2,
-        "dBase": 2, "SHP": 2,"PPTX": 1, "DOC": 1,
-        "ArcGIS Online Map": 1, "ZIP": 1, "GZ": 1,
-        "ODT": 1, "RAR": 1,"TXT": 1, "DCR": 1,
-        "DOCX": 1, "BIN": 1,"PPT": 1, "ODP": 1,
-        "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
-        "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
-        "XSLT": 0, "RDFa": 0}
+        openness_score = { 
+        "TTL": 5, "RDF": 5, "JSON-LD": 5,"N3": 5, "SPARQL": 5, 
+        "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,#Geo
+        "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,  #Geo
+        "WMS": 3, "WMTS": 3,"XYZ": 3,#Geo
+        "RSS": 3, "Atom Feed": 3,
+        "GeoJSON": 3, 
+        "XML": 3,"ODG": 3,
+        "CSV": 3, "JSON": 3, "ODS": 3,"ODB": 3, "ODF": 3,#open
+        "ArcGIS Map Service": 2,  #Geo
+        "ArcGIS Map Preview": 2,  #Geo
+        "dBase": 2, "SHP": 2, "Esri REST": 2, #Geo
+        "XLS": 2,"XLSX": 2,"MDB": 2, #microsoft access
+        "GIF": 1, "TIFF": 1, "JPEG": 1, "BMP": 1,"SVG": 1,"PNG": 1,
+        "ODT": 1, "ODP": 1,"ODC": 1,
+        "BIN": 1,  "TAR": 1, "ZIP": 1, "GZ": 1, "RAR": 1, 
+        "PDF": 1,"DOCX": 1,"DOC": 1 ,"PPT": 1,"PPTX": 1,"TXT": 1,
+        "HTML": 1
+        }
+        mimetype_to_format = {
+        'text/csv': 'CSV',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+        'application/vnd.ms-excel': 'XLS',
+        'application/pdf': 'PDF',
+        'application/rdf+xml': 'RDF',
+        'application/ld+json': 'JSON-LD',
+        'application/json': 'JSON',
+        'application/xml': 'XML',
+        'text/xml': 'XML',
+        'application/vnd.google-earth.kml+xml': 'KML',
+        'application/vnd.google-earth.kmz': 'KMZ',
+        'application/gml+xml': 'GML',
+        'image/png': 'PNG',
+        'image/jpeg': 'JPEG',
+        'image/bmp': 'BMP',
+        'image/gif': 'GIF',
+        'image/tiff': 'TIFF',
+        'image/svg+xml': 'SVG',
+        'application/zip': 'ZIP',
+        'application/gzip': 'GZ',
+        'application/x-tar': 'TAR',
+        'application/msword': 'DOC',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+        'application/vnd.ms-powerpoint': 'PPT',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+        'application/vnd.oasis.opendocument.text': 'ODT',
+        'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
+        'application/vnd.oasis.opendocument.presentation': 'ODP',
+        'application/vnd.oasis.opendocument.chart': 'ODC',
+        'application/vnd.oasis.opendocument.formula': 'ODF',
+        'application/vnd.oasis.opendocument.database': 'ODB',
+        'application/x-dbf': 'dBase',
+        'application/x-msaccess': 'MDB',
+        'text/plain': 'TXT',
+        'text/html': 'HTML',
+        'application/vnd.rar': 'RAR',
+        }
+        # Default score
+        score = 0
 
-        #if user add a resource as a link, data type will be null
-        if(data_format == ''):
-            score = 0
-            if(mimetype == 'text/csv'):
-                data_format = 'CSV'
-            elif(mimetype == 'application/pdf'):
-                data_format = 'PDF'
-            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
-                data_format = 'XLSX'
-            elif(mimetype == 'application/vnd.ms-excel'):
-                data_format = 'XLS'
-            elif(mimetype == 'application/rdf+xml'):
-                data_format = 'RDF'
-            elif(mimetype == 'application/ld+json'):
-                data_format = 'JSON-LD'
-            elif(mimetype == 'application/xml'):
-                data_format = 'XML'           
-            elif(mimetype == 'application/vnd.google-earth.kml+xml'):
-                data_format = 'KML'
-            elif(mimetype == 'application/gml+xml'):
-                data_format = 'GML'          
-            elif(mimetype == 'application/json'):
-                data_format = 'JSON'
-            elif(mimetype == 'image/png'):
-                data_format = 'PNG'
-            elif(mimetype == 'image/jpeg'):
-                data_format = 'JPEG'
-            elif(mimetype == 'image/bmp'):
-                data_format = 'BMP'
-            elif(mimetype == 'image/gif'):
-                data_format = 'GIF'
-            elif(mimetype == 'image/tiff'):
-                data_format = 'TIFF'
-            elif(mimetype == 'application/zip'):
-                data_format = 'ZIP'
-            elif(mimetype == 'application/msword'):
-                data_format = 'DOC'
-            elif(mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'):
-                data_format = 'DOCX'
-            elif(mimetype == 'application/vnd.oasis.opendocument.text'):
-                data_format = 'ODT'
-            elif(mimetype == 'application/vnd.oasis.opendocument.spreadsheet'):
-                data_format = 'ODS'
-            elif(mimetype == 'application/vnd.oasis.opendocument.presentation'):
-                data_format = 'ODP'
-            elif(mimetype == 'application/vnd.ms-powerpoint'):
-                data_format = 'PPT'
-            elif(mimetype == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'):
-                data_format = 'PPTX'
-            elif(mimetype == 'text/html'):
-                data_format = 'HTML'
-            elif(mimetype == 'application/vnd.rar'):
-                data_format = 'RAR'
-            elif(mimetype == 'text/plain'):
-                data_format = 'TXT'
-            if(data_format != '' ):
-                score =  openness_score.get(data_format)
-        else:
-            score =  openness_score.get(data_format)
-        # data type is not in the list
-        if (score == None):
-            score = 0
+        # If data_format is missing, try to get it from mimetype
+        if not data_format:
+            data_format = mimetype_to_format.get(mimetype, '')
+        
+        if data_format:
+            score = openness_score.get(data_format.upper(), 0)
+
         return score
+        # openness_score = { "JSON-LD": 5,"N3": 5, "SPARQL": 5, "RDF": 5,
+        # "TTL": 5, "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,
+        # "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
+        # "ODS": 3, "JSON": 3,"ODB": 3, "ODF": 3,
+        # "ODG": 3, "XML": 3,"WMS": 3, "WMTS": 3,
+        # "SVG": 3, "JPEG": 3,"CSV": 3, "Atom Feed": 3,
+        # "XYZ": 3, "PNG": 3,"RSS": 3, "GeoJSON": 3,
+        # "IATI": 3, "ICS": 3,"XLS": 2, "MDB": 2,
+        # "ArcGIS Map Service": 2,"BMP": 2, "TIFF": 2,
+        # "XLSX": 2, "GIF": 2,"E00": 2, "MrSID": 2,
+        # "ArcGIS Map Preview": 2,"MOP": 2, "Esri REST": 2,
+        # "dBase": 2, "SHP": 2,"PPTX": 1, "DOC": 1,
+        # "ArcGIS Online Map": 1, "ZIP": 1, "GZ": 1,
+        # "ODT": 1, "RAR": 1,"TXT": 1, "DCR": 1,
+        # "DOCX": 1, "BIN": 1,"PPT": 1, "ODP": 1,
+        # "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
+        # "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
+        # "XSLT": 0, "RDFa": 0}
+
+        # #if user add a resource as a link, data type will be null
+        # if(data_format == ''):
+        #     score = 0
+        #     if(mimetype == 'text/csv'):
+        #         data_format = 'CSV'    
+        #     elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
+        #         data_format = 'XLSX'
+        #     elif(mimetype == 'application/vnd.ms-excel'):
+        #         data_format = 'XLS'
+        #     elif(mimetype == 'application/pdf'):
+        #         data_format = 'PDF'
+        #     elif(mimetype == 'application/rdf+xml'):
+        #         data_format = 'RDF'
+        #     elif(mimetype == 'application/ld+json'):
+        #         data_format = 'JSON-LD'
+        #     elif(mimetype == 'application/xml'):
+        #         data_format = 'XML'           
+        #     elif(mimetype == 'application/vnd.google-earth.kml+xml'):
+        #         data_format = 'KML'
+        #     elif(mimetype == 'application/gml+xml'):
+        #         data_format = 'GML'          
+        #     elif(mimetype == 'application/json'):
+        #         data_format = 'JSON'
+        #     elif(mimetype == 'image/png'):
+        #         data_format = 'PNG'
+        #     elif(mimetype == 'image/jpeg'):
+        #         data_format = 'JPEG'
+        #     elif(mimetype == 'image/bmp'):
+        #         data_format = 'BMP'
+        #     elif(mimetype == 'image/gif'):
+        #         data_format = 'GIF'
+        #     elif(mimetype == 'image/tiff'):
+        #         data_format = 'TIFF'
+        #     elif(mimetype == 'application/zip'):
+        #         data_format = 'ZIP'
+        #     elif(mimetype == 'application/msword'):
+        #         data_format = 'DOC'
+        #     elif(mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'):
+        #         data_format = 'DOCX'
+        #     elif(mimetype == 'application/vnd.oasis.opendocument.text'):
+        #         data_format = 'ODT'
+        #     elif(mimetype == 'application/vnd.oasis.opendocument.spreadsheet'):
+        #         data_format = 'ODS'
+        #     elif(mimetype == 'application/vnd.oasis.opendocument.presentation'):
+        #         data_format = 'ODP'
+        #     elif(mimetype == 'application/vnd.ms-powerpoint'):
+        #         data_format = 'PPT'
+        #     elif(mimetype == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'):
+        #         data_format = 'PPTX'
+        #     elif(mimetype == 'text/html'):
+        #         data_format = 'HTML'
+        #     elif(mimetype == 'application/vnd.rar'):
+        #         data_format = 'RAR'
+        #     elif(mimetype == 'text/plain'):
+        #         data_format = 'TXT'
+        #     if(data_format != '' ):
+        #         score =  openness_score.get(data_format)
+        # else:
+        #     score =  openness_score.get(data_format)
+        # # data type is not in the list
+        # if (score == None):
+        #     score = 0
+        # return score
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
         from the resource data.
@@ -3328,7 +3397,7 @@ class Validity():#DimensionMetric
             if total_rows == 0:
                 default_error_message = 'Data is empty/Invalid file format or structure'
                 if dict_error.get('source-error', 0) > 0 :
-                    default_error_message = "source-error("+ error_message+")"
+                    default_error_message = "Source-error"
                    
                 return {
                     'value': None,
@@ -4118,7 +4187,10 @@ class Timeliness():#DimensionMetric
             'frequency': update_frequency_unit.value,
             'value': timeliness,
             'acceptable_latency': round(acceptable_latency,2),
-            'freshness':round(freshness,2)
+            'freshness':round(freshness,2),
+            'elapsed_days': elapsed_days,
+            'update_cycle_days':update_cycle_days,
+            'safe_overdue': safe_overdue
         }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the timeliness of all data in all of the given resources
@@ -4224,8 +4296,8 @@ class AcceptableLatency():
                 acc_latency_list.append(acc_latency_score)
         if acc_latency_list:
             result_score = min(acc_latency_list)
-            if(result_score < 0):
-                result_score = 0
+            # if(result_score < 0):
+            #     result_score = 0
             return {
                 'total': total,
                 'value': result_score,
@@ -4319,6 +4391,8 @@ class Freshness():
                 freshness_list.append(freshness_score)
         if freshness_list:
             result_score = max(freshness_list)
+            if result_score < 0: #for showing in radar chart
+               result_score = 0 
             return {
                 'total': total,
                 'value': result_score,
@@ -4518,7 +4592,7 @@ def validate_resource_data(resource,data):
     #--------------------------
     report = _validate_table_by_list(records)
     # report = _validate_table_by_datastore(df)
-    log.debug(report)
+    # log.debug(report)
     # mimetype =  ResourceFetchData2.detect_mimetype(source)
     # log.debug('---mimetype--')
     # log.debug(mimetype)

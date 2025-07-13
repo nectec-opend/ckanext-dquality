@@ -1,5 +1,33 @@
 {% extends "base.html" %}
 
+{% block custom_styles %}
+<link rel="stylesheet" href="https://cdn.datatables.net/2.3.2/css/dataTables.bootstrap5.css">
+<style>
+  /* .main */
+  .container {
+    max-width: 95%;
+  }
+
+  .main .wrapper:before {
+    border-right: 0;
+  }
+
+  .wrapper td a {
+    position: relative;
+    z-index: 1;
+  }
+
+  .main .secondary {
+    border-right: 1px solid #ddd;
+  }
+
+  #json-content {
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+</style>
+{% endblock %}
 {%- block page -%}
 
   {% block skip %}
@@ -72,7 +100,7 @@
             {% endblock %}
 
             {% block primary %}
-              <div class="primary col-md-9 col-xs-12" role="main">
+              <div class="primary col-md-10 col-xs-12" role="main">
                 {#
                 The primary_content block can be used to add content to the page.
                 This is the main block that is likely to be used within a template.

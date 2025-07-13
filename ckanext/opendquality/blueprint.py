@@ -4,7 +4,8 @@ from flask import Blueprint, request
 import ckan.plugins.toolkit as toolkit 
 from logging import getLogger
 # from ckan.common import config
-from ckan.model import package_table, Session
+from ckan.model import package_table, Session, Package, Group
+from ckanext.opendquality.model import DataQualityMetrics as DQM
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
 # from ckanext.myorg import helpers as myh
@@ -133,8 +134,34 @@ def home():
     # return {'msg': 'hello world quality'}
 
 def admin_report():
+    data_quality = Session.query(
+        Package.title.label('package_title'),
+        Package.id.label('package_id'),
+        Group.title.label('org_title'),
+        Group.id.label('org_id'),
+        DQM.openness,
+        DQM.timeliness,
+        DQM.acc_latency,
+        DQM.freshness,
+        DQM.availability,
+        DQM.downloadable,
+        DQM.access_api,
+        DQM.relevance,
+        DQM.utf8,
+        DQM.preview,
+        DQM.completeness,
+        DQM.uniqueness,
+        DQM.validity,
+        DQM.consistency,
+        DQM.metrics
+    ) \
+    .join(Package, Package.id == DQM.ref_id)\
+    .join(Group, Group.id == Package.owner_org)\
+    .filter(
+        DQM.type == 'package').order_by(DQM.modified_at.desc()).all()
     extra_vars = {
-        'title': toolkit._('Open Data Quality Admin Report'),
+        'reports': data_quality,
+        'title': toolkit._('รายงานคุณภาพชุดข้อมูลเปิดสำหรับ ผู้ดูแลระบบ'),
         'admin_report': True,
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
@@ -144,7 +171,7 @@ def admin_report():
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
         # 'external_dashboard': external_stats
     }
-    return toolkit.render('ckanext/opendquality/index.html', extra_vars)
+    return toolkit.render('ckanext/opendquality/admin_reports.html', extra_vars)
 
 def dashboard():
     extra_vars = {
@@ -177,6 +204,7 @@ def quality_reports():
 #         u'opendstats_page': 'top_package_owners'
 #     }
 
+qa.add_url_rule('/', endpoint="index", view_func=home)
 qa.add_url_rule('/calculate', endpoint="index", view_func=home)
 # qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
 # qa.add_url_rule('/reports', endpoint="reports", view_func=quality_reports)
