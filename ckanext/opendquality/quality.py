@@ -3238,7 +3238,14 @@ class Uniqueness(): #DimensionMetric
                 'value': None
             }
         else:
+            
             total_rows = len(df)
+            # duplicates = df[df.duplicated(keep=False)]  # แสดงแถวที่ซ้ำทั้งหมด ไม่ว่าจะแถวแรกหรือถัดไป
+            # หาแถวที่ซ้ำทั้งหมด (keep=False คือ mark ทั้งแถวที่ซ้ำ)
+            duplicates_bool = df.duplicated(keep=False)
+            # ดึง index ของแถวที่ซ้ำ
+            duplicate_indices = df.index[duplicates_bool].tolist()
+
             unique_rows = len(df.drop_duplicates())
 
             uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
@@ -3246,11 +3253,13 @@ class Uniqueness(): #DimensionMetric
             log.debug("Total rows: %d", total_rows)
             log.debug("Unique rows: %d", unique_rows)
             log.debug("Uniqueness score: %.2f%%", uniqueness_score)
-
+            # log.debug(df)
+            # log.debug(duplicate_indices)
             return {
                 'value': round(uniqueness_score, 2),
                 'total': total_rows,
-                'unique': unique_rows
+                'unique': unique_rows,
+                'duplicates': duplicate_indices
             }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates uniqueness for all resources based on the metrics
