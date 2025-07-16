@@ -3370,6 +3370,8 @@ class Validity():#DimensionMetric
             * `total`, `int`, total number of records.
             * `valid`, `int`, number of valid records.
         '''
+        log.debug("---validity---")
+        log.debug(data)
         validation = None
         try:
             validation = self._perform_validation(resource,
@@ -4546,6 +4548,126 @@ def detect_numeric_format(numstr):
         return None            
 
 # resource validation
+# def validate_resource_data(resource,data):
+#     '''Performs a validation of a resource data, given the resource metadata.
+
+#     :param resource: CKAN resource data_dict.
+
+#     :returns: `dict`, a validation report for the resource data.
+#     '''
+#     log.debug(u'Validating resource {}'.format(resource['id']))
+
+#     options = toolkit.config.get(
+#         u'ckanext.validation.default_validation_options')
+#     if options:
+#         options = json.loads(options)
+#     else:
+#         options = {}
+#     resource_options = resource.get(u'validation_options')
+#     if resource_options and isinstance(resource_options, string_types):#basestring):
+#         resource_options = json.loads(resource_options)
+#     if resource_options:
+#         options.update(resource_options)
+
+#     dataset = toolkit.get_action('package_show')(
+#         {'ignore_auth': True}, {'id': resource['package_id']})
+
+#     source = None
+#     if resource.get(u'url_type') == u'upload':
+#         upload = uploader.get_resource_uploader(resource)
+#         if isinstance(upload, uploader.ResourceUpload):
+#             source = upload.get_path(resource[u'id'])
+#         else:
+#             # Upload is not the default implementation (ie it's a cloud storage
+#             # implementation)
+#             pass_auth_header = toolkit.asbool(
+#                 toolkit.config.get(u'ckanext.validation.pass_auth_header',
+#                                    True))
+#             if dataset[u'private'] and pass_auth_header:
+#                 s = requests.Session()
+#                 s.headers.update({
+#                     u'Authorization': t.config.get(
+#                         u'ckanext.validation.pass_auth_header_value',
+#                         _get_site_user_api_key())
+#                 })
+
+#                 options[u'http_session'] = s
+#     if not source:
+#         source = resource[u'url']
+
+#     schema = resource.get(u'schema')
+#     if schema and isinstance(schema, string_types):#basestring):
+#         if schema.startswith('http'):
+#             r = requests.get(schema)
+#             schema = r.json()
+#         else:
+#             schema = json.loads(schema)
+
+#     _format = resource[u'format'].lower()
+#     #----- check mimetype -----------------------------
+#     log.debug('--validate: check mimetype--')
+#     log.debug('---data records--')
+#     # df = pd.DataFrame(data['records'])
+#     records = list(data['records']) 
+#     # log.debug(records)
+#     # log.debug('---dataframe--')
+#     # log.debug(df)
+#     #--------------------------
+#     report = _validate_table_by_list(records)
+#     # report = _validate_table_by_datastore(df)
+#     # log.debug(report)
+#     # mimetype =  ResourceFetchData2.detect_mimetype(source)
+#     # log.debug('---mimetype--')
+#     # log.debug(mimetype)
+#     # if (mimetype == 'text/csv'):
+#     #     if ResourceFetchData2.has_valid_filename(source,'.csv'):
+#     #         log.debug('---validate:readfile csv--')
+#     #         report = _validate_table(source, _format=_format, schema=schema, **options)
+#     #         report['validate_source'] = 'file'
+#     #     else:
+#     #         log.debug('---validate:datastore csv--')
+#     #         report = _validate_table_by_datastore(df)
+#     #         report['validate_source'] = 'datastore'
+
+#     # elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ):
+#     #     if ResourceFetchData2.has_valid_filename(source,'.xlsx'):
+#     #         log.debug('has_valid_filename')
+#     #         report = _validate_table(source, _format=_format, schema=schema, **options)
+#     #         report['validate_source'] = 'file'
+#     #     else:
+#     #         log.debug('not has_valid_filename')
+#     #         report = _validate_table_by_datastore(df)
+#     #         report['validate_source'] = 'datastore'
+
+#     # elif(mimetype == 'application/vnd.ms-excel'):
+#     #     log.debug(source)
+#     #     if ResourceFetchData2.has_valid_filename(source,'.xls'):
+#     #         log.debug('has_valid_filename')
+#     #         report = _validate_table(source, _format=_format, schema=schema, **options)
+#     #         report['validate_source'] = 'file'
+#     #     else:
+#     #         log.debug('not has_valid_filename')
+#     #         report = _validate_table_by_datastore(df)
+#     #         report['validate_source'] = 'datastore'
+#     # else:
+#     #     report = _validate_table(source, _format=_format, schema=schema, **options)
+
+#     # log.debug(report)
+#     # if (report.get('error') != ''):
+#     #     report = _validate_table_by_datastore(df)
+#     #     report['validate_source'] = 'datastore'
+#     #     log.debug(report)
+#     # report = _validate_table(source, _format=_format, schema=schema, **options)
+#     # report = _validate_table_by_ByteIO(source, _format=_format, schema=schema, **options)
+
+#     # Hide uploaded files
+#     for table in report.get('tables', []):
+#         if table['source'].startswith('/'):
+#             table['source'] = resource['url']
+#     for index, warning in enumerate(report.get('warnings', [])):
+#         report['warnings'][index] = re.sub(r'Table ".*"', 'Table', warning)
+
+#     return report
 def validate_resource_data(resource,data):
     '''Performs a validation of a resource data, given the resource metadata.
 
@@ -4605,58 +4727,10 @@ def validate_resource_data(resource,data):
     #----- check mimetype -----------------------------
     log.debug('--validate: check mimetype--')
     log.debug('---data records--')
-    # df = pd.DataFrame(data['records'])
-    records = list(data['records']) 
-    # log.debug(records)
-    # log.debug('---dataframe--')
-    # log.debug(df)
+    # records = list(data['records']) 
+    # report = _validate_table_by_list(records)
     #--------------------------
-    report = _validate_table_by_list(records)
-    # report = _validate_table_by_datastore(df)
-    # log.debug(report)
-    # mimetype =  ResourceFetchData2.detect_mimetype(source)
-    # log.debug('---mimetype--')
-    # log.debug(mimetype)
-    # if (mimetype == 'text/csv'):
-    #     if ResourceFetchData2.has_valid_filename(source,'.csv'):
-    #         log.debug('---validate:readfile csv--')
-    #         report = _validate_table(source, _format=_format, schema=schema, **options)
-    #         report['validate_source'] = 'file'
-    #     else:
-    #         log.debug('---validate:datastore csv--')
-    #         report = _validate_table_by_datastore(df)
-    #         report['validate_source'] = 'datastore'
-
-    # elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ):
-    #     if ResourceFetchData2.has_valid_filename(source,'.xlsx'):
-    #         log.debug('has_valid_filename')
-    #         report = _validate_table(source, _format=_format, schema=schema, **options)
-    #         report['validate_source'] = 'file'
-    #     else:
-    #         log.debug('not has_valid_filename')
-    #         report = _validate_table_by_datastore(df)
-    #         report['validate_source'] = 'datastore'
-
-    # elif(mimetype == 'application/vnd.ms-excel'):
-    #     log.debug(source)
-    #     if ResourceFetchData2.has_valid_filename(source,'.xls'):
-    #         log.debug('has_valid_filename')
-    #         report = _validate_table(source, _format=_format, schema=schema, **options)
-    #         report['validate_source'] = 'file'
-    #     else:
-    #         log.debug('not has_valid_filename')
-    #         report = _validate_table_by_datastore(df)
-    #         report['validate_source'] = 'datastore'
-    # else:
-    #     report = _validate_table(source, _format=_format, schema=schema, **options)
-
-    # log.debug(report)
-    # if (report.get('error') != ''):
-    #     report = _validate_table_by_datastore(df)
-    #     report['validate_source'] = 'datastore'
-    #     log.debug(report)
-    # report = _validate_table(source, _format=_format, schema=schema, **options)
-    # report = _validate_table_by_ByteIO(source, _format=_format, schema=schema, **options)
+    report = _validate_table(source, _format=_format, schema=schema, **options)
 
     # Hide uploaded files
     for table in report.get('tables', []):
