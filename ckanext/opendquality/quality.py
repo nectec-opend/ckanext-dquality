@@ -3007,9 +3007,21 @@ class Completeness():#DimensionMetric
             }
         else:
             # ลบช่องว่างและจัดการค่าว่างใน string
-            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-            # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
-            df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
+            # df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+            # # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
+            # df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
+            missing_values = [
+                "", " ", "-", "ไม่มีข้อมูล", "null", "n/a", "na", "none", "nan"
+            ]
+
+            # ฟังก์ชัน normalize เพื่อจัดการ missing value
+            def normalize_empty_values(x):
+                if isinstance(x, str):
+                    x_str = x.strip().lower()
+                    return np.nan if x_str in missing_values else x
+                return x
+            # ลบช่องว่างและแปลงค่าที่ไม่มีข้อมูลให้เป็น NaN
+            df = df.applymap(normalize_empty_values)
             # คำนวณจำนวนช่องทั้งหมดในตาราง
             rows_count, columns_count = df.shape 
             total_values_count = rows_count * columns_count
