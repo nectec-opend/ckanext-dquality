@@ -16,7 +16,9 @@ import csv
 from goodtables import validate
 import pandas as pd
 from pandas import read_excel
-from tempfile import TemporaryFile
+# from tempfile import TemporaryFile
+import tempfile
+import hashlib
 import os.path
 import requests
 import mimetypes
@@ -51,7 +53,11 @@ log = getLogger(__name__)
 #     )
 
 DATE_FORMAT = '%Y-%m-%d'
-
+MAX_CONTENT_LENGTH = int(1e9)
+MAX_EXCERPT_LINES = int(0)
+CHUNK_SIZE = 16 * 1024  # 16kb
+DOWNLOAD_TIMEOUT = 180
+SSL_VERIFY = True
 
 class LazyStreamingList(object):
     '''Implements a buffered stream that emulates an iterable object.
@@ -593,6 +599,7 @@ class DataQualityMetrics(object):
         execute_time = 0
         timeout = 5  # in seconds
         connection_url = False
+        error_file_size = ''
         error_fetching_resource = ''
         error_file_not_match = ''
         today = datetime.today().strftime("%Y-%m-%d")
@@ -782,8 +789,9 @@ class DataQualityMetrics(object):
                             #     log.debug('----else----')    
                             #     log.debug(metric.name)                                         
                             #     results[metric.name] = metric.calculate_metric(resource) #,data_stream
-                        #file_size > 5 MB
+                        #file_size > 10 MB
                         else:
+                            error_file_size = 'file_size > 10 MB'
                             if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 results[metric.name] = metric.calculate_metric(resource)
                             # elif(metric.name == 'utf8'):
@@ -852,6 +860,8 @@ class DataQualityMetrics(object):
                 #     data_quality.error = ''
                 #รวม error จากหลาย metric ไว้ใน list:
                 error_list = []
+                if error_file_size != '':
+                    error_list.append(error_file_size)
                 if error_file_not_match != '':
                     error_list.append(error_file_not_match)
                 if error_fetching_resource != '':
@@ -1280,105 +1290,101 @@ class ResourceFetchData2(object):
                 'data': []
             }
         return data
+
+    def get_url(self,url):
+        kwargs = {'headers': {}, 'timeout': DOWNLOAD_TIMEOUT,
+                'verify': SSL_VERIFY, 'stream': True} # just gets the headers for now
+        return requests.get(url, **kwargs)
+
+    def get_response(self,url, headers):
+        response = self.get_url(url)
+        if response.status_code == 202:
+            # Seen: https://data-cdfw.opendata.arcgis.com/datasets
+            # In this case it means it's still processing, so do retries.
+            # 202 can mean other things, but there's no harm in retries.
+            wait = 1
+            while wait < 120 and response.status_code == 202:
+                # logger.info('Retrying after %ss', wait)
+                time.sleep(wait)
+                response = self.get_url()
+                wait *= 3
+        response.raise_for_status()
+        return response
     def _download_resource_from_url(self, url, headers=None):
+        
+        #---------------------------------------
         data = []
         log.debug('----resource format-----')
         filepath = url #self.resource['url']
         format_url = filepath.split(".")[-1]
-        # resource_format = format_url.upper()
-        # log.debug(resource_format)
-        # resource_format = self.resource['format']
-        # mimetype = self.resource['mimetype']
         log.debug('----mimetype:_download_resource_from_url-----')
         mimetype = ResourceFetchData2.detect_mimetype(filepath)
         log.debug(filepath)
-        log.debug(mimetype)
-        
-        # try:
-        #     log.debug("identify mimetype based on content-type")
-        #     response = requests.head(filepath, timeout=5)
-        #     content_type = response.headers.get('Content-Type', None)
-        #     content_disposition = response.headers.get('Content-Disposition', None)
-        #     # Default mimetype and charset if not present in headers
-        #     mimetype = None
-        #     charset = 'utf-8'
-            
-        #     if content_type:
-        #         # Split Content-Type to separate mimetype and charset (if available)
-        #         content_parts = content_type.split(";")
-        #         mimetype = content_parts[0].strip()  # First part is the mimetype
-                
-        #         # If charset is provided, extract it
-        #         if len(content_parts) > 1:
-        #             for part in content_parts[1:]:
-        #                 if "charset=" in part:
-        #                     charset = part.split("=")[-1].strip()
-        #                     break
-        #     # Check for "Content-Disposition" header to extract the filename
-        #     if content_disposition:
-        #         log.debug('Content-Disposition:')
-        #         if 'filename=' in content_disposition:
-        #             filename = content_disposition.split('filename=')[-1].strip().strip('"')
-        #             log.debug("Downloaded filename:")
-        #             log.debug(filename)
-        #             # Use filename to guess mimetype if needed
-        #             mimetype_from_filename, _ = mimetypes.guess_type(filename)
-        #             if mimetype_from_filename:
-        #                 mimetype = mimetype_from_filename
-
-        #     # If mimetype is 'application/octet-stream' or 'application/download', infer from file extension
-        #     if mimetype in ['application/octet-stream', 'application/download']:
-        #         log.debug('Detected application/octet-stream or application/download, guessing mimetype from file extension')
-        #         mimetype, _ = mimetypes.guess_type(filepath)
-        # except Exception as e:
-        #     log.debug("Error fetching header:")
-        #     log.debug(e)
-        #     mimetype = None
-        
-        # # If mimetype is not determined from headers, fallback to file extension
-        # if not mimetype:
-        #     mimetype, _ = mimetypes.guess_type(filepath)
-
+        log.debug(mimetype)  
         timeout = 5
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-        # response = requests.get(filepath, timeout=timeout, headers=headers)
+        n_rows = 5001
+        headers = {"User-Agent": "Mozilla/5.0"}     
         try:
             response = requests.get(filepath, headers=headers, timeout=30)
             response.raise_for_status()  # ถ้าโหลดไม่สำเร็จจะ raise error
         except requests.exceptions.RequestException as e:
             log.debug("Cannot download file ----:", e)
+ 
         if self.is_url_file(filepath,timeout) and response.status_code == 200 :
-            log.debug('----is_url_file-----')
+            log.debug('----read temp file-----')
             log.debug(mimetype)
-            n_rows = 5001
+            filename = url.split('/')[-1].split('#')[0].split('?')[0]
+            tmp_file = tempfile.NamedTemporaryFile(suffix=filename)
+            response = self.get_response(url, {})
+            length = 0
+            m = hashlib.md5()
+            cl = None
+            for chunk in response.iter_content(CHUNK_SIZE):
+                length += len(chunk)
+                print(length)
+                if length > MAX_CONTENT_LENGTH:
+                    raise DataTooBigError
+                tmp_file.write(chunk)
+                m.update(chunk)
+            response.close()
+            tmp_file.seek(0)
             if(mimetype == 'text/csv'): #(resource_format =='CSV'):
                 log.debug('----csv----')     
                 # log.debug(filepath)
                 #-----------------------------------      
-                
                 try:
                     # Create a StringIO object to treat the response content as a file-like object
-                    encoding = self.detect_encoding(filepath)
-                    log.debug('----endcode csv----')    
-                    log.debug(encoding)      
-                    data_encode = response.content.decode(encoding, errors='ignore')  # Decode content to string, errors='ignore'
-                    if  ResourceFetchData2.has_valid_filename(filepath,'.csv'):
-                        csv_data = StringIO(data_encode)
-                        # Use the csv.reader to parse the CSV data
-                        csv_reader = csv.reader(csv_data)
-                        records_read = 0
-                        for row in csv_reader:
-                            data.append(row)
-                            records_read += 1
-                            if records_read >= n_rows:
-                                break
-                        # log.debug('records_read')
-                    else: 
-                        log.debug('--data store--')
-                        data = self._fetch_data_datastore_defined_row(self.resource) 
+                    # encoding = self.detect_encoding(filepath)
+                    # log.debug('----endcode csv----')    
+                    # log.debug(encoding)      
+                    # data_encode = response.content.decode(encoding, errors='ignore')  # Decode content to string, errors='ignore'
+                    # if  ResourceFetchData2.has_valid_filename(filepath,'.csv'):
+                    #     csv_data = StringIO(data_encode)
+                    #     # Use the csv.reader to parse the CSV data
+                    #     csv_reader = csv.reader(csv_data)
+                    #     records_read = 0
+                    #     for row in csv_reader:
+                    #         data.append(row)
+                    #         records_read += 1
+                    #         if records_read >= n_rows:
+                    #             break
+                    # elif not ResourceFetchData2.has_valid_filename(filepath,'.csv'):
+                    log.debug('--Reading CSV from temp--')
+                    reader = csv.reader(io.TextIOWrapper(tmp_file, encoding='utf-8', newline=''))
+                    records_read = 0
+                    for row in reader:
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break
+                    # else: 
+                    #     log.debug('--data store--')
+                    #     data = self._fetch_data_datastore_defined_row(self.resource) 
+                except UnicodeDecodeError:
+                    log.debug("An UnicodeDecodeError occurred")
+                    data = self._fetch_data_datastore_defined_row(self.resource) 
                 except Exception as e:
-                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
                     data = self._fetch_data_datastore_defined_row(self.resource) 
                     # log.debug("An error occurred, use pandas to readfile", e)
                     # try:
@@ -1472,29 +1478,38 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 log.debug('--Reading XLSX data--')
                 try:
-                    if  ResourceFetchData2.has_valid_filename(filepath,'.xlsx'):
-                        log.debug('--load_workbook--')
-                        # Load the workbook from the temporary file
-                        wb = load_workbook(filename=BytesIO(response.content), read_only=True)
+                    wb = load_workbook(filename=tmp_file)
+                    # Get the last worksheet instead of the active one
+                    last_sheet_name = wb.sheetnames[-1]
+                    ws = wb[last_sheet_name]  # Get the last worksheet
+                    # Iterate over rows and cells to read the data
+                    records_read = 0
+                    for row in ws.iter_rows(values_only=True):
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break
+                    # if  ResourceFetchData2.has_valid_filename(filepath,'.xlsx'):
+                    #     log.debug('--load_workbook--')
+                    #     # Load the workbook from the temporary file
+                        # wb = load_workbook(filename=BytesIO(response.content), read_only=True)
 
-                        # Get the last worksheet instead of the active one
-                        last_sheet_name = wb.sheetnames[-1]
-                        ws = wb[last_sheet_name]  # Get the last worksheet
-                        # Get the active worksheet
-                        # ws = wb.active # ******
-                        # Iterate over rows and cells to read the data
-                        records_read = 0
-                        for row in ws.iter_rows(values_only=True):
-                            data.append(row)
-                            records_read += 1
-                            if records_read >= n_rows:
-                                break
-                        # log.debug(data)
-                        # log.debug("end readfile--")
-                        wb.close()
-                    else:
-                        log.debug('--data store--')
-                        data = self._fetch_data_datastore_defined_row(self.resource)           
+                        # # Get the last worksheet instead of the active one
+                        # last_sheet_name = wb.sheetnames[-1]
+                        # ws = wb[last_sheet_name]  # Get the last worksheet
+                        # # Iterate over rows and cells to read the data
+                        # records_read = 0
+                        # for row in ws.iter_rows(values_only=True):
+                        #     data.append(row)
+                        #     records_read += 1
+                        #     if records_read >= n_rows:
+                        #         break
+                        # # log.debug(data)
+                        # # log.debug("end readfile--")
+                        # wb.close()
+                    # else:
+                    #     log.debug('--data store--')
+                    #     data = self._fetch_data_datastore_defined_row(self.resource)           
                        
                 except Exception as e:
                     log.debug("An error occurred, use CKAN datastore to readfile", e)
@@ -1510,16 +1525,25 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/vnd.ms-excel'):
                 log.debug('--Reading XLS data--')
                 try:
-                    if  ResourceFetchData2.has_valid_filename(filepath,'.xls'):
-                        book = xlrd.open_workbook(file_contents=response.content)
-                        # เลือก sheet สุดท้าย
-                        last_sheet_index = book.nsheets - 1
-                        sheet = book.sheet_by_index(last_sheet_index)
-                        # sheet = book.sheet_by_index(0)
-                        data = [sheet.row_values(i) for i in range(sheet.nrows)]
-                    else: 
-                        log.debug('--data store--')
-                        data = self._fetch_data_datastore_defined_row(self.resource)
+                    file_bytes = tmp_file.read()
+                    book = xlrd.open_workbook(file_contents=file_bytes)
+                    # book = xlrd.open_workbook(filename=BytesIO(tmp_file))
+                    # เลือก sheet สุดท้าย
+                    last_sheet_index = book.nsheets - 1
+                    sheet = book.sheet_by_index(last_sheet_index)
+                    # sheet = book.sheet_by_index(0)
+                    data = [sheet.row_values(i) for i in range(sheet.nrows)]
+
+                    # if  ResourceFetchData2.has_valid_filename(filepath,'.xls'):
+                    #     book = xlrd.open_workbook(file_contents=response.content)
+                    #     # เลือก sheet สุดท้าย
+                    #     last_sheet_index = book.nsheets - 1
+                    #     sheet = book.sheet_by_index(last_sheet_index)
+                    #     # sheet = book.sheet_by_index(0)
+                    #     data = [sheet.row_values(i) for i in range(sheet.nrows)]
+                    # else: 
+                    #     log.debug('--data store--')
+                    #     data = self._fetch_data_datastore_defined_row(self.resource)
                 except Exception as e:
                     log.debug("An error occurred, use CKAN datastore to readfile", e)
                     data = self._fetch_data_datastore_defined_row(self.resource)
@@ -3370,8 +3394,28 @@ class Validity():#DimensionMetric
             * `total`, `int`, total number of records.
             * `valid`, `int`, number of valid records.
         '''
-        log.debug("---validity---")
-        log.debug(data)
+        total_rows = 0
+        total_errors = 0
+        encoding = ''
+        valid = ''
+        error_message = ''
+        error_message_all = ''
+        headers = []
+        table_count = 0
+        relevant_errors = 0
+        filepath = resource['url']
+        dict_error = {}
+        # log.debug("---validity---")
+        # log.debug(data)
+        #ตรวจสอบการอ่านข้อมูล ถ้า Failed to Fetch Data จะไม่ตรวจ Validity
+        if data.get('error'):  # ตรวจว่า 'error' มีค่าและไม่ใช่ค่าว่าง
+            dict_error['encoding'] = None
+            dict_error['error'] = 'Data is empty/Invalid file format or structure'
+            return {
+                'error': 'Data is empty/Invalid file format or structure',
+                'value': None,
+                'report': dict_error
+            }
         validation = None
         try:
             validation = self._perform_validation(resource,
@@ -3384,18 +3428,8 @@ class Validity():#DimensionMetric
                 'failed': True,
                 'error': str(e),
             }      
-        total_rows = 0
-        total_errors = 0
-        encoding = ''
-        valid = ''
-        error_message = ''
-        error_message_all = ''
-        headers = []
-        table_count = 0
-        relevant_errors = 0
-        filepath = resource['url']
-        dict_error = {}
         if validation:
+            log.debug('---validation get report---')
             dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
             error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
             for table in validation.get('tables', []):
@@ -3418,6 +3452,7 @@ class Validity():#DimensionMetric
                 dict_error['error'] = error_message
             #โหลดและตรวจสอบไฟล์ได้แล้ว แต่ไม่มีข้อมูลในไฟล์นั้นเลย เช่น ไม่มีข้อมูลในไฟล์เลย หรือมี header แต่ไม่มี row จริง
             if total_rows == 0:
+                log.debug('--total_rows=0--')
                 default_error_message = 'Data is empty/Invalid file format or structure'
                 if dict_error.get('source-error', 0) > 0 :
                     default_error_message = "Source-error"
@@ -3839,10 +3874,19 @@ class Consistency():#DimensionMetric
         formats = report['formats']
         formats[date_format] = formats.get(date_format, 0) + 1
 
+    # def validate_numeric(self, field, value, _type, report):
+    #     num_format = detect_numeric_format(value) or 'unknown'
+    #     formats = report['formats']  
+    #     formats[num_format] = formats.get(num_format, 0) + 1
     def validate_numeric(self, field, value, _type, report):
-        num_format = detect_numeric_format(value) or 'unknown'
-        formats = report['formats']  
-        formats[num_format] = formats.get(num_format, 0) + 1
+        formats = report['formats']
+        num_format = detect_numeric_format(value)
+
+        if num_format:
+            formats[num_format] = formats.get(num_format, 0) + 1
+        else:
+            formats['non-numeric'] = formats.get('non-numeric', 0) + 1
+        
     
     # def validate_int(self, field, value, _type, report):
     #     num_format = detect_numeric_format(value) or 'unknown'
@@ -3851,15 +3895,21 @@ class Consistency():#DimensionMetric
 
     def validate_string(self, field, value, _type, report):
         formats = report['formats']
-        formats[_type] = formats.get(_type, 0) + 1
-
+        # formats[_type] = formats.get(_type, 0) + 1
+        formats['text'] = formats.get('text', 0) + 1  # ใช้ 'text' แทนทุกกรณี
+    def validate_default(self, field, value, _type, report):
+        formats = report['formats']
+        formats['unknown'] = formats.get('unknown', 0) + 1
     def get_consistency_validators(self):
         return {
             'timestamp': self.validate_date,
             'numeric': self.validate_numeric,
+            'int': self.validate_numeric,
+            'float': self.validate_numeric,
             # 'int': self.validate_int,
             'string': self.validate_string,
             'text': self.validate_string,
+            'default': self.validate_default  # ใช้กรณีไม่มี type
         }
 
     def calculate_metric(self, resource , data):
@@ -3896,7 +3946,7 @@ class Consistency():#DimensionMetric
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}  
         #
         # log.debug(data)
-        # log.debug(fields)
+        log.debug(fields)
         count_row=0
         # log.debug('-----consistency record--------')
 
@@ -3934,7 +3984,7 @@ class Consistency():#DimensionMetric
             # log.debug('--format_dict--')
             # log.debug(field) 
             # log.debug(format_dict) 
-            # log.debug(merged_data)
+            log.debug(merged_data)
             if(chk_numeric):
                 field_report['formats'] = merged_data
             # log.debug(field_report['formats']) 
@@ -4731,7 +4781,7 @@ def validate_resource_data(resource,data):
     # report = _validate_table_by_list(records)
     #--------------------------
     report = _validate_table(source, _format=_format, schema=schema, **options)
-
+    log.debug(report)
     # Hide uploaded files
     for table in report.get('tables', []):
         if table['source'].startswith('/'):

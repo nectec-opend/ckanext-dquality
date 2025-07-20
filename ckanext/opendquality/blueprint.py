@@ -1,6 +1,6 @@
 # encoding: utf-8
 
-from flask import Blueprint, request
+from flask import Blueprint, request, Response
 import ckan.plugins.toolkit as toolkit 
 from logging import getLogger
 # from ckan.common import config
@@ -8,6 +8,7 @@ from ckan.model import package_table, Session, Package, Group
 from ckanext.opendquality.model import DataQualityMetrics as DQM
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
+from sqlalchemy import and_
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
@@ -23,6 +24,17 @@ EXEMPT_ENDPOINTS = {
     'opendquality.dashboard',
 }
 
+# group query
+group_query = (
+    Session.query(Group)
+    .join(Package, Group.id == Package.owner_org)
+    .join(DQM, and_(
+        DQM.ref_id == Package.id,
+        DQM.type == 'package'
+    ))
+    .filter(Package.state == 'active')
+    .distinct()
+)
 
 @qa.before_request
 def request_before():
@@ -90,6 +102,17 @@ def _register_mock_translator():
     from pylons import translator
     registry.register(translator, MockTranslator())
 
+def _get_org():
+    org = group_query.with_entities(
+        Group.id.label('org_id'),
+        Group.name.label('org_name'),
+        Group.title.label('org_title'),
+        ).filter(
+            Group.state == 'active',
+            Group.type == 'organization'
+        ).all()
+
+    return org
 
 def all_packages(handler):
     offset = 0
@@ -133,7 +156,8 @@ def home():
     return toolkit.render('ckanext/opendquality/index.html', extra_vars)
     # return {'msg': 'hello world quality'}
 
-def admin_report():
+def admin_report(org_id=None):
+    export = request.args.get('export') == '1'
     data_quality = Session.query(
         Package.title.label('package_title'),
         Package.id.label('package_id'),
@@ -157,9 +181,69 @@ def admin_report():
     ) \
     .join(Package, Package.id == DQM.ref_id)\
     .join(Group, Group.id == Package.owner_org)\
-    .filter(
-        DQM.type == 'package').order_by(DQM.modified_at.desc()).all()
+
+    if org_id is not None:
+        data_quality = data_quality.filter(Group.id == org_id)
+    
+    # if request.args.get('package_id', None):
+    data_quality = data_quality.filter(
+        DQM.type == 'package')
+        
+    data_quality = data_quality.order_by(DQM.modified_at.desc()).all()
+
+    if export:
+        # Export logic here, e.g., to CSV or JSON
+        import csv
+        from io import StringIO
+        output = StringIO()
+        output.write('\ufeff')
+        writer = csv.writer(output)
+        writer.writerow([
+            "ชื่อชุดข้อมูล",
+            "ชื่อหน่วยงาน",
+            "openess",
+            "timeliness",
+            "acc_latency",
+            "freshness",
+            "availability",
+            "downloadable",
+            "access_api",
+            "relevance",
+            "utf8",
+            "preview",
+            "completeness",
+            "uniqueness",
+            "validity",
+            "consistency",
+            "metrics"
+        ])
+        for row in data_quality:
+            writer.writerow([
+                row.package_title,
+                row.org_title,
+                row.openness,
+                row.timeliness,
+                row.acc_latency,
+                row.freshness,
+                row.availability,
+                row.downloadable,
+                row.access_api,
+                row.relevance,
+                row.utf8,
+                row.preview,
+                row.completeness,
+                row.uniqueness,
+                row.validity,
+                row.consistency,
+                row.metrics
+            ])
+        output.seek(0)
+        response = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
+        response.headers['Content-Disposition'] = f'attachment; filename="data_quality_report.csv"'
+        return response
     extra_vars = {
+        'orgs': _get_org(),
+        'org_id': org_id if org_id is not None else '',
         'reports': data_quality,
         'title': toolkit._('รายงานคุณภาพชุดข้อมูลเปิดสำหรับ ผู้ดูแลระบบ'),
         'admin_report': True,
@@ -209,4 +293,5 @@ qa.add_url_rule('/calculate', endpoint="index", view_func=home)
 # qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
 # qa.add_url_rule('/reports', endpoint="reports", view_func=quality_reports)
 qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report)
+qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)

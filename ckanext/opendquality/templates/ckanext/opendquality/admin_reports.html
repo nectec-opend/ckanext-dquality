@@ -1,4 +1,5 @@
 {% extends "my_page.html" %}
+{% import 'macros/form.html' as form %}
 
 {% block subtitle %}{{ _("Data Quality") }}{% endblock %}
 {% block breadcrumb_content %}
@@ -13,7 +14,28 @@
 {% endblock %}
 {% block primary_content_inner %}
 <h1>{{ title }}</h1>
-<div class="row table-responsive">testttt</div>
+<div class="row table-responsive">
+  <form id='org-filter-form' class="form-inline" method="GET">
+    {{ h.csrf_input() }}
+    {%- set options=[] -%}
+    {%- do options.append({'value': '', 'text': _('หน่วยงานทั้งหมด')}) -%}
+    {%- for org in orgs -%}
+      {%- do options.append({'value': org.org_id|string, 'text': org.org_title}) -%}
+    {%- endfor -%}
+    {{ form.select(
+      'org-select',
+      label=_('หน่วยงาน'),
+      selected=org_id,
+      options=options,
+      classes=[],
+      id='org-select',
+      attrs={'data-module': 'autocomplete'},
+      error={}
+    )}}
+    <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
+    <button type="button" id="export-btn" class="btn btn-success">Export</button>
+  </form>
+</div>
 <hr>
 <div class="row table-responsive" style="position: relative; z-index: 2;">
   <table id="tb-qa-result" class="table table-bordered table-striped">
@@ -43,7 +65,7 @@
       {% for report in reports %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td><a href="{{ h.url_for('opendquality.admin_report', package_id=report.package_id) }}">{{ report.package_title }}</a></td>
+        <td><a href="{{ h.url_for('opendquality.admin_report', package_id=report.package_id) }}" target="_blank">{{ report.package_title }}</a></td>
         <td>{{ report.org_title }}</td>
         <td>{{ report.openness }}</td>
         <td>{{ report.timeliness }}</td>
@@ -110,6 +132,17 @@
         document.getElementById('json-content').textContent = 'Invalid JSON';
       }
     });
+  });
+  document.getElementById('org-filter-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const selected = document.getElementById('org-select').value;
+    const newUrl = selected ? `/qa/admin_report/${selected}` : '/qa/admin_report';
+    window.location.href = newUrl;
+  });
+  document.getElementById('export-btn').addEventListener('click', function () {
+    const orgId = document.getElementById('org-select').value;
+    const url = orgId ? `/qa/admin_report/${orgId}?export=1` : `/qa/admin_report?export=1`;
+    window.location.href = url;
   });
 </script>
 
