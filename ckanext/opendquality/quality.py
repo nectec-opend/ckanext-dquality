@@ -3630,8 +3630,10 @@ class Relevance(): #DimensionMetric
 
         total_view = package_data.get("tracking_summary", {}).get("total", 0)
 
-        relevance = (total_download / total_view * 100) if total_view > 0 else 0
-
+        if total_view == 0:
+            relevance = 0  
+        else:
+            relevance = min((total_download / total_view) * 100, 100)
         return {
             "total_download": total_download,
             "total_view": total_view,
