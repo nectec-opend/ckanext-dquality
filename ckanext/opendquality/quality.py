@@ -41,6 +41,7 @@ from ckanext.opendquality.model import (
 from ckan.plugins.toolkit import config
 from ckan.model import Session, Package, Group
 import ckan.logic as logic
+# from frictionless import Schema
 
 log = getLogger(__name__)
 # cache_enabled = p.toolkit.asbool(
@@ -515,6 +516,7 @@ class DataQualityMetrics(object):
             'application/ld+json': 'JSONLD',
             'application/trig': 'TRIG',
             'application/n-quads': 'NQUADS',
+
             # Compressed formats
             # 'application/zip': 'ZIP',
             # 'application/x-tar': 'TAR',
@@ -601,7 +603,7 @@ class DataQualityMetrics(object):
         connection_url = False
         error_file_size = ''
         error_fetching_resource = ''
-        error_file_not_match = ''
+        # error_file_not_match = ''
         today = datetime.today().strftime("%Y-%m-%d")
         file_info = self.inspect_file(resource)
         log.debug(file_info)
@@ -615,8 +617,8 @@ class DataQualityMetrics(object):
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("File size (MB): %s", file_size_mb)
-            if file_info == False:
-                error_file_not_match = 'Invalid file format'
+            # if file_info == False:
+            #     error_file_not_match = 'Invalid file format'
             if not is_datadict:                                                   
                 #----- connect model: check records----------------------
                 data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
@@ -731,13 +733,17 @@ class DataQualityMetrics(object):
                                 log.debug(metric.name)
                                 results[metric.name] = metric.calculate_metric(resource)
                             
-                            elif (metric.name == 'timeliness'):     
+                            elif metric.name == 'timeliness':     
                                 log.debug('----timeliness------')                                         
                                 results[metric.name] = metric.calculate_metric(resource)
-                                timeliness_val = results[metric.name]
-                            elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
-                                log.debug('----acc_latency------')                                         
-                                results[metric.name] = metric.calculate_metric(resource,timeliness_val)
+                                timeliness_val = results[metric.name] 
+
+                            elif metric.name in ['acc_latency', 'freshness']:   
+                                if timeliness_val:
+                                    log.debug('----acc_latency------')                                         
+                                    results[metric.name] = metric.calculate_metric(resource, timeliness_val)
+                                else:
+                                    continue
                             elif( metric.name == 'relevance'):
                                 log.debug('------relevance-----')
                                 #ถ้าตรวจแบบ organization
@@ -792,6 +798,8 @@ class DataQualityMetrics(object):
                         #file_size > 10 MB
                         else:
                             error_file_size = 'file_size > 10 MB'
+                            openness_5_star_format = self.is_openness_5_star_format(resource['format'])
+                            
                             if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 results[metric.name] = metric.calculate_metric(resource)
                             # elif(metric.name == 'utf8'):
@@ -817,6 +825,12 @@ class DataQualityMetrics(object):
                             results['completeness'] = { 'value': None }
                             results['uniqueness'] = { 'value': None }
                             results['utf8'] = { 'value': None }
+                            #except openness_5_star_format
+                            if (openness_5_star_format):
+                                results['consistency'] = { 'value': 100 }
+                                results['validity']    =    { 'value': 100 }
+                                results['completeness'] = { 'value': None }
+                                results['uniqueness'] = { 'value': None }
                             if not connection_url:
                                 results['connection_url'] = { 'error': True}
                         
@@ -862,8 +876,8 @@ class DataQualityMetrics(object):
                 error_list = []
                 if error_file_size != '':
                     error_list.append(error_file_size)
-                if error_file_not_match != '':
-                    error_list.append(error_file_not_match)
+                # if error_file_not_match != '':
+                #     error_list.append(error_file_not_match)
                 if error_fetching_resource != '':
                     error_list.append(error_fetching_resource)  # ถ้า error จาก fetch มีค่า → เพิ่มเข้าไป
                 for metric, result in results.items():
@@ -1341,7 +1355,7 @@ class ResourceFetchData2(object):
             cl = None
             for chunk in response.iter_content(CHUNK_SIZE):
                 length += len(chunk)
-                print(length)
+                # print(length)
                 if length > MAX_CONTENT_LENGTH:
                     raise DataTooBigError
                 tmp_file.write(chunk)
@@ -1377,6 +1391,8 @@ class ResourceFetchData2(object):
                         records_read += 1
                         if records_read >= n_rows:
                             break
+                    # log.debug(data)
+
                     # else: 
                     #     log.debug('--data store--')
                     #     data = self._fetch_data_datastore_defined_row(self.resource) 
@@ -3023,6 +3039,7 @@ class Completeness():#DimensionMetric
 
         # สร้าง DataFrame จาก records
         df = pd.DataFrame(data['records'])
+        # log.debug(df)
         # เช็คว่าข้อมูลมีหรือไม่
         if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
             return {
@@ -3405,14 +3422,22 @@ class Validity():#DimensionMetric
         relevant_errors = 0
         filepath = resource['url']
         dict_error = {}
-        # log.debug("---validity---")
-        # log.debug(data)
+        log.debug("---validity---")
+        log.debug(data)
         #ตรวจสอบการอ่านข้อมูล ถ้า Failed to Fetch Data จะไม่ตรวจ Validity
         if data.get('error'):  # ตรวจว่า 'error' มีค่าและไม่ใช่ค่าว่าง
             dict_error['encoding'] = None
             dict_error['error'] = 'Data is empty/Invalid file format or structure'
             return {
                 'error': 'Data is empty/Invalid file format or structure',
+                'value': None,
+                'report': dict_error
+            }
+        elif (data.get('total') == 0):
+            dict_error['encoding'] = None
+            dict_error['error'] = 'Data is empty'
+            return {
+                'error': 'Data is empty',
                 'value': None,
                 'report': dict_error
             }
@@ -3429,8 +3454,8 @@ class Validity():#DimensionMetric
                 'error': str(e),
             }      
         if validation:
-            log.debug('---validation get report---')
-            dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
+            # log.debug('---validation get report---')
+            dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'extra-header':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
             error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
             for table in validation.get('tables', []):
                 total_rows += table.get('row-count', 0)
@@ -3961,6 +3986,22 @@ class Consistency():#DimensionMetric
                     field_report['count'] += 1
         for field, field_report in report.items():
             #------------------------------------------------------------------
+            # # New dictionary to store the merged result
+            merged_data = {'numeric': 0,'timestamp': 0}
+            datetime_formats = {
+                '%Y-%m-%d',
+                '%d/%m/%Y',
+                '%Y-%m-%d',
+                '%Y/%m/%d',
+                '%Y-%m-%d %H:%M:%S',
+                '%d/%m/%Y %H:%M:%S',
+                '%Y-%m-%dT%H:%M:%S',
+                '%Y/%m/%d %H:%M',
+                # เพิ่ม pattern ที่อยากรองรับ
+            }
+            chk_timestamp = False
+
+            
             #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
             format_dict = field_report['formats']   
             keys_to_merge = {'int', 'float', 'unknown',
@@ -3973,21 +4014,26 @@ class Consistency():#DimensionMetric
                             '^\\d+\\.\\d+$',
                             '^[+-]\\d+\\.\\d+$'
                             } 
-            # # New dictionary to store the merged result
-            merged_data = {'numeric': 0}
+            
             # # Iterate through the original dictionary
             chk_numeric = False
             for key, value in format_dict.items():
                 if key in keys_to_merge:
                     merged_data['numeric'] += value
                     chk_numeric = True
-            # log.debug('--format_dict--')
-            # log.debug(field) 
-            # log.debug(format_dict) 
+                if key in datetime_formats:
+                    merged_data['timestamp'] += value
+                    chk_timestamp = True
+            log.debug('--format_dict--')
+            log.debug(field) 
+            log.debug(format_dict) 
             log.debug(merged_data)
-            if(chk_numeric):
+            # if(chk_numeric):
+            #     field_report['formats'] = merged_data
+            # แค่มีอย่างใดอย่างหนึ่ง ก็เขียนกลับ
+            if merged_data['timestamp'] > 0 or merged_data['numeric'] > 0:
                 field_report['formats'] = merged_data
-            # log.debug(field_report['formats']) 
+                log.debug(field_report['formats']) 
             #[End Pang Edit]--------------------------------------------------------------------
             if field_report['formats']:
                 #เลือก count format ที่มีค่ามากสุด เช่น int 30 float 4 แปลว่าคอลัมน์นี้คือ int
@@ -4182,65 +4228,91 @@ class Timeliness():#DimensionMetric
         measured_count = 0
         total_delta = 0
         elapsed_days = (datetime.now().date() - created.date()).days
+        # created_date_str = created.date().strftime('%Y-%m-%d')
         overdue_day =  0
         update_cycle_days = 0
         freshness = 0
-        if update_frequency_unit.value == u'วัน':
-            if update_frequency_interval.value != '':
-                update_cycle_days = int(update_frequency_interval.value)
-            else:
-                update_cycle_days = 1
-        elif update_frequency_unit.value == u'สัปดาห์':
-            if update_frequency_interval.value != '':
-                update_cycle_days = (7*int(update_frequency_interval.value))
-            else:
-                update_cycle_days = 7
-        elif update_frequency_unit.value == u'เดือน':
-            if update_frequency_interval.value != '':
-                update_cycle_days = (30 * int(update_frequency_interval.value)) 
-            else:
-                update_cycle_days = 30
-        elif update_frequency_unit.value == u'ไตรมาส':
-            if update_frequency_interval.value != '':
-                update_cycle_days = (90 * int(update_frequency_interval.value))
-            else:
-                update_cycle_days = 90 
-        elif update_frequency_unit.value == u'ครึ่งปี':
-            if update_frequency_interval.value != '':
-                update_cycle_days = (180 * int(update_frequency_interval.value))
-            else:
-                update_cycle_days = 180
-        elif update_frequency_unit.value == u'ปี':
-            if update_frequency_interval.value != '':
-                update_cycle_days =  (365 * int(update_frequency_interval.value))
-            else:
-                update_cycle_days = 365
+        # ดึงความถี่ ปกติใส่เป็นตัวเลข
+        # ดึงข้อความจากฟิลด์
+        value = update_frequency_interval.value or ''  # ป้องกัน None
+        match = re.search(r'\d+', value)
 
-        overdue_day =  elapsed_days - update_cycle_days
-        safe_overdue = max(0, overdue_day) #abs(overdue_day)#
-        
-        log.debug('resource.id')
-        log.debug(resource.get('id'))
-        log.debug('created.date()')
-        log.debug(created.date())
-        log.debug('elapsed_days')
-        log.debug(elapsed_days)
-        log.debug('overdue_day')
-        log.debug(overdue_day)
-        log.debug('safe_overdue')
-        log.debug(safe_overdue)
-        log.debug('update_cycle_days')
-        log.debug(update_cycle_days)
-        log.debug(update_frequency_unit.value)
-        if update_cycle_days > 0:
+        # ถ้า match ได้เลข ให้ใช้เลขนั้น ไม่งั้นใช้ default = 1
+        interval = int(match.group()) if match else 1
+
+        unit = update_frequency_unit.value or ''
+
+        if unit == u'วัน':
+            update_cycle_days = interval
+        elif unit == u'สัปดาห์':
+            update_cycle_days = 7 * interval
+        elif unit == u'เดือน':
+            update_cycle_days = 30 * interval
+        elif unit == u'ไตรมาส':
+            update_cycle_days = 90 * interval
+        elif unit == u'ครึ่งปี':
+            update_cycle_days = 180 * interval
+        elif unit == u'ปี':
+            update_cycle_days = 365 * interval
+        else:
+            update_cycle_days = None  # หรือ 0 หรือ raise Exception
+ 
+        # if update_frequency_unit.value == u'วัน':
+        #     if update_frequency_interval.value != '':
+        #         update_cycle_days = int(update_frequency_interval.value)
+        #     else:
+        #         update_cycle_days = 1
+        # elif update_frequency_unit.value == u'สัปดาห์':
+        #     if update_frequency_interval.value != '':
+        #         update_cycle_days = (7*int(update_frequency_interval.value))
+        #     else:
+        #         update_cycle_days = 7
+        # elif update_frequency_unit.value == u'เดือน':
+        #     if update_frequency_interval.value != '':
+        #         update_cycle_days = (30 * int(update_frequency_interval.value)) 
+        #     else:
+        #         update_cycle_days = 30
+        # elif update_frequency_unit.value == u'ไตรมาส':
+        #     if update_frequency_interval.value != '':
+        #         update_cycle_days = (90 * int(update_frequency_interval.value))
+        #     else:
+        #         update_cycle_days = 90 
+        # elif update_frequency_unit.value == u'ครึ่งปี':
+        #     if update_frequency_interval.value != '':
+        #         update_cycle_days = (180 * int(update_frequency_interval.value))
+        #     else:
+        #         update_cycle_days = 180
+        # elif update_frequency_unit.value == u'ปี':
+        #     if update_frequency_interval.value != '':
+        #         update_cycle_days =  (365 * int(update_frequency_interval.value))
+        #     else:
+        #         update_cycle_days = 365
+
+        if  update_cycle_days:
+            overdue_day =  elapsed_days - update_cycle_days
+            safe_overdue = max(0, overdue_day) #abs(overdue_day)#
             acceptable_latency = (safe_overdue / update_cycle_days) * 100
             #freshness = ข้อมูลใหม่แค่ไหน, 100% = เพิ่งอัปเดต, 0% ถึงรอบพอดี, ติดลบข้อมูลล่าช้า
             freshness = (update_cycle_days - elapsed_days) / update_cycle_days * 100
+
+            log.debug('resource.id')
+            log.debug(resource.get('id'))
+            log.debug('created.date()')
+            log.debug(created.date())
+            log.debug('elapsed_days')
+            log.debug(elapsed_days)
+            log.debug('overdue_day')
+            log.debug(overdue_day)
+            log.debug('safe_overdue')
+            log.debug(safe_overdue)
+            log.debug('update_cycle_days')
+            log.debug(update_cycle_days)
+            log.debug(update_frequency_unit.value)
         else:
             acceptable_latency = -1  # ไม่ได้กำหนดค่า หรือกำหนดเป็นค่าอื่นๆ
             freshness = -1
-       
-        #(update_cycle_days-elapsed_days)/update_cycle_days * 100
+            safe_overdue = ""
+        
         #----Timeliness------------
         timeliness = 0
         if acceptable_latency == 0:
@@ -4766,22 +4838,25 @@ def validate_resource_data(resource,data):
         source = resource[u'url']
 
     schema = resource.get(u'schema')
+    log.debug('---data schema1--')
+    log.debug(schema)
     if schema and isinstance(schema, string_types):#basestring):
         if schema.startswith('http'):
             r = requests.get(schema)
             schema = r.json()
         else:
             schema = json.loads(schema)
-
     _format = resource[u'format'].lower()
     #----- check mimetype -----------------------------
     log.debug('--validate: check mimetype--')
-    log.debug('---data records--')
+    log.debug('---data schema2--')
+    log.debug(schema)
+    log.debug(data['fields'])
     # records = list(data['records']) 
     # report = _validate_table_by_list(records)
-    #--------------------------
+    #----------------------------
     report = _validate_table(source, _format=_format, schema=schema, **options)
-    log.debug(report)
+    # log.debug(report)
     # Hide uploaded files
     for table in report.get('tables', []):
         if table['source'].startswith('/'):
@@ -4793,9 +4868,11 @@ def validate_resource_data(resource,data):
 
 
 def _validate_table(source, _format=u'csv', schema=None, **options):
-    report = validate(source, format=_format, schema=schema, **options)
-    return report
+    # เพิ่ม order_fields=True เพื่อบังคับตรวจจำนวนและลำดับคอลัมน์
+    options.setdefault('order_fields', True)
+    options.setdefault('skip_checks', [])  # ไม่ข้าม check ใดๆ
 
+    report = validate(source, format=_format, schema=schema, **options)
     return report
 def _validate_table_by_datastore(df):
     records = df.to_dict(orient='records')  
