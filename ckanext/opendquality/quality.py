@@ -35,6 +35,7 @@ import time
 from functools import reduce
 import numpy as np
 from io import StringIO
+from collections import Counter
 from urllib.parse import urlparse
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
@@ -178,8 +179,9 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-        #           str(self), self.total, self.column_names, self.fields)
+        log.debug('-------------ResourceCSVData----------')
+        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+                  str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -319,22 +321,30 @@ class DataQualityMetrics(object):
                     'total': 0,
                     'fields': [],
                     'records': [],
+                    'raw_data':[],
+                    'mimetype':'',
                     'error': 'Failed to fetch data for resource'
                 }
        
 
         _fetch_page2 = ResourceFetchData2(resource)
-        result = _fetch_page2(0, 1)  # to calculate the total from start
+        result = _fetch_page2(0, 1)  # to calculate the total from start       
+        raw_data = _fetch_page2._download_resource_from_url(resource['url'])
+        mimetype = _fetch_page2.detect_mimetype(resource['url'])
         if 'error' in result:
             return {
                 'total': 0,
                 'records': [],
                 'fields': [],
+                'raw_data':[],
+                'mimetype':'',
                 'error': result['error']
             }
         return {
             'total': result.get('total', 0),
             'records': LazyStreamingList(_fetch_page2),
+            'raw_data': raw_data,
+            'mimetype':mimetype,
             'fields': result['fields'],  # metadata
             'error': ''
         }
@@ -708,7 +718,7 @@ class DataQualityMetrics(object):
                                 continue
                         
                         self.logger.debug('Calculating dimension: %s...', metric)
-                    #------------------------------------------------------
+                    #-----ok-------------------------------------------------
                         if not data_stream2:
                             data_stream2 = self._fetch_resource_data2(resource)
                         else:
@@ -718,6 +728,7 @@ class DataQualityMetrics(object):
                             else:
                                 data_stream2 = self._fetch_resource_data2(resource)
                         log.debug('data_stream2--')
+                    #-------------------------------------------------------------
                         # log.debug(data_stream2)
                         if data_stream2.get('error'):
                             error_fetching_resource = data_stream2.get('error')
@@ -768,7 +779,9 @@ class DataQualityMetrics(object):
                                     log.debug(consistency_val)
                                 elif(metric.name == 'validity'):
                                     log.debug('----check validity------')
-                                    # log.debug(data_stream2['total'])
+                                    # fetcher = ResourceFetchData2(resource)
+                                    # raw_data = fetcher._download_resource_from_url(resource_url)
+                                
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
                                     validity_report = results[metric.name].get('report')
                                 elif(metric.name == 'completeness'):                           
@@ -1474,8 +1487,8 @@ class ResourceFetchData2(object):
                 data = self._fetch_data_datastore_defined_row(self.resource)
         else:
             data = []
-        log.debug('===before reading end ====')
-        log.debug(data)
+        # log.debug('===before reading end ====')
+        # log.debug(data)
         return data
     # def _download_resource_from_url(self, url, headers=None):
         
@@ -3186,8 +3199,18 @@ class Completeness():#DimensionMetric
         #     'complete': total_complete_values,
         # }
 
+
+        log.debug('------raw_data------')
+        raw_data = data['raw_data']
+        headers = raw_data[0]
+        rows = raw_data[1:]
+        #  แปลงเป็น list of dict
+        records = [dict(zip(headers, row)) for row in rows]
+        # log.debug(records)
         # สร้าง DataFrame จาก records
-        df = pd.DataFrame(data['records'])
+        df = pd.DataFrame(records)
+        #--------------------------------------------
+        # df = pd.DataFrame(data['records'])
         # log.debug(df)
         # เช็คว่าข้อมูลมีหรือไม่
         if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
@@ -3572,7 +3595,6 @@ class Validity():#DimensionMetric
         filepath = resource['url']
         dict_error = {}
         log.debug("---validity---")
-        log.debug(data)
         #ตรวจสอบการอ่านข้อมูล ถ้า Failed to Fetch Data จะไม่ตรวจ Validity
         if data.get('error'):  # ตรวจว่า 'error' มีค่าและไม่ใช่ค่าว่าง
             dict_error['encoding'] = None
@@ -4944,6 +4966,170 @@ def detect_numeric_format(numstr):
 #         report['warnings'][index] = re.sub(r'Table ".*"', 'Table', warning)
 
 #     return report
+#--- old extra value-----
+def detect_extra_columns_excel(records, sample_size=20):
+    # แปลง dict เป็น list ของ row values
+    rows = [list(record.values()) for record in records]
+
+    # ตรวจว่ามีข้อมูลหรือไม่
+    if not rows:
+        return {
+            "expected_columns": 0,
+            "extra_rows": []
+        }
+
+    # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
+    sample_rows = rows[1:sample_size+1]  # ข้าม header
+    def count_nonempty_except_last(row):
+        if not row:
+            return 0
+        trimmed = row[:-1] if str(row[-1]).strip() == '' else row
+        return sum(1 for cell in trimmed if str(cell).strip() != '')
+
+    col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+    if not col_counts:
+        return {
+            "expected_columns": 0,
+            "extra_rows": [],
+            "error": "No valid sample rows"
+        }
+
+    expected_columns = Counter(col_counts).most_common(1)[0][0]
+
+    # 2) ตรวจหาว่าแถวไหนมี extra values เกิน expected columns
+    extra_rows = []
+    for i, row in enumerate(rows, start=1):
+        # ตรวจว่าเกิน expected_columns หรือไม่
+        if len(row) > expected_columns:
+            extra_values = row[expected_columns:]
+            if any(str(cell).strip() != '' for cell in extra_values):  # ต้องไม่ใช่ช่องว่างล้วน
+            # if any(cell.strip() != '' for cell in extra_values):  # ต้องไม่ใช่ช่องว่างล้วน
+                extra_rows.append({
+                    "row_number": i,
+                    "columns": len(row),
+                    "extra_values": extra_values
+                })
+
+    return {
+        "expected_columns": expected_columns,
+        "extra_rows": extra_rows
+    }
+#---- new extra value----------------------------------
+#-----------------------------------------------------
+# def detect_extra_columns_from_rows(rows, expected_columns):
+#     extra_rows = []
+#     for i, row in enumerate(rows, start=1):
+#         if len(row) > expected_columns:
+#             extra_values = row[expected_columns:]
+#             # if any(cell.strip() != '' for cell in extra_values):
+#             if any(str(cell or '').strip() != '' for cell in extra_values):
+#                 extra_rows.append({
+#                     "row_number": i,
+#                     "columns": len(row),
+#                     "extra_values": extra_values
+#                 })
+#     return extra_rows
+def detect_extra_columns_from_rows(rows, expected_columns):
+    extra_rows = []
+    for i, row in enumerate(rows, start=1):
+        if isinstance(row, dict):
+            ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
+        else:
+            ordered_values = row
+
+        if len(ordered_values) > expected_columns:
+            extra_values = ordered_values[expected_columns:]
+            if any(str(cell).strip() != '' for cell in extra_values):
+                extra_rows.append({
+                    "row_number": i,
+                    "columns": len(ordered_values),
+                    "extra_values": extra_values
+                })
+    return extra_rows
+def detect_columns_and_validate(records, encoding='utf-8'):
+    # แปลง dict เป็น list ของ row values
+    rows = [list(record.values()) for record in records]
+
+    # ตรวจว่ามีข้อมูลหรือไม่
+    if not rows:
+        return {
+            "expected_columns": 0,
+            "extra_rows": []
+        }
+
+    # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
+    sample_size=20
+    sample_rows = rows[1:sample_size+1]  # ข้าม header
+
+    # def count_nonempty_except_last(row):
+    #     if not row:
+    #         return 0
+    #      # แปลงค่าทุก cell เป็น string ก่อนใช้ strip
+    #     str_row = [str(cell) for cell in row]
+    #     trimmed = str_row[:-1] if str_row[-1].strip() == '' else str_row
+    #     return sum(1 for cell in trimmed if cell.strip() != '')
+    def count_nonempty_except_last(row):
+        """
+        รับได้ทั้ง row ที่เป็น list หรือ dict
+        แปลงค่าทุก cell เป็น string และนับ cell ที่ไม่ว่าง (ยกเว้นช่องสุดท้ายถ้าว่าง)
+        """
+        if not row:
+            return 0
+        # รองรับกรณี row เป็น dict (เช่นจาก XLSX) → แปลงเป็น list
+        if isinstance(row, dict):
+            # sort ตาม key เพื่อความสม่ำเสมอ ถ้า key เป็น None จะไว้ท้าย
+            ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
+        else:
+            ordered_values = row
+        # แปลงทุก cell เป็น string และ trim
+        str_row = [str(cell).strip() if cell is not None else '' for cell in ordered_values]
+        # ถ้าช่องสุดท้ายว่าง → ไม่เอา
+        trimmed = str_row[:-1] if str_row and str_row[-1] == '' else str_row
+        # นับช่องที่มีข้อมูลจริง
+        return sum(1 for cell in trimmed if cell != '')
+
+    col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+    if not col_counts:
+        expected_columns = 0
+    else:
+        expected_columns, freq = Counter(col_counts).most_common(1)[0]
+
+    # new logic: sampling_confidence based on missing value ratio
+    total_cells = 0
+    total_missing = 0
+    for row in sample_rows:
+        if isinstance(row, dict):
+            # แปลง dict เป็น list ของ values (sorted keys รวม None)
+            ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
+        else:
+            ordered_values = row
+
+        for cell in ordered_values:
+            total_cells += 1
+            # กรณี cell เป็น None, '' หรือ '   ' → ถือว่า missing
+            if cell is None or str(cell).strip() == '':
+                total_missing += 1
+
+    if total_cells == 0:
+        sampling_confidence = 0
+    else:
+        sampling_confidence = 1 - (total_missing / total_cells)
+
+    sampling_confidence_percent = round(sampling_confidence * 100, 2)
+
+    result = {
+        "method": "sampling",
+        "expected_columns": expected_columns,
+        "header_row": None,
+        "sampling_confidence": sampling_confidence_percent
+    }
+    
+    if sampling_confidence_percent >= 60:
+        result["extra_rows"] = detect_extra_columns_from_rows(rows, expected_columns)
+    else:
+        result["extra_rows"] = []
+        result["note"] = "Low confidence from sampling; skipped extra value check"
+    return result
 def validate_resource_data(resource,data):
     '''Performs a validation of a resource data, given the resource metadata.
 
@@ -5006,26 +5192,60 @@ def validate_resource_data(resource,data):
     log.debug('---data schema2--')
     log.debug(schema)
     log.debug(data['fields'])
-   
-    # records = list(data['records']) 
-    # headers = list(records[0].keys())
-    # rows = [list(r.values()) for r in records]
-    # table_data = [headers] + rows
-    # log.debug('---table_data--')
-    # log.debug(table_data)
-    # tmp = tempfile.NamedTemporaryFile(mode='w+', newline='', suffix='.csv', delete=False)
-    # writer = csv.writer(tmp)
-    # writer.writerow(headers)
-    # writer.writerows(rows)
-    # tmp.close()  # ปิดให้พร้อมอ่านภายนอก
-    # report = _validate_table(tmp.name, _format='csv', schema=schema, **options)
     #------------------------
-    # records = list(data['records']) 
-    # # log.debug(records)
-    # report = validate_from_records(records)
+    mimetype = data['mimetype']
+    if (mimetype == 'application/json'):
+        report = _validate_table(source, _format=_format, schema=schema, **options)
+    else:
+        log.debug('------raw_data------')
+        raw_data = data['raw_data']
+        headers = raw_data[0]
+        rows = raw_data[1:]
+        #  check duplicate header
+        duplicates = [item for item, count in Counter(headers).items() if count > 1]
+
+        #  แปลงเป็น list of dict
+        records = [dict(zip(headers, row)) for row in rows]
+        log.debug(raw_data)
+        # check extra values ------------------
+        # extra_result = detect_extra_columns_excel(records)
+        extra_result = detect_columns_and_validate(records)
+        extra_rows = extra_result.get("extra_rows", [])
+        log.debug('----extra_rows----')
+        log.debug(extra_result)
+        #---------------------------------------
+        report = validate_from_records(records)
+
+        #--- เพิ่ม error เข้า report ถ้าพบคอลัมน์ซ้ำ
+        if duplicates:
+            log.debug("duplicate header: %s", duplicates)
+            table = report['tables'][0]  # สมมุติว่าเรามีแค่ table เดียว
+            table['valid'] = False
+            table.setdefault('errors', []).append({
+                'code': 'duplicate-header',
+                'message': f'Duplicate headers found: {duplicates}',
+                'message-data': {'duplicates': duplicates},
+            })
+        else:
+            log.debug("no duplicate header")
+        # --- ตรวจสอบ extra values
+        if extra_rows:
+            log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
+            table = report['tables'][0]  # สมมุติว่า table เดียว
+            table['valid'] = False
+            table.setdefault('errors', []).append({
+                'code': 'extra-value',
+                'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
+                'message-data': {
+                    'expected_columns': extra_result.get("expected_columns"),
+                    'extra_rows': extra_rows
+                }
+            })
+        else:
+            log.debug("--no extra value--")
     #----------------------------
-    report = _validate_table(source, _format=_format, schema=schema, **options)
-    # log.debug(report)
+    # report = _validate_table(source, _format=_format, schema=schema, **options)
+    log.debug(report)
     # Hide uploaded files
     for table in report.get('tables', []):
         if table['source'].startswith('/'):
