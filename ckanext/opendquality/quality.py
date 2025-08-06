@@ -9,7 +9,7 @@ from sqlalchemy import Table, select, join, func, and_
 from sqlalchemy.sql import text
 # # import ckan.plugins as p
 # import ckan.model as model
-from ckan.model import Session, User, user_table, Package, PackageExtra
+from ckan.model import Session, User, user_table, Package,Resource, Group, PackageExtra
 import json
 import re
 import csv
@@ -687,7 +687,21 @@ class DataQualityMetrics(object):
                 #     data_quality.resource_last_modified = last_modified
                 #     self.logger.debug('First data quality calculation.')
                 #----------------Calculate Metrics--------------------
-                data_quality.ref_id = resource['id']
+                resource_id = resource['id']
+                query = (
+                    Session.query(Package.id.label('package_id'), Group.name.label('org_name'))
+                    .select_from(Resource)
+                    .join(Package, Resource.package_id == Package.id)
+                    .join(Group, Package.owner_org == Group.id)  # หรือ Organization ถ้าใช้นั้น
+                    .filter(Resource.id == resource_id)
+                )
+                res_result = query.first()
+                if res_result:
+                    log.debug(f"Package: {res_result.package_id}, Org: {res_result.org_name}")
+                    data_quality.package_id = res_result.package_id
+                    data_quality.org_name   = res_result.org_name
+                        
+                data_quality.ref_id = resource['id']                   
                 data_quality.resource_last_modified = last_modified
                 data_stream2 = None
                 if self.force_recalculate:
@@ -1010,6 +1024,19 @@ class DataQualityMetrics(object):
         for metric, result in cumulative.items():
             if result.get('value') is not None:
                 setattr(data_quality, metric, result['value'])
+
+       #-------Add Package ID------------------- 
+        query = (
+            Session.query(Package.id.label('package_id'), Group.name.label('org_name'))
+            .select_from(Package)
+            .join(Group, Package.owner_org == Group.id)
+            .filter(Package.id == package_id)
+        )
+        p_result = query.first()
+        if p_result:
+            data_quality.package_id = p_result.package_id
+            data_quality.org_name   = p_result.org_name
+
         data_quality.metrics = cumulative
         data_quality.modified_at = datetime.now()
         data_quality.save()
@@ -2308,8 +2335,9 @@ class Openness():#DimensionMetric
             #check dict is not Empty
             if item_metric:                  
                 openness_score = item_metric.get('value')
-                total = total+openness_score
-                openness_list.append(openness_score)
+                if openness_score is not None:
+                    total = total+openness_score
+                    openness_list.append(openness_score)
         if openness_list:
             result_score = max(openness_list)
             return {
@@ -2928,18 +2956,25 @@ class Preview():
         '''
         # log.debug('-------------Calculate preview metrics -----------')
         N_total = len(resources)
-        N_preview = 0 
+        N_preview = 0
         for item_metric in metrics:
-            #check dict is not Empty
-            if item_metric and isinstance(item_metric.get('value'), (int, float)):
-                val = item_metric.get('value')
-                if val:
-                    N_preview += val
-                
+            val = item_metric.get('value') if item_metric else None
+            if isinstance(val, (int, float)) and val:
+                N_preview += val
             else:
                 N_total -= 1
-
         preview_score = (N_preview / N_total * 100) if N_total > 0 else 0.0
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     if item_metric and isinstance(item_metric.get('value'), (int, float)):
+        #         val = item_metric.get('value')
+        #         if val:
+        #             N_preview += val
+                
+        #     else:
+        #         N_total -= 1
+
+        
 
         return {
             "N_total": N_total,
@@ -3200,17 +3235,17 @@ class Completeness():#DimensionMetric
         # }
 
 
-        log.debug('------raw_data------')
-        raw_data = data['raw_data']
-        headers = raw_data[0]
-        rows = raw_data[1:]
-        #  แปลงเป็น list of dict
-        records = [dict(zip(headers, row)) for row in rows]
-        # log.debug(records)
-        # สร้าง DataFrame จาก records
-        df = pd.DataFrame(records)
+        # log.debug('------raw_data------')
+        # raw_data = data['raw_data']
+        # headers = raw_data[0]
+        # rows = raw_data[1:]
+        # #  แปลงเป็น list of dict
+        # records = [dict(zip(headers, row)) for row in rows]
+        # # log.debug(records)
+        # # สร้าง DataFrame จาก records
+        # df = pd.DataFrame(records)
         #--------------------------------------------
-        # df = pd.DataFrame(data['records'])
+        df = pd.DataFrame(data['records'])
         # log.debug(df)
         # เช็คว่าข้อมูลมีหรือไม่
         if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
@@ -3284,8 +3319,10 @@ class Completeness():#DimensionMetric
         N_complete = 0 
         for item_metric in metrics:
             #check dict is not Empty
-            if item_metric and isinstance(item_metric.get('value'), (int, float)):
-                val = item_metric.get('value')
+            # if item_metric and isinstance(item_metric.get('value'), (int, float)):
+            #     val = item_metric.get('value')
+            val = item_metric.get('value') if item_metric else None
+            if isinstance(val, (int, float)):
                 if val:
                     N_complete += val
                 
@@ -3516,8 +3553,8 @@ class Uniqueness(): #DimensionMetric
         N_unique = 0 
         for item_metric in metrics:
             #check dict is not Empty
-            if item_metric and isinstance(item_metric.get('value'), (int, float)):
-                val = item_metric.get('value')
+            val = item_metric.get('value') if item_metric else None
+            if isinstance(val, (int, float)):
                 if val:
                     N_unique += val
                 
@@ -3669,15 +3706,11 @@ class Validity():#DimensionMetric
                 extra_value = 0
 
             validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
-            log.debug("---validity_score---")
-            log.debug(blank_header)
-            log.debug(duplicate_header)
-            log.debug(extra_value)
-            log.debug(validity_score)
-            # valid_rows = max(total_rows - relevant_errors, 0)  # Ensure no negative valid_rows
-            # validity_score = (valid_rows / total_rows) * 100
-            # validity_score = max(min(validity_score, 100), 0)
-            # ถือว่าถ้า dataset นี้ผ่าน validation ทั้งหมด ก็ valid = 1, ถ้าไม่ก็ 0
+            # log.debug("---validity_score---")
+            # log.debug(blank_header)
+            # log.debug(duplicate_header)
+            # log.debug(extra_value)
+            # log.debug(validity_score)
             is_valid = 1 if validity_score == 100 else 0
 
             return {
@@ -3729,8 +3762,11 @@ class Validity():#DimensionMetric
         N_validity = 0 
         for item_metric in metrics:
             #check dict is not Empty
-            if item_metric and isinstance(item_metric.get('value'), (int, float)):
-                val = item_metric.get('value')
+            
+            # if item_metric and isinstance(item_metric.get('value'), (int, float)):
+            #     val = item_metric.get('value')
+            val = item_metric.get('value') if item_metric else None
+            if isinstance(val, (int, float)):
                 if val:
                     N_validity += val
                 
@@ -4967,84 +5003,78 @@ def detect_numeric_format(numstr):
 
 #     return report
 #--- old extra value-----
-def detect_extra_columns_excel(records, sample_size=20):
-    # แปลง dict เป็น list ของ row values
-    rows = [list(record.values()) for record in records]
+# def detect_extra_columns_excel(records, sample_size=20):
+#     # แปลง dict เป็น list ของ row values
+#     rows = [list(record.values()) for record in records]
 
-    # ตรวจว่ามีข้อมูลหรือไม่
-    if not rows:
-        return {
-            "expected_columns": 0,
-            "extra_rows": []
-        }
+#     # ตรวจว่ามีข้อมูลหรือไม่
+#     if not rows:
+#         return {
+#             "expected_columns": 0,
+#             "extra_rows": []
+#         }
 
-    # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
-    sample_rows = rows[1:sample_size+1]  # ข้าม header
-    def count_nonempty_except_last(row):
-        if not row:
-            return 0
-        trimmed = row[:-1] if str(row[-1]).strip() == '' else row
-        return sum(1 for cell in trimmed if str(cell).strip() != '')
+#     # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
+#     sample_rows = rows[1:sample_size+1]  # ข้าม header
+#     def count_nonempty_except_last(row):
+#         if not row:
+#             return 0
+#         trimmed = row[:-1] if str(row[-1]).strip() == '' else row
+#         return sum(1 for cell in trimmed if str(cell).strip() != '')
 
-    col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
-    if not col_counts:
-        return {
-            "expected_columns": 0,
-            "extra_rows": [],
-            "error": "No valid sample rows"
-        }
+#     col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+#     if not col_counts:
+#         return {
+#             "expected_columns": 0,
+#             "extra_rows": [],
+#             "error": "No valid sample rows"
+#         }
 
-    expected_columns = Counter(col_counts).most_common(1)[0][0]
+#     expected_columns = Counter(col_counts).most_common(1)[0][0]
 
-    # 2) ตรวจหาว่าแถวไหนมี extra values เกิน expected columns
-    extra_rows = []
-    for i, row in enumerate(rows, start=1):
-        # ตรวจว่าเกิน expected_columns หรือไม่
-        if len(row) > expected_columns:
-            extra_values = row[expected_columns:]
-            if any(str(cell).strip() != '' for cell in extra_values):  # ต้องไม่ใช่ช่องว่างล้วน
-            # if any(cell.strip() != '' for cell in extra_values):  # ต้องไม่ใช่ช่องว่างล้วน
-                extra_rows.append({
-                    "row_number": i,
-                    "columns": len(row),
-                    "extra_values": extra_values
-                })
-
-    return {
-        "expected_columns": expected_columns,
-        "extra_rows": extra_rows
-    }
-#---- new extra value----------------------------------
-#-----------------------------------------------------
-# def detect_extra_columns_from_rows(rows, expected_columns):
+#     # 2) ตรวจหาว่าแถวไหนมี extra values เกิน expected columns
 #     extra_rows = []
 #     for i, row in enumerate(rows, start=1):
+#         # ตรวจว่าเกิน expected_columns หรือไม่
 #         if len(row) > expected_columns:
 #             extra_values = row[expected_columns:]
-#             # if any(cell.strip() != '' for cell in extra_values):
-#             if any(str(cell or '').strip() != '' for cell in extra_values):
+#             if any(str(cell).strip() != '' for cell in extra_values):  # ต้องไม่ใช่ช่องว่างล้วน
+#             # if any(cell.strip() != '' for cell in extra_values):  # ต้องไม่ใช่ช่องว่างล้วน
 #                 extra_rows.append({
 #                     "row_number": i,
 #                     "columns": len(row),
 #                     "extra_values": extra_values
 #                 })
-#     return extra_rows
+
+#     return {
+#         "expected_columns": expected_columns,
+#         "extra_rows": extra_rows
+#     }
+#---- new extra value----------------------------------
+
 def detect_extra_columns_from_rows(rows, expected_columns):
     extra_rows = []
     for i, row in enumerate(rows, start=1):
+        # รองรับ dict เช่นจาก Excel
         if isinstance(row, dict):
             ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
         else:
-            ordered_values = row
+            ordered_values = list(row)
 
-        if len(ordered_values) > expected_columns:
-            extra_values = ordered_values[expected_columns:]
-            if any(str(cell).strip() != '' for cell in extra_values):
-                extra_rows.append({
-                    "row_number": i,
-                    "columns": len(ordered_values),
-                    "extra_values": extra_values
-                })
+        # ตัดช่องว่างท้ายแถวออก (None, '', '  ')
+        trimmed_values = list(ordered_values)
+        while trimmed_values and (trimmed_values[-1] is None or str(trimmed_values[-1]).strip() == ''):
+            trimmed_values.pop()
+
+        # ถ้าเหลือมากกว่า expected_columns ถือว่าเกิน
+        if len(trimmed_values) > expected_columns:
+            extra_values = trimmed_values[expected_columns:]
+            extra_rows.append({
+                "row_number": i,
+                "columns": len(trimmed_values),
+                "extra_values": extra_values
+            })
+
     return extra_rows
 def detect_columns_and_validate(records, encoding='utf-8'):
     # แปลง dict เป็น list ของ row values
@@ -5059,15 +5089,8 @@ def detect_columns_and_validate(records, encoding='utf-8'):
 
     # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
     sample_size=20
-    sample_rows = rows[1:sample_size+1]  # ข้าม header
-
-    # def count_nonempty_except_last(row):
-    #     if not row:
-    #         return 0
-    #      # แปลงค่าทุก cell เป็น string ก่อนใช้ strip
-    #     str_row = [str(cell) for cell in row]
-    #     trimmed = str_row[:-1] if str_row[-1].strip() == '' else str_row
-    #     return sum(1 for cell in trimmed if cell.strip() != '')
+    sample_rows = rows[:sample_size] 
+    # sample_rows = rows[1:sample_size+1]  # ข้าม header
     def count_nonempty_except_last(row):
         """
         รับได้ทั้ง row ที่เป็น list หรือ dict
@@ -5087,8 +5110,17 @@ def detect_columns_and_validate(records, encoding='utf-8'):
         trimmed = str_row[:-1] if str_row and str_row[-1] == '' else str_row
         # นับช่องที่มีข้อมูลจริง
         return sum(1 for cell in trimmed if cell != '')
+    
+    #กรองแถวที่มีข้อมูลน้อยกว่า 50% ทิ้งไป
+    cleaned_sample_rows = [
+        r for r in sample_rows if r and count_nonempty_except_last(r) >= len(r) * 0.5
+    ]
+    col_counts = [count_nonempty_except_last(r) for r in cleaned_sample_rows]
 
-    col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+    # col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+    log.debug('---cleaned_sample_rows---')
+    log.debug(cleaned_sample_rows)
+    # col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
     if not col_counts:
         expected_columns = 0
     else:
@@ -5124,7 +5156,7 @@ def detect_columns_and_validate(records, encoding='utf-8'):
         "sampling_confidence": sampling_confidence_percent
     }
     
-    if sampling_confidence_percent >= 60:
+    if sampling_confidence_percent >= 80:
         result["extra_rows"] = detect_extra_columns_from_rows(rows, expected_columns)
     else:
         result["extra_rows"] = []
@@ -5206,13 +5238,12 @@ def validate_resource_data(resource,data):
 
         #  แปลงเป็น list of dict
         records = [dict(zip(headers, row)) for row in rows]
-        log.debug(raw_data)
+        # log.debug(raw_data)
         # check extra values ------------------
-        # extra_result = detect_extra_columns_excel(records)
-        extra_result = detect_columns_and_validate(records)
-        extra_rows = extra_result.get("extra_rows", [])
-        log.debug('----extra_rows----')
-        log.debug(extra_result)
+        # extra_result = detect_columns_and_validate(records)
+        # extra_rows = extra_result.get("extra_rows", [])
+        # log.debug('----extra_rows----')
+        # log.debug(extra_result)
         #---------------------------------------
         report = validate_from_records(records)
 
@@ -5229,20 +5260,20 @@ def validate_resource_data(resource,data):
         else:
             log.debug("no duplicate header")
         # --- ตรวจสอบ extra values
-        if extra_rows:
-            log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
-            table = report['tables'][0]  # สมมุติว่า table เดียว
-            table['valid'] = False
-            table.setdefault('errors', []).append({
-                'code': 'extra-value',
-                'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
-                'message-data': {
-                    'expected_columns': extra_result.get("expected_columns"),
-                    'extra_rows': extra_rows
-                }
-            })
-        else:
-            log.debug("--no extra value--")
+        # if extra_rows:
+        #     log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
+        #     table = report['tables'][0]  # สมมุติว่า table เดียว
+        #     table['valid'] = False
+        #     table.setdefault('errors', []).append({
+        #         'code': 'extra-value',
+        #         'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
+        #         'message-data': {
+        #             'expected_columns': extra_result.get("expected_columns"),
+        #             'extra_rows': extra_rows
+        #         }
+        #     })
+        # else:
+        #     log.debug("--no extra value--")
     #----------------------------
     # report = _validate_table(source, _format=_format, schema=schema, **options)
     log.debug(report)

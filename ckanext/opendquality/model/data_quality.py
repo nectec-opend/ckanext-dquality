@@ -38,6 +38,8 @@ data_quality_metrics_table = Table(
            default=datetime.datetime.utcnow),
     Column('type', types.UnicodeText, nullable=False),
     Column('ref_id', types.UnicodeText, nullable=False),
+    Column('package_id', types.UnicodeText, nullable=True),
+    Column('org_name', types.String),
     Column('resource_last_modified', types.DateTime),
     Column('openness', types.Float),
     Column('timeliness', types.Float),
