@@ -5076,21 +5076,28 @@ def detect_extra_columns_from_rows(rows, expected_columns):
             })
 
     return extra_rows
-def detect_columns_and_validate(records, encoding='utf-8'):
-    # แปลง dict เป็น list ของ row values
-    rows = [list(record.values()) for record in records]
+# def detect_columns_and_validate(records, encoding='utf-8'):
+#     # แปลง dict เป็น list ของ row values
+#     # rows = [list(record.values()) for record in records]
+#     # ตรวจว่ามีข้อมูลอย่างน้อย 2 แถว (1 header + 1 data)
+#     if not records or len(records) < 2:
+#         return {
+#             "expected_columns": 0,
+#             "extra_rows": []
+#         }
 
-    # ตรวจว่ามีข้อมูลหรือไม่
-    if not rows:
-        return {
-            "expected_columns": 0,
-            "extra_rows": []
-        }
+#     # ใช้แถวที่ 1 เป็น header
+#     header = records[1]
+#     data_rows = records[2:]  # ข้ามแถวคำอธิบาย (row 0)
 
-    # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
-    sample_size=20
-    sample_rows = rows[:sample_size] 
-    # sample_rows = rows[1:sample_size+1]  # ข้าม header
+#     # แปลงเป็น list of dict (ใช้ header)
+#     rows = [dict(zip(header, row)) for row in data_rows]
+#     # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
+#     sample_size=20
+#     sample_rows = rows[:sample_size] 
+#     log.debug('---sample_rows---')
+#     log.debug(sample_rows)
+#     # sample_rows = rows[1:sample_size+1]  # ข้าม header
     def count_nonempty_except_last(row):
         """
         รับได้ทั้ง row ที่เป็น list หรือ dict
@@ -5141,7 +5148,9 @@ def detect_columns_and_validate(records, encoding='utf-8'):
             # กรณี cell เป็น None, '' หรือ '   ' → ถือว่า missing
             if cell is None or str(cell).strip() == '':
                 total_missing += 1
-
+    # log.debug('missing/total')            
+    # log.debug(total_missing)
+    # log.debug(total_cells)
     if total_cells == 0:
         sampling_confidence = 0
     else:

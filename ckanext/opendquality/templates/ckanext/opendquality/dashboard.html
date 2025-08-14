@@ -1,0 +1,201 @@
+{% extends "my_page.html" %}
+{% import 'macros/form.html' as form %}
+
+{% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+{% block breadcrumb_content %}
+<li class="active">{{ _('Data Quality') }}</li>
+{% endblock %}
+
+{% block secondary_content %}
+{% include "ckanext/opendquality/left_side.html" %}
+{% endblock %}
+
+{% block page_header %}
+{% endblock %}
+{% block primary_content_inner %}
+<h1>{{ title }}</h1>
+<div class="row table-responsive">
+  <form id='org-filter-form' class="form-inline" method="GET">
+    {{ h.csrf_input() }}
+    {%- set options=[] -%}
+    {%- do options.append({'value': '', 'text': _('หน่วยงานทั้งหมด')}) -%}
+    {%- for org in orgs -%}
+    {%- do options.append({'value': org.org_id|string, 'text': org.org_title}) -%}
+    {%- endfor -%}
+    {{ form.select(
+    'org-select',
+    label=_('หน่วยงาน'),
+    selected=org_id,
+    options=options,
+    classes=[],
+    id='org-select',
+    attrs={'data-module': 'autocomplete'},
+    error={}
+    )}}
+    <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
+  </form>
+</div>
+<hr>
+<!-- <div class="row">
+  <div class="primary col-md-6 col-xs-12">
+    <canvas id="radar_chart"></canvas>
+  </div>
+  <div class="primary col-md-3 col-xs-12">
+    <div class="col-md-12">$$$#####</div>
+    <div class="col-md-12">444@@@@@</div>
+    <div class="col-md-12">erRRREERRE</div>
+  </div>
+</div> -->
+<div class="row qa-radar-row">
+  <div class="primary col-md-6 col-xs-12">
+    <canvas id="radar_chart"></canvas>
+  </div>
+
+  <div class="primary col-md-3 col-xs-12">
+    <div class="panel panel-default qa-stats">
+      <div class="panel-heading">สรุปภาพรวม</div>
+      <div class="panel-body">
+        <div class="qa-stats-list">
+          <div class="qa-stat qa-stat--org">
+            <span class="qa-stat-label">หน่วยงาน</span>
+            <span class="qa-stat-value">{{ counts.organizations }}</span>
+          </div>
+          <div class="qa-stat qa-stat--ds">
+            <span class="qa-stat-label">ชุดข้อมูล</span>
+            <span class="qa-stat-value">{{ counts.datasets }}</span>
+          </div>
+          <div class="qa-stat qa-stat--res">
+            <span class="qa-stat-label">Resource</span>
+            <span class="qa-stat-value">{{ counts.resources }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3">
+
+  <!-- 1) Validity -->
+  <div class="col d-flex">
+    <div class="card flex-fill">
+      <div class="card-header fw-semibold">
+        มิติด้าน Machine-Readable
+        <small class="text-muted d-block">(Validity)</small>
+      </div>
+      <div class="card-body">
+        <canvas id="chart-validity"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2) Relevancy -->
+  <div class="col d-flex">
+    <div class="card flex-fill">
+      <div class="card-header fw-semibold">มิติด้าน Relevancy</div>
+      <div class="card-body">
+        <canvas id="chart-relevancy"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3) Availability -->
+  <div class="col d-flex">
+    <div class="card flex-fill">
+      <div class="card-header fw-semibold">มิติด้าน Availability</div>
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-4 mb-3 qa-donut">
+          <div class="fw-semibold text-muted" style="width:10rem;">Downloadable</div>
+          <div class="qa-donut-wrap">
+            <canvas id="chart-dl"></canvas>
+            <div class="qa-donut-center" id="center-dl"></div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-4 qa-donut">
+          <div class="fw-semibold text-muted" style="width:10rem;">Access API</div>
+          <div class="qa-donut-wrap">
+            <canvas id="chart-api"></canvas>
+            <div class="qa-donut-center" id="center-api"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+{% endblock %}
+
+
+{% block scripts %}
+{{ super() }}
+{% asset "opendquality/opendquality-js" %}
+{% endblock %}
+
+{%block extra_scripts %}
+<script>
+  document.getElementById('org-filter-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const selected = document.getElementById('org-select').value;
+    const newUrl = selected ? `/qa/dashboard/${selected}` : '/qa/dashboard';
+    window.location.href = newUrl;
+  });
+  const ele_radar = document.getElementById('radar_chart');
+  radarChart(ele_radar, {
+    labels: {{ radar_data.labels | tojson }},
+    datasets: [
+    {
+      label: '{{ _("คะแนนคุณภาพชุดข้อมูล") }}',
+      data: {{ radar_data.data | tojson }},
+    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+    borderColor: 'rgba(255, 99, 132, 1)',
+    borderWidth: 1
+    }
+  ]
+  });
+
+
+  // สร้างกราฟสำหรับแต่ละมิติ
+  document.addEventListener('DOMContentLoaded', function () {
+    const M = {{ metrics| tojson | safe
+  }};
+
+  // Validity – bar
+  new Chart(document.getElementById('chart-validity'), {
+    type: 'bar',
+    data: {
+      labels: ['blank header', 'duplicate header', 'extra value'],
+      datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+
+  // Relevancy – horizontal bar
+  new Chart(document.getElementById('chart-relevancy'), {
+    type: 'bar',
+    data: {
+      labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
+      datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+
+  // Availability – donuts
+  function donut(canvasId, centerId, yes, no) {
+    document.getElementById(centerId).textContent = yes;
+    return new Chart(document.getElementById(canvasId), {
+      type: 'doughnut',
+      data: { datasets: [{ data: [yes, no] }] },
+      options: { cutout: '70%', plugins: { legend: { display: false } } }
+    });
+  }
+  donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
+  donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
+});
+</script>
+{%endblock %}

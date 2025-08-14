@@ -9,6 +9,7 @@ from ckanext.opendquality.model import DataQualityMetrics as DQM
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
 from sqlalchemy import and_
+from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
@@ -257,10 +258,15 @@ def admin_report(org_id=None):
     }
     return toolkit.render('ckanext/opendquality/admin_reports.html', extra_vars)
 
-def dashboard():
+def dashboard(org_id=None):
     extra_vars = {
-        'title': toolkit._('Open Data Quality Dashboard'),
+        'orgs': _get_org(),
+        'org_id': org_id if org_id is not None else '',
+        'title': toolkit._('ผลการตรวจคุณภาพชุดข้อมูลเปิด'),
         'dashboard': True,
+        'radar_data': get_radar_aggregate_all(org_id),
+        'counts': qa_counts(org_id),
+        'metrics': qa_detail_blocks(org_id),
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
         'site_url': toolkit.request.host_url,
@@ -269,7 +275,7 @@ def dashboard():
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
         # 'external_dashboard': external_stats
     }
-    return toolkit.render('ckanext/opendquality/index.html', extra_vars)
+    return toolkit.render('ckanext/opendquality/dashboard.html', extra_vars)
 
 def calculate_quality(): #completeness
     return {'msg': 'calculate quality score',
@@ -295,3 +301,4 @@ qa.add_url_rule('/calculate', endpoint="index", view_func=home)
 qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)
+qa.add_url_rule('/dashboard/<org_id>', endpoint="dashboard", view_func=dashboard)

@@ -31,140 +31,249 @@
     overflow-y: auto;
     white-space: pre-wrap;
   }
+
+  /* ให้กราฟยืดเต็มคอลัมน์ */
+  .qa-radar-row canvas {
+    width: 100% !important;
+    height: auto !important;
+    display: block;
+  }
+
+  /* การ์ดสรุปทางขวา ใช้ panel ของ BS3 แล้วขยายตัวเลขให้เด่น */
+  .qa-stats .panel-heading {
+    font-weight: 600;
+  }
+
+  .qa-stats-dl {
+    margin-bottom: 0;
+  }
+
+  .qa-stats-dl dt {
+    width: 45%;
+    text-align: left;
+    color: #777;
+    /* โทนเดียวกับ .text-muted */
+    font-size: 13px;
+    line-height: 1.2;
+  }
+
+  .qa-stats-dl dd {
+    margin-left: 45%;
+    font-weight: 800;
+    font-size: 32px;
+    /* ตัวเลขใหญ่ */
+    line-height: 1;
+    color: #e83e8c;
+    /* โทนชมพู เข้ากับกราฟ ปรับได้ */
+    border-bottom: 1px dashed #eee;
+    padding: 10px 0 12px;
+  }
+
+  .qa-stats-dl dd:last-of-type {
+    border-bottom: 0;
+  }
+
+  /* จอเล็ก: ให้ dl ไม่เป็นแนวนอน จะสลับเป็นบน/ล่างอัตโนมัติ */
+  @media (max-width: 991px) {
+    .qa-stats-dl dt {
+      width: auto;
+    }
+
+    .qa-stats-dl dd {
+      margin-left: 0;
+    }
+  }
+  /* ให้แต่ละบรรทัดสูงเท่ากัน */
+.qa-stats-list{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-height: 300px;            /* ปรับให้พอดีกับความสูงกราฟ */
+}
+.qa-stat{
+  flex:1 1 0;                    /* แบ่งความสูงเท่าๆ กัน */
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 16px;
+  border-radius:10px;
+  font-size:14px;
+}
+
+/* สีแต่ละแถว */
+.qa-stat--org{   background:#fff1f5; border-left:6px solid #d6336c; } /* ชมพู */
+.qa-stat--ds{    background:#eef5ff; border-left:6px solid #3b82f6; } /* น้ำเงิน */
+.qa-stat--res{   background:#eefcf1; border-left:6px solid #16a34a; } /* เขียว */
+
+/* ตัวหนังสือ */
+.qa-stat-label{ color:#6b7280; }
+.qa-stat-value{
+  font-weight:800;
+  font-size:32px;
+  line-height:1;
+  color:#d6336c;                 /* ปรับได้ ถ้าต้องการให้ตรงกับสีกราฟ */
+}
+
+/* จอเล็ก */
+@media (max-width: 991px){
+  .qa-stats-list{ min-height: 0; }  /* ปล่อยให้สูงตามเนื้อหาเมื่ออยู่ใต้กราฟ */
+}
+
+
+/*ให้การ์ดทั้งสามสูงเท่ากัน*/
+.qa-metrics-row .card{ height:100%; }
+
+/*แคนวาสยืดตามคอลัมน์*/
+.qa-metrics-row canvas{ width:100% !important; height:auto !important; display:block; }
+
+/*โดนัท*/
+.qa-donut-wrap{ position:relative; width:140px; height:140px; }
+.qa-donut-wrap canvas{ width:100% !important; height:100% !important; }
+.qa-donut-center{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:28px;
+}
+
+/*จอเล็ก: ให้ label ชิดบน ไม่ fix ความกว้าง*/
+@media (max-width: 992px){
+  .qa-donut .fw-semibold[style]{ width:auto !important; }
+}
+
 </style>
 {% endblock %}
 {%- block page -%}
 
-  {% block skip %}
-    <div class="visually-hidden-focusable"><a href="#content">{{ _('Skip to main content') }}</a></div>
-  {% endblock %}
+{% block skip %}
+<div class="visually-hidden-focusable"><a href="#content">{{ _('Skip to main content') }}</a></div>
+{% endblock %}
 
-  {#
-  Override the header on a page by page basis by extending this block. If
-  making sitewide header changes it is preferable to override the header.html
-  file.
-  #}
-  {%- block header %}
-    {% include "header.html" %}
-  {% endblock -%}
+{#
+Override the header on a page by page basis by extending this block. If
+making sitewide header changes it is preferable to override the header.html
+file.
+#}
+{%- block header %}
+{% include "header.html" %}
+{% endblock -%}
 
-  {# The content block allows you to replace the content of the page if needed #}
-  {%- block content %}
-    {% block maintag %}<div class="main">{% endblock %}
-      <div id="content" class="container">
-        {% block main_content %}
-          {% block flash %}
-            <div class="flash-messages">
-              {% block flash_inner %}
-                {% for category, message in h.get_flashed_messages(with_categories=true) %}
-                  <div class="alert alert-dismissible fade show {{ category }}">
-                    {{ h.literal(message) }}
-                  </div>
-                {% endfor %}
-              {% endblock %}
+{# The content block allows you to replace the content of the page if needed #}
+{%- block content %}
+{% block maintag %}<div class="main">{% endblock %}
+  <div id="content" class="container">
+    {% block main_content %}
+    {% block flash %}
+    <div class="flash-messages">
+      {% block flash_inner %}
+      {% for category, message in h.get_flashed_messages(with_categories=true) %}
+      <div class="alert alert-dismissible fade show {{ category }}">
+        {{ h.literal(message) }}
+      </div>
+      {% endfor %}
+      {% endblock %}
+    </div>
+    {% endblock %}
+
+    {% block toolbar %}
+    <div class="toolbar" role="navigation" aria-label="{{ _('Breadcrumb') }}">
+      {% block breadcrumb %}
+      {% if self.breadcrumb_content() | trim %}
+      <ol class="breadcrumb">
+        {% snippet 'snippets/home_breadcrumb_item.html' %}
+        {% block breadcrumb_content %}{% endblock %}
+      </ol>
+      {% endif %}
+      {% endblock %}
+    </div>
+    {% endblock %}
+
+    <div
+      class="row wrapper{% block wrapper_class %}{% endblock %}{% if self.secondary()|trim == '' or c.action=='resource_read' %} no-nav{% endif %}">
+      {#
+      The pre_primary block can be used to add content to before the
+      rendering of the main content columns of the page.
+      #}
+      {% block pre_primary %}
+      {% endblock %}
+
+      {% block secondary %}
+      <aside class="secondary col-md-2">
+        {#
+        The secondary_content block can be used to add content to the
+        sidebar of the page. This is the main block that is likely to be
+        used within a template.
+
+        Example:
+
+        {% block secondary_content %}
+        <h2>A sidebar item</h2>
+        <p>Some content for the item</p>
+        {% endblock %}
+        #}
+        {% block secondary_content %}{% endblock %}
+      </aside>
+      {% endblock %}
+
+      {% block primary %}
+      <div class="primary col-md-10 col-xs-12" role="main">
+        {#
+        The primary_content block can be used to add content to the page.
+        This is the main block that is likely to be used within a template.
+
+        Example:
+
+        {% block primary_content %}
+        <h1>My page content</h1>
+        <p>Some content for the page</p>
+        {% endblock %}
+        #}
+        {% block primary_content %}
+        <article class="module">
+          {% block page_header %}
+          <header class="module-content page-header">
+            {% if self.content_action() | trim %}
+            <div class="content_action">
+              {% block content_action %}{% endblock %}
             </div>
+            {% endif %}
+            <ul class="nav nav-tabs">
+              {% block content_primary_nav %}{% endblock %}
+            </ul>
+          </header>
           {% endblock %}
-
-          {% block toolbar %}
-            <div class="toolbar" role="navigation" aria-label="{{ _('Breadcrumb') }}">
-              {% block breadcrumb %}
-                {% if self.breadcrumb_content() | trim %}
-                  <ol class="breadcrumb">
-                    {% snippet 'snippets/home_breadcrumb_item.html' %}
-                    {% block breadcrumb_content %}{% endblock %}
-                  </ol>
-                {% endif %}
-              {% endblock %}
+          <div class="module-content">
+            {% if self.page_primary_action() | trim %}
+            <div class="page_primary_action">
+              {% block page_primary_action %}{% endblock %}
             </div>
-          {% endblock %}
-
-          <div class="row wrapper{% block wrapper_class %}{% endblock %}{% if self.secondary()|trim == '' or c.action=='resource_read' %} no-nav{% endif %}">
-            {#
-            The pre_primary block can be used to add content to before the
-            rendering of the main content columns of the page.
-            #}
-            {% block pre_primary %}
-            {% endblock %}
-
-            {% block secondary %}
-              <aside class="secondary col-md-2">
-                {#
-                The secondary_content block can be used to add content to the
-                sidebar of the page. This is the main block that is likely to be
-                used within a template.
-
-                Example:
-
-                  {% block secondary_content %}
-                    <h2>A sidebar item</h2>
-                    <p>Some content for the item</p>
-                  {% endblock %}
-                #}
-                {% block secondary_content %}{% endblock %}
-              </aside>
-            {% endblock %}
-
-            {% block primary %}
-              <div class="primary col-md-10 col-xs-12" role="main">
-                {#
-                The primary_content block can be used to add content to the page.
-                This is the main block that is likely to be used within a template.
-
-                Example:
-
-                  {% block primary_content %}
-                    <h1>My page content</h1>
-                    <p>Some content for the page</p>
-                  {% endblock %}
-                #}
-                {% block primary_content %}
-                  <article class="module">
-                    {% block page_header %}
-                      <header class="module-content page-header">
-                        {% if self.content_action() | trim %}
-                          <div class="content_action">
-                            {% block content_action %}{% endblock %}
-                          </div>
-                        {% endif %}
-                        <ul class="nav nav-tabs">
-                          {% block content_primary_nav %}{% endblock %}
-                        </ul>
-                      </header>
-                    {% endblock %}
-                    <div class="module-content">
-                      {% if self.page_primary_action() | trim %}
-                        <div class="page_primary_action">
-                          {% block page_primary_action %}{% endblock %}
-                        </div>
-                      {% endif %}
-                      {% block primary_content_inner %}
-                      {% endblock %}
-                    </div>
-                  </article>
-                {% endblock %}
-              </div>
+            {% endif %}
+            {% block primary_content_inner %}
             {% endblock %}
           </div>
+        </article>
         {% endblock %}
       </div>
+      {% endblock %}
     </div>
-  {% endblock -%}
+    {% endblock %}
+  </div>
+</div>
+{% endblock -%}
 
-  {#
-  Override the footer on a page by page basis by extending this block. If
-  making sitewide header changes it is preferable to override the footer.html-u
-  file.
-  #}
-  {%- block footer %}
-    {% include "footer.html" %}
-  {% endblock -%}
+{#
+Override the footer on a page by page basis by extending this block. If
+making sitewide header changes it is preferable to override the footer.html-u
+file.
+#}
+{%- block footer %}
+{% include "footer.html" %}
+{% endblock -%}
 {%- endblock -%}
 
 {%- block scripts %}
-  {% asset 'base/main' %}
-  {% asset 'base/ckan' %}
-  {% if g.tracking_enabled %}
-    {% asset 'base/tracking' %}
-  {% endif %}
-  {{ super() }}
+{% asset 'base/main' %}
+{% asset 'base/ckan' %}
+{% if g.tracking_enabled %}
+{% asset 'base/tracking' %}
+{% endif %}
+{{ super() }}
 {% endblock -%}

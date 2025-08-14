@@ -1,8 +1,9 @@
-# opendquality-js:
-#   filter: rjsmin
-#   output: ckanext-opendquality/%(version)s-opendquality.js
-#   contents:
-#     - js/opendquality.js
+opendquality-js:
+  filter: rjsmin
+  output: ckanext-opendquality/%(version)s-opendquality.js
+  contents:
+    - js/chart.min.js
+    - js/qa_radar.js
 #   extra:
 #     preload:
 #       - base/main
