@@ -43,6 +43,7 @@ from ckanext.opendquality.model import (
 from ckan.plugins.toolkit import config
 from ckan.model import Session, Package, Group
 import ckan.logic as logic
+from ckan import model
 # from frictionless import Schema
 
 log = getLogger(__name__)
@@ -411,7 +412,31 @@ class DataQualityMetrics(object):
     def _delete_metrics_record(self, ref_type, ref_id):
         return DataQualityMetricsModel.remove(ref_type, ref_id)
     #-- check file size ---
-    def get_file_size(self, url):
+    def get_file_size(self, resource_id, resource_url):
+        """ดึง size ของ resource ถ้าเป็น upload"""
+
+        # เรียก API resource_show
+        context = {"model": model, "session": model.Session}
+        data_dict = {"id": resource_id}
+
+        try:
+            resource = toolkit.get_action("resource_show")(context, data_dict)
+        except toolkit.ObjectNotFound:
+            log.error(f"Resource {resource_id} not found")
+            return None
+
+        url_type = resource.get("url_type", None)
+        log.info(f"Resource {resource_id} url_type={url_type}")
+
+        if url_type == "upload":
+            # ถ้าเป็น upload → ดึง size
+            size = resource.get("size")
+            log.info(f"Resource {resource_id} size={size}")
+            return size
+        else:
+            # ถ้าไม่ใช่ upload → ใช้วิธี custom
+            return self.handle_non_upload(resource_url)
+    def handle_non_upload(self, url):
         timeout = 5
         try:
             response = requests.head(url, timeout=timeout)
@@ -597,6 +622,7 @@ class DataQualityMetrics(object):
 
         self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
+        resource_id = resource['id']
         resource_url = resource['url']
         resource_name = resource['name']
         resource_name = resource_name.lower()
@@ -623,7 +649,7 @@ class DataQualityMetrics(object):
             start_time = time.time()
             log.debug(start_time)
             connection_url = True
-            file_size = self.get_file_size(resource_url)
+            file_size = self.get_file_size(resource_id,resource_url)
             
             if file_size is not None:
                 file_size_mb = file_size/1024**2
