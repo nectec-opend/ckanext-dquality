@@ -1415,133 +1415,135 @@ class ResourceFetchData2(object):
         #     return []
 
         filename = url.split('/')[-1].split('#')[0].split('?')[0]
-        tmp_file = tempfile.NamedTemporaryFile(suffix=filename, delete=False)
+        #automatic delete tempfile.
+        with tempfile.NamedTemporaryFile(suffix=filename) as tmp_file:
+        # tmp_file = tempfile.NamedTemporaryFile(suffix=filename, delete=False)
         
-        length = 0
-        m = hashlib.md5()
-        raw_data = b''     
+            length = 0
+            m = hashlib.md5()
+            raw_data = b''     
 
-        for chunk in response.iter_content(CHUNK_SIZE):
-            length += len(chunk)
-            if length > MAX_CONTENT_LENGTH:
-                response.close()
-                raise DataTooBigError("File too large")
-            tmp_file.write(chunk)
-            raw_data += chunk
-            m.update(chunk)
+            for chunk in response.iter_content(CHUNK_SIZE):
+                length += len(chunk)
+                if length > MAX_CONTENT_LENGTH:
+                    response.close()
+                    raise DataTooBigError("File too large")
+                tmp_file.write(chunk)
+                raw_data += chunk
+                m.update(chunk)
 
-        response.close()
-        tmp_file.flush()
-        tmp_file.seek(0)
-        # --- Detect encoding ---
-        result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
-        encoding = result['encoding'] or 'utf-8'
-        log.debug(f"Detected encoding: {encoding}")
+            response.close()
+            tmp_file.flush()
+            tmp_file.seek(0)
+            # --- Detect encoding ---
+            result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
+            encoding = result['encoding'] or 'utf-8'
+            log.debug(f"Detected encoding: {encoding}")
 
-        if(mimetype == 'text/csv'): #(resource_format =='CSV'):
-            log.debug('----csv----')     
-            # log.debug(filepath)
-            #-----------------------------------      
-            try:
-                log.debug('--Reading CSV from temp--')
-                reader = csv.reader(io.TextIOWrapper(tmp_file, encoding=encoding, newline='')) #'utf-8'
-                records_read = 0
-                for row in reader:
-                    # log.debug(row)
-                    data.append(row)
-                    records_read += 1
-                    if records_read >= n_rows:
-                        break
+            if(mimetype == 'text/csv'): #(resource_format =='CSV'):
+                log.debug('----csv----')     
+                # log.debug(filepath)
+                #-----------------------------------      
+                try:
+                    log.debug('--Reading CSV from temp--')
+                    reader = csv.reader(io.TextIOWrapper(tmp_file, encoding=encoding, newline='')) #'utf-8'
+                    records_read = 0
+                    for row in reader:
+                        # log.debug(row)
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break
+                    
+                    # log.debug(data)
+                except UnicodeDecodeError:
+                    log.debug("An UnicodeDecodeError occurred")
+                    data = self._fetch_data_datastore_defined_row(self.resource) 
+                except Exception as e:
+                    log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
+                    data = self._fetch_data_datastore_defined_row(self.resource) 
+
                 
-                # log.debug(data)
-            except UnicodeDecodeError:
-                log.debug("An UnicodeDecodeError occurred")
-                data = self._fetch_data_datastore_defined_row(self.resource) 
-            except Exception as e:
-                log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
-                data = self._fetch_data_datastore_defined_row(self.resource) 
+            elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
+                data = []
+                try:
+                    log.debug('--Reading JSON data--')
+                    
+                    # Check if the filepath is a URL or a file path
+                    if filepath.startswith('http'):  # If it's a URL
+                        response = requests.get(filepath)
+                        response.encoding = 'utf-8'  # Ensure correct encoding
+                        content_type = response.headers.get('Content-Type', '')
+                        log.debug(content_type)
+                        # Ensure content type is JSON
+                        if 'application/json' in content_type or 'application/octet-stream' in content_type:
+                        # if 'application/json' in response.headers.get('Content-Type', ''):
+                            # Use `pd.read_json` with a StringIO object for URL content
+                            json_data = StringIO(response.text)
+                            data_df = pd.read_json(json_data)
+                        else:
+                            try:
+                                json_obj = json.loads(response.text)
+                                data_df = pd.json_normalize(json_obj)
+                                log.debug("Parsed as JSON despite invalid Content-Type")
+                            except json.JSONDecodeError:
+                                log.debug("Expected JSON but received:")
+                                log.debug("Response content preview:")
+                                raise ValueError("Unsupported Content-Type and invalid JSON")                                
+                    else:  # If it's a file path
+                        data_df = pd.read_json(filepath)
 
-            
-        elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
-            data = []
-            try:
-                log.debug('--Reading JSON data--')
-                
-                # Check if the filepath is a URL or a file path
-                if filepath.startswith('http'):  # If it's a URL
-                    response = requests.get(filepath)
-                    response.encoding = 'utf-8'  # Ensure correct encoding
-                    content_type = response.headers.get('Content-Type', '')
-                    log.debug(content_type)
-                    # Ensure content type is JSON
-                    if 'application/json' in content_type or 'application/octet-stream' in content_type:
-                    # if 'application/json' in response.headers.get('Content-Type', ''):
-                        # Use `pd.read_json` with a StringIO object for URL content
-                        json_data = StringIO(response.text)
-                        data_df = pd.read_json(json_data)
-                    else:
-                        try:
-                            json_obj = json.loads(response.text)
-                            data_df = pd.json_normalize(json_obj)
-                            log.debug("Parsed as JSON despite invalid Content-Type")
-                        except json.JSONDecodeError:
-                            log.debug("Expected JSON but received:")
-                            log.debug("Response content preview:")
-                            raise ValueError("Unsupported Content-Type and invalid JSON")                                
-                else:  # If it's a file path
-                    data_df = pd.read_json(filepath)
-
-                # Convert DataFrame to list of lists
-                data = data_df.values.tolist()                  
-                log.debug('--Data successfully read--')
-                # log.debug(data)
-            except ValueError as e:
-                log.debug("Error parsing JSON")
+                    # Convert DataFrame to list of lists
+                    data = data_df.values.tolist()                  
+                    log.debug('--Data successfully read--')
+                    # log.debug(data)
+                except ValueError as e:
+                    log.debug("Error parsing JSON")
+                    data = []
+                except json.JSONDecodeError as e:
+                    log.debug("Error decoding JSON")
+                    log.debug(e)
+                    log.debug("Response content")
+                    log.debug(response.content)
+                    data = []
+                except Exception as e:
+                    log.debug("Unexpected error occurred")
+                    log.debug(e)
+                    data = []
+            elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
+                log.debug('--Reading XLSX data--')
+                try:
+                    wb = load_workbook(filename=tmp_file)
+                    # Get the last worksheet instead of the active one
+                    last_sheet_name = wb.sheetnames[-1]
+                    ws = wb[last_sheet_name]  # Get the last worksheet
+                    # Iterate over rows and cells to read the data
+                    records_read = 0
+                    for row in ws.iter_rows(values_only=True):
+                        data.append(row)
+                        records_read += 1
+                        if records_read >= n_rows:
+                            break 
+                except Exception as e:
+                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    data = self._fetch_data_datastore_defined_row(self.resource)
+            elif(mimetype == 'application/vnd.ms-excel'):
+                log.debug('--Reading XLS data--')
+                try:
+                    file_bytes = tmp_file.read()
+                    book = xlrd.open_workbook(file_contents=file_bytes)
+                    # เลือก sheet สุดท้าย
+                    last_sheet_index = book.nsheets - 1
+                    sheet = book.sheet_by_index(last_sheet_index)
+                    # sheet = book.sheet_by_index(0)
+                    data = [sheet.row_values(i) for i in range(sheet.nrows)]
+                except Exception as e:
+                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    data = self._fetch_data_datastore_defined_row(self.resource)
+            else:
                 data = []
-            except json.JSONDecodeError as e:
-                log.debug("Error decoding JSON")
-                log.debug(e)
-                log.debug("Response content")
-                log.debug(response.content)
-                data = []
-            except Exception as e:
-                log.debug("Unexpected error occurred")
-                log.debug(e)
-                data = []
-        elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
-            log.debug('--Reading XLSX data--')
-            try:
-                wb = load_workbook(filename=tmp_file)
-                # Get the last worksheet instead of the active one
-                last_sheet_name = wb.sheetnames[-1]
-                ws = wb[last_sheet_name]  # Get the last worksheet
-                # Iterate over rows and cells to read the data
-                records_read = 0
-                for row in ws.iter_rows(values_only=True):
-                    data.append(row)
-                    records_read += 1
-                    if records_read >= n_rows:
-                        break 
-            except Exception as e:
-                log.debug("An error occurred, use CKAN datastore to readfile", e)
-                data = self._fetch_data_datastore_defined_row(self.resource)
-        elif(mimetype == 'application/vnd.ms-excel'):
-            log.debug('--Reading XLS data--')
-            try:
-                file_bytes = tmp_file.read()
-                book = xlrd.open_workbook(file_contents=file_bytes)
-                # เลือก sheet สุดท้าย
-                last_sheet_index = book.nsheets - 1
-                sheet = book.sheet_by_index(last_sheet_index)
-                # sheet = book.sheet_by_index(0)
-                data = [sheet.row_values(i) for i in range(sheet.nrows)]
-            except Exception as e:
-                log.debug("An error occurred, use CKAN datastore to readfile", e)
-                data = self._fetch_data_datastore_defined_row(self.resource)
-        else:
-            data = []
-        # log.debug('===before reading end ====')
-        # log.debug(data)
+            # log.debug('===before reading end ====')
+            # log.debug(data)
         return data
     # def _download_resource_from_url(self, url, headers=None):
         
