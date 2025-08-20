@@ -767,7 +767,6 @@ class DataQualityMetrics(object):
                                 data_stream2['records'].rewind()
                             else:
                                 data_stream2 = self._fetch_resource_data2(resource)
-                        log.debug('data_stream2--')
                     #-------------------------------------------------------------
                         # log.debug(data_stream2)
                         if data_stream2.get('error'):
@@ -829,6 +828,9 @@ class DataQualityMetrics(object):
                                     log.debug(data_stream2['total'])
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                     completeness_report = results[metric.name].get('report')
+                                    log.debug('-----after calculate completeness--')
+                                    log.debug("---dir tempfile----")
+                                    log.debug(os.listdir(tempfile.gettempdir()))
                                 elif(metric.name == 'uniqueness'):                           
                                     log.debug('----check uniqueness------')
                                     log.debug(data_stream2['total'])
@@ -1411,14 +1413,26 @@ class ResourceFetchData2(object):
             log.error(f"Cannot download file: {e}")
             return []
 
-        # if not (self.is_url_file(filepath, 5) and response.status_code == 200):
-        #     return []
 
-        filename = url.split('/')[-1].split('#')[0].split('?')[0]
-        #automatic delete tempfile.
-        with tempfile.NamedTemporaryFile(suffix=filename) as tmp_file:
+        # filename = url.split('/')[-1].split('#')[0].split('?')[0]
         # tmp_file = tempfile.NamedTemporaryFile(suffix=filename, delete=False)
-        
+        filename = url.split('/')[-1].split('#')[0].split('?')[0]
+
+        # แยกชื่อกับนามสกุล
+        basename, ext = os.path.splitext(filename)
+
+        # ตัดชื่อให้สั้นลง (กันชื่อไฟล์ยาวเกินไป)
+        safe_basename = basename[:30]  # เอาแค่ 30 ตัวอักษรแรก
+
+        # สร้าง temp file โดยใช้ prefix + suffix
+        tmp_file = tempfile.NamedTemporaryFile(
+            prefix=f"{safe_basename}_",  # เช่น report_from_ckan_...
+            suffix=ext,                  # เช่น .csv, .xlsx
+            delete=False
+        )
+        # log.debug("-----temp file---")
+        # log.debug(tmp_file.name)
+        try:
             length = 0
             m = hashlib.md5()
             raw_data = b''     
@@ -1439,7 +1453,8 @@ class ResourceFetchData2(object):
             result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
             encoding = result['encoding'] or 'utf-8'
             log.debug(f"Detected encoding: {encoding}")
-
+            # log.debug("---dir tempfile----")
+            # log.debug(os.listdir(tempfile.gettempdir()))
             if(mimetype == 'text/csv'): #(resource_format =='CSV'):
                 log.debug('----csv----')     
                 # log.debug(filepath)
@@ -1477,8 +1492,6 @@ class ResourceFetchData2(object):
                         log.debug(content_type)
                         # Ensure content type is JSON
                         if 'application/json' in content_type or 'application/octet-stream' in content_type:
-                        # if 'application/json' in response.headers.get('Content-Type', ''):
-                            # Use `pd.read_json` with a StringIO object for URL content
                             json_data = StringIO(response.text)
                             data_df = pd.read_json(json_data)
                         else:
@@ -1513,7 +1526,7 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 log.debug('--Reading XLSX data--')
                 try:
-                    wb = load_workbook(filename=tmp_file)
+                    wb = load_workbook(tmp_file.name) #filename=tmp_file
                     # Get the last worksheet instead of the active one
                     last_sheet_name = wb.sheetnames[-1]
                     ws = wb[last_sheet_name]  # Get the last worksheet
@@ -1544,6 +1557,14 @@ class ResourceFetchData2(object):
                 data = []
             # log.debug('===before reading end ====')
             # log.debug(data)
+        finally:
+            # ลบไฟล์ด้วยตัวเอง
+            tmp_file.close()       # ปิดไฟล์ก่อน
+            os.remove(tmp_file.name)  # ลบไฟล์
+            # log.debug("----Temp file deleted:----")
+            # log.debug(tmp_file.name)
+            # log.debug("---dir tempfile----")
+            # log.debug(os.listdir(tempfile.gettempdir()))
         return data
     # def _download_resource_from_url(self, url, headers=None):
         
@@ -5257,10 +5278,10 @@ def validate_resource_data(resource,data):
             schema = json.loads(schema)
     _format = resource[u'format'].lower()
     #----- check mimetype -----------------------------
-    log.debug('--validate: check mimetype--')
-    log.debug('---data schema2--')
-    log.debug(schema)
-    log.debug(data['fields'])
+    # log.debug('--validate: check mimetype--')
+    # log.debug('---data schema2--')
+    # log.debug(schema)
+    # log.debug(data['fields'])
     #------------------------
     mimetype = data['mimetype']
     if (mimetype == 'application/json'):
@@ -5340,7 +5361,8 @@ def validate_from_records(records, _format='csv', schema=None, **options):
 
     rows = [list(r.values()) for r in records]
 
-    with tempfile.NamedTemporaryFile(mode='w+', newline='', suffix='.csv', delete=False) as tmp:
+    tmp = tempfile.NamedTemporaryFile(mode='w+', newline='', suffix='.csv', delete=False)
+    try:
         writer = csv.writer(tmp)
         writer.writerow(headers)
         for row in rows:
@@ -5349,10 +5371,13 @@ def validate_from_records(records, _format='csv', schema=None, **options):
                 row += [''] * (len(headers) - len(row))
             elif len(row) > len(headers):
                 row = row[:len(headers)]
-            writer.writerow(row)
+            writer.writerow(row)   
+        tmp.flush()
         tmp_path = tmp.name
-
-    report = validate(tmp_path, format=_format, schema=schema, **options)
+        report = validate(tmp_path, format=_format, schema=schema, **options)
+    finally:
+        tmp.close()              # ปิด handle ก่อน
+        os.remove(tmp.name)      # ลบไฟล์เอง
     return report
 
 # def validate_from_records(records, _format='csv', schema=None, **options):

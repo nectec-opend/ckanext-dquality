@@ -2,6 +2,13 @@
 {% import 'macros/form.html' as form %}
 
 {% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+{% asset "opendquality/datatables-css" %}
+{% asset "opendquality/opendquality-css" %}
+{% endblock %}
+
 {% block breadcrumb_content %}
 <li class="active">{{ _('Data Quality') }}</li>
 {% endblock %}
@@ -38,7 +45,7 @@
 </div>
 <hr>
 <div class="row table-responsive" style="position: relative; z-index: 2;">
-  <table id="tb-qa-result" class="table table-bordered table-striped">
+  <table id="tb-qa-result" class="table table-bordered table-striped" data-module="qa-datatables">
     <thead>
       <tr>
         <th>{{_("#")}}</th>
@@ -108,16 +115,15 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="https://cdn.datatables.net/2.3.2/js/dataTables.js"></script>
-<script src="https://cdn.datatables.net/2.3.2/js/dataTables.bootstrap5.js"></script>
-<script>
+{% asset "opendquality/datatables-js" %}
+<!-- <script>
   new DataTable('#tb-qa-result', {
     responsive: true,
     language: {
       url: "//cdn.datatables.net/plug-ins/2.0.0/i18n/th.json"
     }
   });
-</script>
+</script> -->
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     var modal = document.getElementById('jsonModal');

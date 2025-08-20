@@ -2,6 +2,12 @@
 {% import 'macros/form.html' as form %}
 
 {% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+{% asset "opendquality/opendquality-css" %}
+{% endblock %}
+
 {% block breadcrumb_content %}
 <li class="active">{{ _('Data Quality') }}</li>
 {% endblock %}
@@ -48,7 +54,7 @@
 </div> -->
 <div class="row qa-radar-row">
   <div class="primary col-md-6 col-xs-12">
-    <canvas id="radar_chart"></canvas>
+    <canvas id="radar_chart" data-module="opendquality-radar-chart"></canvas>
   </div>
 
   <div class="primary col-md-3 col-xs-12">
@@ -132,9 +138,6 @@
 {% block scripts %}
 {{ super() }}
 {% asset "opendquality/opendquality-js" %}
-{% endblock %}
-
-{%block extra_scripts %}
 <script>
   document.getElementById('org-filter-form').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -142,60 +145,50 @@
     const newUrl = selected ? `/qa/dashboard/${selected}` : '/qa/dashboard';
     window.location.href = newUrl;
   });
-  const ele_radar = document.getElementById('radar_chart');
-  radarChart(ele_radar, {
+  const radar_chart_config = {
     labels: {{ radar_data.labels | tojson }},
     datasets: [
-    {
-      label: '{{ _("คะแนนคุณภาพชุดข้อมูล") }}',
-      data: {{ radar_data.data | tojson }},
-    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-    borderColor: 'rgba(255, 99, 132, 1)',
-    borderWidth: 1
-    }
-  ]
-  });
+      {
+        label: '{{ _("คะแนนคุณภาพชุดข้อมูล") }}',
+        data: {{ radar_data.data | tojson }},
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1
+        }
+    ]
+  }
 
+  var M = {{ metrics| tojson | safe}};
 
   // สร้างกราฟสำหรับแต่ละมิติ
-  document.addEventListener('DOMContentLoaded', function () {
-    const M = {{ metrics| tojson | safe
-  }};
+//   document.addEventListener('DOMContentLoaded', function () {
+//     const M = {{ metrics| tojson | safe}};
+//   // Validity – bar
+//   // new Chart(document.getElementById('chart-validity'), {
+//   //   type: 'bar',
+//   //   data: {
+//   //     labels: ['blank header', 'duplicate header', 'extra value'],
+//   //     datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
+//   //   },
+//   //   options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+//   // });
 
-  // Validity – bar
-  new Chart(document.getElementById('chart-validity'), {
-    type: 'bar',
-    data: {
-      labels: ['blank header', 'duplicate header', 'extra value'],
-      datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-  });
+//   // // Relevancy – horizontal bar
+//   // new Chart(document.getElementById('chart-relevancy'), {
+//   //   type: 'bar',
+//   //   data: {
+//   //     labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
+//   //     datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
+//   //   },
+//   //   options: {
+//   //     indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+//   //     scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+//   //   }
+//   // });
 
-  // Relevancy – horizontal bar
-  new Chart(document.getElementById('chart-relevancy'), {
-    type: 'bar',
-    data: {
-      labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
-      datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
-    },
-    options: {
-      indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
-    }
-  });
-
-  // Availability – donuts
-  function donut(canvasId, centerId, yes, no) {
-    document.getElementById(centerId).textContent = yes;
-    return new Chart(document.getElementById(canvasId), {
-      type: 'doughnut',
-      data: { datasets: [{ data: [yes, no] }] },
-      options: { cutout: '70%', plugins: { legend: { display: false } } }
-    });
-  }
-  donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
-  donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
-});
+//   // // Availability – donuts
+//   // donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
+//   // donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
+// });
 </script>
 {%endblock %}

@@ -1,6 +1,12 @@
 {% extends "my_page.html" %}
 
 {% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+{% asset "opendquality/opendquality-css" %}
+{% endblock %}
+
 {% block breadcrumb_content %}
 <li class="active">{{ _('Data Quality') }}</li>
 {% endblock %}

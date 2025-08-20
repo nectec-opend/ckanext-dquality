@@ -184,20 +184,57 @@ def org_packages(handler,org_name):
 
 
 @quality.command(u'delete', help='Delete data quality metrics')
+@click.option('--dataset',
+              help='Delete a dataset by name. Use "all" to delete all datasets.')
 @click.option('--organization',
-              default='all',
+              default= None,
               help='Delete quality metrics by organization')
-def del_metrict(organization):
-    if organization == 'all':
-        obj = Session.query(qa_table).delete()
-        Session.commit()
+def del_metrict(organization=None, dataset=None):
+    if dataset:
+        if dataset == 'all':
+            # ลบทุกแถวในตาราง metrics
+            Session.query(qa_table).delete()
+            Session.commit()
+            log.info("Deleted all data quality metrics")
+        else:
+            # หา dataset ที่ตรงกับชื่อ
+            pkg = Session.query(package_table.c.id).filter(
+                package_table.c.name == dataset,
+                package_table.c.type == 'dataset'
+            ).first()
+
+            if not pkg:
+                log.error("Dataset %s not found", dataset)
+                return
+
+            list_ref = [pkg[0]]
+
+            # เพิ่ม resource ที่อยู่ใน dataset นี้ด้วย
+            res = Session.query(resource_table.c.id).filter(
+                resource_table.c.package_id == pkg[0]
+            ).all()
+            list_ref += [rw[0] for rw in res]
+
+            Session.query(qa_table).filter(
+                qa_table.ref_id.in_(list_ref)
+            ).delete(synchronize_session='fetch')
+            Session.commit()
+            log.info("Deleted data quality metrics for dataset %s", dataset)
+
+    elif organization:
+        if organization == 'all':
+            obj = Session.query(qa_table).delete()
+            Session.commit()
+        else:
+            org = model.Group.get(organization)
+            pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
+            
+            list_ref = [ row[0] for row in pkg.all()]
+            for result in pkg.all():
+                res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
+                list_ref += [ rw[0] for rw in res]
+            qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
+            Session.commit()
+            log.info("Deleted data quality metrics for organization %s", organization)
     else:
-        org = model.Group.get(organization)
-        pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
-        
-        list_ref = [ row[0] for row in pkg.all()]
-        for result in pkg.all():
-            res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
-            list_ref += [ rw[0] for rw in res]
-        qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
-        Session.commit()
+        log.error("Please provide either --dataset or --organization")
