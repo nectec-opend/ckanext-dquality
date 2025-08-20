@@ -238,3 +238,87 @@ def del_metrict(organization=None, dataset=None):
             log.info("Deleted data quality metrics for organization %s", organization)
     else:
         log.error("Please provide either --dataset or --organization")
+
+@quality.command(u'repair', help='Repair metrics for packages without resources')
+@click.option('--organization', help='Repair only datasets in an organization.')
+@click.option('--dataset', help='Repair a specific dataset by name.')
+def repair(organization=None, dataset=None):
+    if six.PY2:
+        _register_mock_translator()
+
+    # prepare calculators
+    dimensions = ['completeness','uniqueness','validity','consistency','openness',
+                  'availability','downloadable','access_api','timeliness',
+                  'acc_latency','freshness']
+    dimension_calculators = {
+        'completeness': quality_lib.Completeness(),
+        'uniqueness'  : quality_lib.Uniqueness(),
+        'validity'    : quality_lib.Validity(),
+        'consistency' : quality_lib.Consistency(),
+        'openness'    : quality_lib.Openness(),
+        'availability': quality_lib.Availability(),
+        'downloadable': quality_lib.Downloadable(),
+        'access_api'  : quality_lib.AccessAPI(),
+        'timeliness'  : quality_lib.Timeliness(),
+        'acc_latency' : quality_lib.AcceptableLatency(),
+        'freshness'   : quality_lib.Freshness(),
+    }
+    calculators = [dimension_calculators[dim] for dim in dimensions]
+    metrics = quality_lib.DataQualityMetrics(metrics=calculators)
+
+    if organization:
+        # ดึง packages จาก metrics table ตาม org_name
+        dq_packages = Session.query(qa_table.ref_id).filter(
+            qa_table.type == 'package',
+            qa_table.org_name == organization
+        ).all()
+        dq_packages = [p[0] for p in dq_packages]
+        log.debug("Found %d packages in metrics table for org %s", len(dq_packages), organization)
+
+        _repair_packages(dq_packages, organization, metrics)
+
+    elif dataset:
+        log.debug("---Repaire Dataset ----")
+        # ดึงจาก metrics table โดย dataset name -> join package_table เพื่อ map name -> id
+        pkg = (Session.query(qa_table.ref_id)
+                      .join(package_table, qa_table.ref_id == package_table.c.id)
+                      .filter(qa_table.type == 'package',
+                              package_table.c.name == dataset)
+                      .first())
+        if not pkg:
+            log.debug("Dataset %s not found in metrics table", dataset)
+            return
+        log.debug(pkg)
+        pkg_id = pkg[0]
+        log.debug("Repairing dataset %s (id=%s)", dataset, pkg_id)
+        _repair_packages([pkg_id], None, metrics)
+
+
+def _repair_packages(pkg_ids, org_name, metrics):
+    for pkg_id in pkg_ids:
+        # ตรวจสอบว่า package นี้มี resource ใน data_quality_metrics
+        res = Session.query(qa_table.id).filter(
+            qa_table.package_id == pkg_id,
+            qa_table.type == 'resource',
+            qa_table.org_name == org_name
+        ).all()
+
+        if not res:
+            log.warning("Package %s has no resource metrics -> repairing", pkg_id)
+
+            # ลบ row เก่าใน metrics table (ถ้ามี package row ด้วยก็ลบ)
+            Session.query(qa_table).filter(
+                qa_table.package_id == pkg_id,
+                qa_table.type == 'package',
+                qa_table.org_name == org_name
+            ).delete(synchronize_session='fetch')
+            Session.commit()
+
+            # คำนวณใหม่
+            try:
+                metrics.calculate_metrics_for_dataset(pkg_id)
+                log.info("Recalculated metrics for package %s", pkg_id)
+            except Exception as e:
+                log.error("Failed to recalc metrics for %s: %s", pkg_id, e)
+        else:
+            log.debug("Package contain resources")
