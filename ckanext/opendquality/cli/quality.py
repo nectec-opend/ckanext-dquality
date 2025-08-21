@@ -306,13 +306,21 @@ def _repair_packages(pkg_ids, org_name, metrics):
         if not res:
             log.warning("Package %s has no resource metrics -> repairing", pkg_id)
 
-            # ลบ row เก่าใน metrics table (ถ้ามี package row ด้วยก็ลบ)
+            # ---- ลบ resource metrics ที่ belong ถึง package ----
+            Session.query(qa_table).join(
+                resource_table, qa_table.ref_id == resource_table.c.id
+            ).filter(
+                resource_table.c.package_id == pkg_id,
+                qa_table.type == 'resource',
+                qa_table.org_name == org_name
+            ).delete(synchronize_session='fetch')
+
+            # ---- ลบ package metrics ด้วย ----
             Session.query(qa_table).filter(
-                qa_table.package_id == pkg_id,
+                qa_table.ref_id == pkg_id,
                 qa_table.type == 'package',
                 qa_table.org_name == org_name
             ).delete(synchronize_session='fetch')
-            Session.commit()
 
             # คำนวณใหม่
             try:
