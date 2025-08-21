@@ -296,34 +296,41 @@ def repair(organization=None, dataset=None):
 
 def _repair_packages(pkg_ids, org_name, metrics):
     for pkg_id in pkg_ids:
-         # หา resource metrics ของ package ผ่าน join resource_table
-        res_ids = Session.query(qa_table.id).join(
-            resource_table, qa_table.ref_id == resource_table.c.id
-        ).filter(
+        # 1. หา resource ของ package จาก resource_table
+        res_ids = [r[0] for r in Session.query(resource_table.c.id).filter(
             resource_table.c.package_id == pkg_id,
-            qa_table.type == 'resource'
-        ).all()
-
-        res_ids = [r[0] for r in res_ids]
+            resource_table.c.state == 'active'
+        ).all()]
 
         if not res_ids:
             log.warning("Package %s has no resource metrics -> repairing", pkg_id)
         else:
+            # 2. หา resource metrics ใน data_quality_metrics
+            resource_metrics = Session.query(qa_table).filter(
+                qa_table.ref_id.in_(res_ids),
+                qa_table.type == 'resource'
+            ).all()
 
-            # ลบ resource metrics
-            Session.query(qa_table).filter(qa_table.ref_id.in_(res_ids)).delete(synchronize_session='fetch')
-            Session.commit()
+            if resource_metrics:
+                # ลบ resource metrics
+                Session.query(qa_table).filter(
+                    qa_table.ref_id.in_(res_ids),
+                    qa_table.type == 'resource'
+                ).delete(synchronize_session='fetch')
+                
+                # ลบ package metrics ด้วย
+                Session.query(qa_table).filter(
+                    qa_table.ref_id == pkg_id,
+                    qa_table.type == 'package',
+                    qa_table.org_name == org_name
+                ).delete(synchronize_session='fetch')
 
-            # ---- ลบ package metrics ด้วย ----
-            Session.query(qa_table).filter(
-                qa_table.ref_id == pkg_id,
-                qa_table.type == 'package',
-                qa_table.org_name == org_name
-            ).delete(synchronize_session='fetch')
+                Session.commit()
+                log.info("Deleted resource and package metrics for package %s", pkg_id)
 
-            # คำนวณใหม่
-            try:
-                metrics.calculate_metrics_for_dataset(pkg_id)
-                log.info("Recalculated metrics for package %s", pkg_id)
-            except Exception as e:
-                log.error("Failed to recalc metrics for %s: %s", pkg_id, e)
+                # คำนวณใหม่
+                try:
+                    metrics.calculate_metrics_for_dataset(pkg_id)
+                    log.info("Recalculated metrics for package %s", pkg_id)
+                except Exception as e:
+                    log.error("Failed to recalc metrics for %s: %s", pkg_id, e)
