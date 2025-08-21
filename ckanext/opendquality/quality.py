@@ -963,9 +963,11 @@ class DataQualityMetrics(object):
         else:
             self.logger.debug('Connection Timed Out')
             #----- connect model: check records----------------------
+            
             data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
             if data_quality:
                 self.logger.debug('Data Quality already calculated.')
+                self.logger.debug(resource['id'])
             else:
                 data_quality = self._new_metrics_record('resource', resource['id'])
                  #--GET package_id and Org_name---------------------------
