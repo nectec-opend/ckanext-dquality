@@ -711,8 +711,8 @@ class DataQualityMetrics(object):
                 # else:
                 #     data_quality = self._new_metrics_record('resource', resource['id'])
                 #     data_quality.resource_last_modified = last_modified
-                #     self.logger.debug('First data quality calculation.')
-                #----------------Calculate Metrics--------------------
+                #     self.logger.debug('First data quality calculation.')                
+                #--GET Package_id and Org_name----------------------------
                 resource_id = resource['id']
                 query = (
                     Session.query(Package.id.label('package_id'), Group.name.label('org_name'))
@@ -727,8 +727,10 @@ class DataQualityMetrics(object):
                     data_quality.package_id = res_result.package_id
                     data_quality.org_name   = res_result.org_name
                         
-                data_quality.ref_id = resource['id']                   
+                data_quality.ref_id = resource_id                   
                 data_quality.resource_last_modified = last_modified
+                #----------------------------------------------------
+                #----------------Calculate Metrics--------------------
                 data_stream2 = None
                 if self.force_recalculate:
                     log.info('Forcing recalculation of the data metrics '
@@ -961,16 +963,33 @@ class DataQualityMetrics(object):
         else:
             self.logger.debug('Connection Timed Out')
             #----- connect model: check records----------------------
-            data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
+            data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
             if data_quality:
                 self.logger.debug('Data Quality already calculated.')
             else:
                 data_quality = self._new_metrics_record('resource', resource['id'])
+                 #--GET package_id and Org_name---------------------------
+                resource_id = resource['id']
+                query = (
+                    Session.query(Package.id.label('package_id'), Group.name.label('org_name'))
+                    .select_from(Resource)
+                    .join(Package, Resource.package_id == Package.id)
+                    .join(Group, Package.owner_org == Group.id)  # หรือ Organization ถ้าใช้นั้น
+                    .filter(Resource.id == resource_id)
+                )
+                res_result = query.first()
+                if res_result:
+                    log.debug(f"Package: {res_result.package_id}, Org: {res_result.org_name}")
+                    data_quality.package_id = res_result.package_id
+                    data_quality.org_name   = res_result.org_name
+                        
+                data_quality.ref_id = resource_id                   
                 data_quality.resource_last_modified = last_modified
+            #----------------------------------------------------------
                 self.logger.debug('First data quality calculation.')
                 #----------------Calculate Metrics--------------------
-                data_quality.ref_id = resource['id']
-                data_quality.resource_last_modified = last_modified
+                # data_quality.ref_id = resource['id']
+                # data_quality.resource_last_modified = last_modified
                 data_quality.metrics = {'error':'connection timed out'}
                 data_quality.modified_at = datetime.now()
                 #----------------------
@@ -979,10 +998,15 @@ class DataQualityMetrics(object):
                 data_quality.downloadable = None
                 data_quality.access_api = None
                 data_quality.timeliness = None #-1, 999
-                data_quality.openness = None
+                data_quality.acc_latency= None
+                data_quality.freshness = None
+                data_quality.relevance = None
+                data_quality.completeness = None
                 data_quality.consistency = None
                 data_quality.validity = None
-                data_quality.preview = None #--------****------------
+                data_quality.uniqueness = None
+                data_quality.preview = None 
+                data_quality.utf8    = None 
                 # data_quality.machine_readable = 0      
                 #---- add filepath ----
                 # data_quality.filepath = ''
