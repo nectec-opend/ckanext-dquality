@@ -622,17 +622,22 @@ class DataQualityMetrics(object):
 
         self.logger.debug ('Resource last modified on: %s', last_modified)
         #-------Check Data Dict using Resource Name -----------
+       
         resource_id = resource['id']
         resource_url = resource['url']
-        resource_name = resource['name']
-        resource_name = resource_name.lower()
         log.debug(resource_url)
-        # initializing test list
-        datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary','คำอธิบายชุดข้อมูล']
-        # using list comprehension
-        # checking if string contains list element
-        res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
-        is_datadict = bool(res_datadict)
+        try:
+            resource_name = resource['name']
+            resource_name = resource_name.lower()            
+            # initializing test list
+            datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary','คำอธิบายชุดข้อมูล']
+            # checking if string contains list element
+            res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
+            is_datadict = bool(res_datadict)
+        except Exception as e:
+            # fallback กรณีมี error
+            is_datadict = False
+            log.warning("Error checking datadict for resource %s: %s", resource.get('id'), e)
         results = {}
         file_size_mb = 0
         execute_time = 0

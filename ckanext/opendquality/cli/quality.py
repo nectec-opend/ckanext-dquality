@@ -267,15 +267,41 @@ def repair(organization=None, dataset=None):
     metrics = quality_lib.DataQualityMetrics(metrics=calculators)
 
     if organization:
-        # ดึง packages จาก metrics table ตาม org_name
+        # # ดึง packages จาก metrics table ตาม org_name
+        # dq_packages = Session.query(qa_table.ref_id).filter(
+        #     qa_table.type == 'package',
+        #     qa_table.org_name == organization
+        # ).all()
+        # dq_packages = [p[0] for p in dq_packages]
+        # log.debug("Found %d packages in metrics table for org %s", len(dq_packages), organization)
+
+        # _repair_packages(dq_packages, organization, metrics)
+        #------
+        # ดึง packages ของ org จาก metrics table
         dq_packages = Session.query(qa_table.ref_id).filter(
             qa_table.type == 'package',
             qa_table.org_name == organization
         ).all()
         dq_packages = [p[0] for p in dq_packages]
+
         log.debug("Found %d packages in metrics table for org %s", len(dq_packages), organization)
 
-        _repair_packages(dq_packages, organization, metrics)
+        # filter เอาเฉพาะ package ที่ไม่มี resource metrics
+        no_resource_packages = []
+        for pkg_id in dq_packages:
+            has_res = Session.query(qa_table.id).filter(
+                qa_table.package_id == pkg_id,
+                qa_table.type == 'resource'
+            ).first()
+            if not has_res:
+                no_resource_packages.append(pkg_id)
+
+        log.debug("Found %d packages with no resource metrics in org %s", len(no_resource_packages), organization)
+
+        # ส่งไปซ่อม
+        log.debug(no_resource_packages)
+        if no_resource_packages:
+            _repair_packages(no_resource_packages, organization, metrics)
 
     elif dataset:
         log.debug("---Repaire Dataset ----")
@@ -296,14 +322,32 @@ def repair(organization=None, dataset=None):
 
 def _repair_packages(pkg_ids, org_name, metrics):
     for pkg_id in pkg_ids:
+        log.debug("Package")
+        log.debug(pkg_id)
         # 1. หา resource ของ package จาก resource_table
         res_ids = [r[0] for r in Session.query(resource_table.c.id).filter(
             resource_table.c.package_id == pkg_id,
             resource_table.c.state == 'active'
         ).all()]
-
+        log.debug(pkg_id)
         if not res_ids:
-            log.warning("Package %s has no resource metrics -> repairing", pkg_id)
+            log.debug("Package %s has no resource metrics -> repairing", pkg_id)
+            # ลบ package metrics ด้วย
+            Session.query(qa_table).filter(
+                qa_table.ref_id == pkg_id,
+                qa_table.type == 'package',
+                qa_table.org_name == org_name
+            ).delete(synchronize_session='fetch')
+
+            Session.commit()
+            log.info("Deleted resource and package metrics for package %s", pkg_id)
+
+            # คำนวณใหม่
+            try:
+                metrics.calculate_metrics_for_dataset(pkg_id)
+                log.info("Recalculated metrics for package %s", pkg_id)
+            except Exception as e:
+                log.error("Failed to recalc metrics for %s: %s", pkg_id, e)
         else:
             # 2. หา resource metrics ใน data_quality_metrics
             resource_metrics = Session.query(qa_table).filter(

@@ -25,17 +25,31 @@ EXEMPT_ENDPOINTS = {
     'opendquality.dashboard',
 }
 
+@qa.teardown_request
+def shutdown_session(exception=None):
+    if exception:
+        Session.rollback()
+    Session.remove()
+
 # group query
-group_query = (
-    Session.query(Group)
-    .join(Package, Group.id == Package.owner_org)
-    .join(DQM, and_(
-        DQM.ref_id == Package.id,
-        DQM.type == 'package'
-    ))
-    .filter(Package.state == 'active')
-    .distinct()
-)
+# group_query = (
+#     Session.query(Group)
+#     .join(Package, Group.id == Package.owner_org)
+#     .join(DQM, and_(
+#         DQM.ref_id == Package.id,
+#         DQM.type == 'package'
+#     ))
+#     .filter(Package.state == 'active')
+#     .distinct()
+# )
+def make_group_query():
+    """Group ที่มี package active และมี DQM type='package' ผูกกับ package นั้นๆ"""
+    return (Session.query(Group)
+            .join(Package, Group.id == Package.owner_org)
+            .join(DQM, and_(DQM.ref_id == Package.id,
+                            DQM.type == 'package'))
+            .filter(Package.state == 'active')
+            .distinct())
 
 @qa.before_request
 def request_before():
@@ -103,17 +117,30 @@ def _register_mock_translator():
     from pylons import translator
     registry.register(translator, MockTranslator())
 
-def _get_org():
-    org = group_query.with_entities(
-        Group.id.label('org_id'),
-        Group.name.label('org_name'),
-        Group.title.label('org_title'),
-        ).filter(
-            Group.state == 'active',
-            Group.type == 'organization'
-        ).all()
+# def _get_org():
+#     org = group_query.with_entities(
+#         Group.id.label('org_id'),
+#         Group.name.label('org_name'),
+#         Group.title.label('org_title'),
+#         ).filter(
+#             Group.state == 'active',
+#             Group.type == 'organization'
+#         ).all()
 
-    return org
+#     return org
+
+def _get_org():
+    try:
+        q = (make_group_query()
+             .with_entities(
+                 Group.id.label('org_id'),
+                 Group.name.label('org_name'),
+                 Group.title.label('org_title'),
+             ))
+        return q.all()
+    except Exception:
+        Session.rollback()
+        raise
 
 def all_packages(handler):
     offset = 0
