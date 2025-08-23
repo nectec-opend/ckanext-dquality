@@ -449,22 +449,20 @@ class DataQualityMetrics(object):
         except Exception as e:
             log.debug("Missing Content-Length header for URL: %s", url)
             return None 
-    def check_connection_url(self,url, timeout):
+    def check_connection_url(self, url, timeout=5):
         log.debug('---check_connection_url--')
         try:
-            # Send a GET request to the URL with a timeout
-            response = requests.get(url, timeout=timeout)
-            
-            # Check if the request was successful
+            # วิธีที่ปลอดภัยกว่า: ใช้ HEAD ก่อน
+            response = requests.head(url, timeout=timeout, allow_redirects=True)
+
             if response.status_code == 200:
                 return True
             else:
                 return False
+
         except requests.exceptions.Timeout:
-            # If there's a timeout, return False
             return False
         except Exception as e:
-            # Handle other exceptions
             log.debug("Error: %s", e)
             return False
     def is_tabular(self,resource):
