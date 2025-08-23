@@ -452,7 +452,7 @@ class DataQualityMetrics(object):
     def check_connection_url(self, url, timeout=5):
         log.debug('---check_connection_url--')
         try:
-            # วิธีที่ปลอดภัยกว่า: ใช้ HEAD ก่อน
+            #  ใช้ HEAD ก่อน
             response = requests.head(url, timeout=timeout, allow_redirects=True)
 
             if response.status_code == 200:
@@ -763,29 +763,37 @@ class DataQualityMetrics(object):
                                 continue
                         
                         self.logger.debug('Calculating dimension: %s...', metric)
-                    #-----ok-------------------------------------------------
-                        if not data_stream2:
-                            data_stream2 = self._fetch_resource_data2(resource)
-                        else:
-                            if data_stream2.get('records') and \
-                                    hasattr(data_stream2['records'], 'rewind'):
-                                data_stream2['records'].rewind()
-                            else:
-                                data_stream2 = self._fetch_resource_data2(resource)
-                    #-------------------------------------------------------------
-                        # log.debug(data_stream2)
-                        if data_stream2.get('error'):
-                            error_fetching_resource = data_stream2.get('error')
-                        #------ Check Meta Data --------------------------------
-                        log.debug('------ Resource URL: Data Stream2-----')
-                        log.debug(resource['url'])
-                        # log.debug(data_stream2)
-                        # for row in data_stream2['records']:
-                        #     log.debug(row)
-                        log.debug('------ End call Data Stream2-----')
+                    #    #-----Fetch DATA------------------------------------------------
+                    #     if not data_stream2:
+                    #         data_stream2 = self._fetch_resource_data2(resource)
+                    #     else:
+                    #         if data_stream2.get('records') and \
+                    #                 hasattr(data_stream2['records'], 'rewind'):
+                    #             data_stream2['records'].rewind()
+                    #         else:
+                    #             data_stream2 = self._fetch_resource_data2(resource)                   
+                    #     # log.debug(data_stream2)
+                    #     if data_stream2.get('error'):
+                    #         error_fetching_resource = data_stream2.get('error')
+                    #     log.debug('------ End call Data Stream2-----')
+                    #     #-------------------------------------------------------------
                         #using metadata for calculate metrics
                                         
                         if (file_size_mb <= 10 and connection_url):
+                            #-----Fetch DATA------------------------------------------------
+                            if not data_stream2:
+                                data_stream2 = self._fetch_resource_data2(resource)
+                            else:
+                                if data_stream2.get('records') and \
+                                        hasattr(data_stream2['records'], 'rewind'):
+                                    data_stream2['records'].rewind()
+                                else:
+                                    data_stream2 = self._fetch_resource_data2(resource)                   
+                            # log.debug(data_stream2)
+                            if data_stream2.get('error'):
+                                error_fetching_resource = data_stream2.get('error')
+                            log.debug('------ End call Data Stream2-----')
+                            #-------------------------------------------------------------
                             log.debug('------ check all metrics-----')
                             if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 log.debug('------ check metric-----')
@@ -1567,7 +1575,7 @@ class ResourceFetchData2(object):
                         if records_read >= n_rows:
                             break 
                 except Exception as e:
-                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
                     data = self._fetch_data_datastore_defined_row(self.resource)
             elif(mimetype == 'application/vnd.ms-excel'):
                 log.debug('--Reading XLS data--')
@@ -1580,7 +1588,7 @@ class ResourceFetchData2(object):
                     # sheet = book.sheet_by_index(0)
                     data = [sheet.row_values(i) for i in range(sheet.nrows)]
                 except Exception as e:
-                    log.debug("An error occurred, use CKAN datastore to readfile", e)
+                    log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
                     data = self._fetch_data_datastore_defined_row(self.resource)
             else:
                 data = []
