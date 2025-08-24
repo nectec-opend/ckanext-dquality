@@ -1450,16 +1450,35 @@ class ResourceFetchData2(object):
             log.error(f"Cannot download file: {e}")
             return []
 
-
-        # filename = url.split('/')[-1].split('#')[0].split('?')[0]
-        # tmp_file = tempfile.NamedTemporaryFile(suffix=filename, delete=False)
+        # # tmp_file = tempfile.NamedTemporaryFile(suffix=filename, delete=False)
         filename = url.split('/')[-1].split('#')[0].split('?')[0]
+        #-------------------------------
+        # # แยกชื่อกับนามสกุล
+        # basename, ext = os.path.splitext(filename)
 
-        # แยกชื่อกับนามสกุล
-        basename, ext = os.path.splitext(filename)
+        # # ตัดชื่อให้สั้นลง (กันชื่อไฟล์ยาวเกินไป)
+        # safe_basename = basename[:30]  # เอาแค่ 30 ตัวอักษรแรก
+        #-------------------------------
+        # ถ้า filename ไม่มี basename (เช่น .xlsx เฉย ๆ) ให้ใช้ชื่อ default
+        if not filename or filename.startswith('.'):
+            ext = os.path.splitext(filename)[1] if '.' in filename else ''
+            basename = "downloaded_file"
+        else:
+            basename, ext = os.path.splitext(filename)
 
-        # ตัดชื่อให้สั้นลง (กันชื่อไฟล์ยาวเกินไป)
-        safe_basename = basename[:30]  # เอาแค่ 30 ตัวอักษรแรก
+        # กันชื่อยาวเกินไป
+        safe_basename = basename[:30]
+
+        # ถ้าไม่มีนามสกุลไฟล์ให้เดาจาก mimetype
+        if not ext:
+            if mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                ext = ".xlsx"
+            elif mimetype == "application/vnd.ms-excel":
+                ext = ".xls"
+            elif mimetype == "text/csv":
+                ext = ".csv"
+            elif mimetype == "application/json":
+                ext = ".json"
 
         # สร้าง temp file โดยใช้ prefix + suffix
         tmp_file = tempfile.NamedTemporaryFile(
@@ -1467,8 +1486,8 @@ class ResourceFetchData2(object):
             suffix=ext,                  # เช่น .csv, .xlsx
             delete=False
         )
-        # log.debug("-----temp file---")
-        # log.debug(tmp_file.name)
+        log.debug("-----temp file---")
+        log.debug(tmp_file.name)
         try:
             length = 0
             m = hashlib.md5()
