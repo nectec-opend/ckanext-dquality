@@ -605,6 +605,7 @@ class DataQualityMetrics(object):
         data_quality = self._new_metrics_record('resource', resource['id'])
         data_quality.resource_last_modified = last_modified
         return False
+
     def calculate_metrics_for_resource(self, resource):
         log.debug('calculate_metrics_for_resource')
         if resource.get('last_modified') is not None:
@@ -623,6 +624,11 @@ class DataQualityMetrics(object):
        
         resource_id = resource['id']
         resource_url = resource['url']
+        if 'url' in resource and resource['url']:
+            if "209.15.113.87" in resource_url:
+                resource_url = resource_url.replace("209.15.113.87", "data.go.th")
+                resource['url'] = resource_url   # set ค่าใหม่เข้า resource object เลย
+        
         log.debug(resource_url)
         try:
             resource_name = resource['name']
@@ -963,7 +969,7 @@ class DataQualityMetrics(object):
                     data_quality.error = ''
                 data_quality.version = today
                 data_quality.format  = resource['format']
-                data_quality.url = resource['url']
+                data_quality.url = resource_url
                 data_quality.metrics = results
                 data_quality.file_size    = round(file_size_mb,3)
                 data_quality.execute_time = round(execute_time,3)
@@ -1026,7 +1032,7 @@ class DataQualityMetrics(object):
                 data_quality.error = 'Connection timed out'
                 data_quality.version = today
                 data_quality.format  = resource['format']
-                data_quality.url = resource['url']
+                data_quality.url = resource_url
                 data_quality.file_size = None
                 data_quality.execute_time = None
                 data_quality.save()
