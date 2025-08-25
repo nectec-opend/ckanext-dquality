@@ -436,19 +436,51 @@ class DataQualityMetrics(object):
         else:
             # ถ้าไม่ใช่ upload → ใช้วิธี custom
             return self.handle_non_upload(resource_url)
+    # def handle_non_upload(self, url):
+    #     timeout = 5
+    #     try:
+    #         response = requests.head(url, timeout=timeout)
+    #         if response.status_code == 200:
+    #             size = int(response.headers['Content-Length'])
+    #             return size
+    #         else:
+    #             log.debug("Error: Could not retrieve file size, status code:", response.status_code)
+    #             return None
+    #     except Exception as e:
+    #         log.debug("Missing Content-Length header for URL: %s", url)
+    #         return None 
     def handle_non_upload(self, url):
         timeout = 5
+        MAX_SIZE = 10_100_000  # 10.1 MB
+        CHUNK_SIZE = 1024 * 1024  # 1MB ต่อรอบ
+
         try:
-            response = requests.head(url, timeout=timeout)
-            if response.status_code == 200:
+            response = requests.head(url, timeout=timeout, allow_redirects=True)
+
+            if response.status_code == 200 and 'Content-Length' in response.headers:
                 size = int(response.headers['Content-Length'])
                 return size
-            else:
-                log.debug("Error: Could not retrieve file size, status code:", response.status_code)
-                return None
+
+            # ---- fallback ถ้าไม่มี Content-Length ----
+            log.debug("No Content-Length header, fallback to partial download")
+
+            length = 0
+            with requests.get(url, stream=True, timeout=timeout, allow_redirects=True) as r:
+                r.raise_for_status()
+                for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
+                    if not chunk:
+                        break
+                    length += len(chunk)
+                    if length > MAX_SIZE:
+                        log.debug(f"File exceeded {MAX_SIZE} bytes, stopping early")
+                        return length  # return ขนาดที่โหลดมาแล้ว (เกิน limit)
+
+            return length  # กรณีโหลดจบแล้วไม่เกิน limit
+
         except Exception as e:
-            log.debug("Missing Content-Length header for URL: %s", url)
-            return None 
+            log.debug("Error while checking file size: %s", e)
+            return None
+
     def check_connection_url(self, url, timeout=5):
         log.debug('---check_connection_url--')
         try:
