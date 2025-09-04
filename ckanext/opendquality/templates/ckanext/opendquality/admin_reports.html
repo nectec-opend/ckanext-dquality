@@ -49,7 +49,12 @@
     <thead>
       <tr>
         <th>{{_("#")}}</th>
+        <th>{{ _("รหัสชุดข้อมูล") }}</th>
         <th>{{ _("ชื่อชุดข้อมูล") }}</th>
+        {%if quality_type == 'resource'%}
+          <th>{{ _("รหัสทรัพยากร") }}</th>
+          <th>{{ _("ชื่อทรัพยากร") }}</th>
+        {% endif %}
         <th>{{ _("ชื่อหน่วยงาน") }}</th>
         <th>{{ _("openess") }}</th>
         <th>{{ _("timeliness") }}</th>
@@ -72,7 +77,12 @@
       {% for report in reports %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td><a href="{{ h.url_for('opendquality.admin_report', package_id=report.package_id) }}" target="_blank">{{ report.package_title }}</a></td>
+        <td>{{ report.package_id }}</td>
+        <td><a href="{{ h.url_for('opendquality.admin_report',org_id=report.org_id, package_id=report.package_id) }}" target="qa-link">{{ report.package_title }}</a></td>
+        {%if quality_type == 'resource'%}
+          <td>{{ report.resource_id }}</td>
+          <td>{{ report.resource_name }}</td>
+        {% endif %}
         <td>{{ report.org_title }}</td>
         <td>{{ report.openness }}</td>
         <td>{{ report.timeliness }}</td>
@@ -147,7 +157,14 @@
   });
   document.getElementById('export-btn').addEventListener('click', function () {
     const orgId = document.getElementById('org-select').value;
-    const url = orgId ? `/qa/admin_report/${orgId}?export=1` : `/qa/admin_report?export=1`;
+    const params = new URLSearchParams(window.location.search);
+    const packageId = params.get('package_id');
+    let url = orgId ? `/qa/admin_report/${orgId}` : `/qa/admin_report`;
+    if (packageId) {
+      url += `?package_id=${encodeURIComponent(packageId)}&export=1`;
+    }else {
+      url += `?export=1`;
+    }
     window.location.href = url;
   });
 </script>

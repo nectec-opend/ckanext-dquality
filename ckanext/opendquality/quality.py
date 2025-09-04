@@ -2447,6 +2447,7 @@ class Openness():#DimensionMetric
         return {
             'format': data_format,
             'value': openness_score,
+            'mimetype':mimetype
         }
         
     def calculate_cumulative_metric(self, resources, metrics):

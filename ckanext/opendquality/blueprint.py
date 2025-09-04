@@ -4,7 +4,7 @@ from flask import Blueprint, request, Response
 import ckan.plugins.toolkit as toolkit 
 from logging import getLogger
 # from ckan.common import config
-from ckan.model import package_table, Session, Package, Group
+from ckan.model import package_table, Session, Package, Group, Resource
 from ckanext.opendquality.model import DataQualityMetrics as DQM
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
@@ -20,8 +20,8 @@ qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
 EXEMPT_ENDPOINTS = {
-    'opendquality.index',
-    'opendquality.admin_report',
+    # 'opendquality.index',
+    # 'opendquality.admin_report',
     'opendquality.dashboard',
 }
 
@@ -51,13 +51,13 @@ def make_group_query():
             .filter(Package.state == 'active')
             .distinct())
 
-@qa.before_request
-def request_before():
-    if request.endpoint in EXEMPT_ENDPOINTS:
-        return
-    user = getattr(toolkit.c, 'userobj', None)
-    if not user or not getattr(user, 'is_sysadmin', False):
-        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
+# @qa.before_request
+# def request_before():
+#     if request.endpoint in EXEMPT_ENDPOINTS:
+#         return
+#     user = getattr(toolkit.c, 'userobj', None)
+#     if not user or not getattr(user, 'is_sysadmin', False):
+#         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
 
 #---------------------Call calculate---------------------------------
 #--------------------------------------------------------------------
@@ -170,6 +170,8 @@ def all_packages(handler):
             log.exception(e)
 #-----------------------------------------------------
 def home():
+    if h.check_access('sysadmin') is False:
+        return toolkit.redirect_to('opendquality.dashboard')
     extra_vars = {
         'title': toolkit._('Open Data Quality index'),
         'home': True,
@@ -185,95 +187,109 @@ def home():
     # return {'msg': 'hello world quality'}
 
 def admin_report(org_id=None):
+    if h.check_access('sysadmin') is False:
+        return toolkit.redirect_to('opendquality.dashboard')
     export = request.args.get('export') == '1'
-    data_quality = Session.query(
-        Package.title.label('package_title'),
-        Package.id.label('package_id'),
-        Group.title.label('org_title'),
-        Group.id.label('org_id'),
-        DQM.openness,
-        DQM.timeliness,
-        DQM.acc_latency,
-        DQM.freshness,
-        DQM.availability,
-        DQM.downloadable,
-        DQM.access_api,
-        DQM.relevance,
-        DQM.utf8,
-        DQM.preview,
-        DQM.completeness,
-        DQM.uniqueness,
-        DQM.validity,
-        DQM.consistency,
-        DQM.metrics
-    ) \
-    .join(Package, Package.id == DQM.ref_id)\
-    .join(Group, Group.id == Package.owner_org)\
+    if 'package_id' not in request.args:
+        quality_type = 'package'
+        data_quality = Session.query(
+            Package.title.label('package_title'),
+            Package.id.label('package_id'),
+            Group.title.label('org_title'),
+            Group.id.label('org_id'),
+            DQM.openness,
+            DQM.timeliness,
+            DQM.acc_latency,
+            DQM.freshness,
+            DQM.availability,
+            DQM.downloadable,
+            DQM.access_api,
+            DQM.relevance,
+            DQM.utf8,
+            DQM.preview,
+            DQM.completeness,
+            DQM.uniqueness,
+            DQM.validity,
+            DQM.consistency,
+            DQM.metrics
+        ) \
+        .join(Package, Package.id == DQM.ref_id)\
+        .join(Group, Group.id == Package.owner_org)\
 
-    if org_id is not None:
-        data_quality = data_quality.filter(Group.id == org_id)
-    
-    # if request.args.get('package_id', None):
-    data_quality = data_quality.filter(
-        DQM.type == 'package')
+        if org_id is not None:
+            data_quality = data_quality.filter(Group.id == org_id)
         
-    data_quality = data_quality.order_by(DQM.modified_at.desc()).all()
+        # if request.args.get('package_id', None):
+        data_quality = data_quality.filter(
+            DQM.type == quality_type)
 
+    else:
+        quality_type = 'resource'
+        data_quality = Session.query(
+            DQM.package_id,
+            Resource.name.label('resource_name'),
+            Resource.id.label('resource_id'),
+            Resource.name.label('resource_name'),
+            Package.name.label('package_name'),
+            Package.title.label('package_title'),
+            Group.title.label('org_title'),
+            Group.id.label('org_id'),
+            DQM.openness,
+            DQM.timeliness,
+            DQM.acc_latency,
+            DQM.freshness,
+            DQM.availability,
+            DQM.downloadable,
+            DQM.access_api,
+            DQM.relevance,
+            DQM.utf8,
+            DQM.preview,
+            DQM.completeness,
+            DQM.uniqueness,
+            DQM.validity,
+            DQM.consistency,
+            DQM.metrics
+        ) \
+        .join(Resource, Resource.id == DQM.ref_id) \
+        .join(Package, Package.id == DQM.package_id)\
+        .join(Group, Group.id == Package.owner_org)
+
+        if org_id is not None:
+            data_quality = data_quality.filter(Group.id == org_id)
+        
+        # if request.args.get('package_id', None):
+        data_quality = data_quality.filter(
+            DQM.type == quality_type, DQM.package_id == request.args.get('package_id'))
+            
+    data_quality = data_quality.order_by(DQM.modified_at.desc()).all()
     if export:
         # Export logic here, e.g., to CSV or JSON
+        if quality_type == 'package':
+            columes_name = ["รหัสชุดข้อมูล","ชื่อชุดข้อมูล", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
+        else:
+            columes_name = ["รหัสชุดข้อมูล", "ชื่อชุดข้อมูล", "รหัสทรัพยากร", "ชื่อทรัพยากร", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
         import csv
         from io import StringIO
         output = StringIO()
         output.write('\ufeff')
         writer = csv.writer(output)
-        writer.writerow([
-            "ชื่อชุดข้อมูล",
-            "ชื่อหน่วยงาน",
-            "openess",
-            "timeliness",
-            "acc_latency",
-            "freshness",
-            "availability",
-            "downloadable",
-            "access_api",
-            "relevance",
-            "utf8",
-            "preview",
-            "completeness",
-            "uniqueness",
-            "validity",
-            "consistency",
-            "metrics"
-        ])
+        writer.writerow(columes_name)
         for row in data_quality:
-            writer.writerow([
-                row.package_title,
-                row.org_title,
-                row.openness,
-                row.timeliness,
-                row.acc_latency,
-                row.freshness,
-                row.availability,
-                row.downloadable,
-                row.access_api,
-                row.relevance,
-                row.utf8,
-                row.preview,
-                row.completeness,
-                row.uniqueness,
-                row.validity,
-                row.consistency,
-                row.metrics
-            ])
+            if quality_type == 'package':
+                writer.writerow([row.package_id, row.package_title, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
+            else:
+                writer.writerow([row.package_id, row.package_title, row.resource_id, row.resource_name, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
         output.seek(0)
         response = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
-        response.headers['Content-Disposition'] = f'attachment; filename="data_quality_report.csv"'
+        response.headers['Content-Disposition'] = f'attachment; filename="data_quality_{quality_type}_report.csv"'
         return response
+
     extra_vars = {
         'orgs': _get_org(),
         'org_id': org_id if org_id is not None else '',
         'reports': data_quality,
         'title': toolkit._('รายงานคุณภาพชุดข้อมูลเปิดสำหรับ ผู้ดูแลระบบ'),
+        'quality_type': quality_type,
         'admin_report': True,
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
