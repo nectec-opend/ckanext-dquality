@@ -3850,11 +3850,11 @@ class Validity():#DimensionMetric
                 extra_value = 0
 
             validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
-            # log.debug("---validity_score---")
-            # log.debug(blank_header)
-            # log.debug(duplicate_header)
-            # log.debug(extra_value)
-            # log.debug(validity_score)
+            log.debug("---validity_score---")
+            log.debug(blank_header)
+            log.debug(duplicate_header)
+            log.debug(extra_value)
+            log.debug(validity_score)
             is_valid = 1 if validity_score == 100 else 0
 
             return {
