@@ -6,11 +6,11 @@
       <li class="nav-item{% if home %} active{% endif %}"><a href="{{ h.url_for('opendquality.index') }}">
           <span class="item-label">{{ _("วัดผลคุณภาพชุดข้อมูล") }}</span>
         </a></li>
+      {% endif %}
       <li class="nav-item{% if admin_report %} active{% endif %}"><a
           href="{{ h.url_for('opendquality.admin_report') }}">
           <span class="item-label">{{ _("รายงานผลการตรวจวัดคุณภาพข้อมูล") }}</span>
         </a></li>
-      {% endif %}
       <li class="nav-item{% if dashboard %} active{% endif %}"><a href="{{ h.url_for('opendquality.dashboard') }}">
           <span class="item-label">{{ _("รายงานและติดตามคุณภาพข้อมูล (Dashboard)") }}</span>
         </a></li>

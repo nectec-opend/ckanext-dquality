@@ -187,8 +187,8 @@ def home():
     # return {'msg': 'hello world quality'}
 
 def admin_report(org_id=None):
-    if h.check_access('sysadmin') is False:
-        return toolkit.redirect_to('opendquality.dashboard')
+    # if h.check_access('sysadmin') is False:
+    #     return toolkit.redirect_to('opendquality.dashboard')
     export = request.args.get('export') == '1'
     if 'package_id' not in request.args:
         quality_type = 'package'

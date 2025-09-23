@@ -17,6 +17,7 @@ from goodtables import validate
 import pandas as pd
 from pandas import read_excel
 # from tempfile import TemporaryFile
+import math
 import tempfile
 import hashlib
 import chardet
@@ -330,7 +331,7 @@ class DataQualityMetrics(object):
 
         _fetch_page2 = ResourceFetchData2(resource)
         result = _fetch_page2(0, 1)  # to calculate the total from start       
-        raw_data = _fetch_page2._download_resource_from_url(resource['url'])
+        raw_data = _fetch_page2._download_resource_from_url(resource['url'],resource['format'])
         mimetype = _fetch_page2.detect_mimetype(resource['url'])
         if 'error' in result:
             return {
@@ -534,6 +535,81 @@ class DataQualityMetrics(object):
             return False
         normalized_format = data_format.replace('.', '').upper()
         return normalized_format in OPENNESS_5_STAR_FORMATS
+    def convert_mimetype_to_format(self, mimetype, resource_format):
+        file_format = resource_format.upper().strip()
+        mimetype_map = {
+            # Excel
+            'application/vnd.ms-excel': 'XLS',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+
+            # CSV / Text / JSON
+            'text/csv': 'CSV',
+            'application/json': 'JSON',
+            'application/geo+json': 'GEOJSON',
+            'application/vnd.geo+json': 'GEOJSON',
+
+            # PDF
+            'application/pdf': 'PDF',
+
+            # Word documents
+            'application/msword': 'DOC',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+
+            # PowerPoint
+            'application/vnd.ms-powerpoint': 'PPT',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+
+            # Images
+            'image/jpeg': 'JPEG',
+            'image/png': 'PNG',
+            'image/gif': 'GIF',
+            'image/tiff': 'TIFF',
+            'image/svg+xml': 'SVG',
+
+            # Plain text and XML
+            'text/plain': 'TXT',
+            'application/xml': 'XML',
+            'text/xml': 'XML',
+            'application/rdf+xml': 'RDF',
+            'text/turtle': 'TURTLE',
+            'application/n-triples': 'NTRIPLES',
+            'application/ld+json': 'JSONLD',
+            'application/trig': 'TRIG',
+            'application/n-quads': 'NQUADS',
+
+            # Compressed formats
+            # 'application/zip': 'ZIP',
+            # 'application/x-tar': 'TAR',
+            # 'application/gzip': 'GZ',
+
+            # Default fallback
+            'application/octet-stream': 'BINARY'
+        }
+        # 1. map จาก mimetype
+        mimetype_format = mimetype_map.get(mimetype, None)
+
+        # 2. fallback ถ้าเจอ octet-stream → เดาจาก extension
+        if mimetype == "application/octet-stream" and ext:
+            ext = ext.lower()
+            if ext == ".csv":
+                mimetype_format = "CSV"
+            elif ext == ".xlsx":
+                mimetype_format = "XLSX"
+            elif ext == ".xls":
+                mimetype_format = "XLS"
+            elif ext == ".json":
+                mimetype_format = "JSON"
+
+        # 3. ถ้าไม่มี mapping เลย ให้ใช้ resource_format ที่ส่งมา
+        result = mimetype_format or file_format
+
+        log.debug('--mimetype_format ---')
+        log.debug(result)
+        # if not mimetype_format:
+        #     result = file_format  # ถ้าอย่างใดอย่างหนึ่งไม่มีค่า
+        return result
+
+    #*** ตรวจสอบว่า user กำหนด format มาถูกหรือไม่ ตอนนี้ไม่ได้ใช้  ****
     def inspect_file(self, resource):
         result = None
         file_path = resource.get('url')
@@ -652,8 +728,7 @@ class DataQualityMetrics(object):
         #     last_modified = None  # Handle the case where metadata_modified is None
 
         self.logger.debug ('Resource last modified on: %s', last_modified)
-        #-------Check Data Dict using Resource Name -----------
-       
+        #-------Check Data Dict using Resource Name -----------       
         resource_id = resource['id']
         resource_url = resource['url']
         if 'url' in resource and resource['url']:
@@ -683,15 +758,19 @@ class DataQualityMetrics(object):
         error_fetching_resource = ''
         # error_file_not_match = ''
         today = datetime.today().strftime("%Y-%m-%d")
-        file_info = self.inspect_file(resource)
-        log.debug(file_info)
+        #ตรวจสอบว่า user ใส่ format มาถูกหรือไม่ ตอนนี้ไม่ได้ใช้แล้ว
+        # file_info = self.inspect_file(resource)
+        # log.debug(file_info)
         # Check if the request was successful
         if self.check_connection_url(resource_url, timeout):     
             start_time = time.time()
             log.debug(start_time)
             connection_url = True
             file_size = self.get_file_size(resource_id,resource_url)
-            
+            #----Check mimetype-----------------------
+            mimetype = ResourceFetchData2.detect_mimetype(resource_url)
+            detected_format = ''
+            detected_format = self.convert_mimetype_to_format(mimetype,resource['format'])
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("File size (MB): %s", file_size_mb)
@@ -814,9 +893,8 @@ class DataQualityMetrics(object):
                     #     if data_stream2.get('error'):
                     #         error_fetching_resource = data_stream2.get('error')
                     #     log.debug('------ End call Data Stream2-----')
-                    #     #-------------------------------------------------------------
-                        #using metadata for calculate metrics
-                                        
+                        #-------------------------------------------------------------
+                        #using metadata for calculate metrics                                     
                         if (file_size_mb <= 10 and connection_url):
                             #-----Fetch DATA------------------------------------------------
                             if not data_stream2:
@@ -831,7 +909,8 @@ class DataQualityMetrics(object):
                             if data_stream2.get('error'):
                                 error_fetching_resource = data_stream2.get('error')
                             log.debug('------ End call Data Stream2-----')
-                            #-------------------------------------------------------------
+                            log.debug('------ mimetype -----')               
+                            # #-------------------------------------------------------------
                             log.debug('------ check all metrics-----')
                             if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
                                 log.debug('------ check metric-----')
@@ -869,9 +948,6 @@ class DataQualityMetrics(object):
                                     log.debug(consistency_val)
                                 elif(metric.name == 'validity'):
                                     log.debug('----check validity------')
-                                    # fetcher = ResourceFetchData2(resource)
-                                    # raw_data = fetcher._download_resource_from_url(resource_url)
-                                
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
                                     validity_report = results[metric.name].get('report')
                                 elif(metric.name == 'completeness'):                           
@@ -880,8 +956,8 @@ class DataQualityMetrics(object):
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                     completeness_report = results[metric.name].get('report')
                                     log.debug('-----after calculate completeness--')
-                                    log.debug("---dir tempfile----")
-                                    log.debug(os.listdir(tempfile.gettempdir()))
+                                    # log.debug("---dir tempfile----")
+                                    # log.debug(os.listdir(tempfile.gettempdir()))
                                 elif(metric.name == 'uniqueness'):                           
                                     log.debug('----check uniqueness------')
                                     log.debug(data_stream2['total'])
@@ -1000,7 +1076,7 @@ class DataQualityMetrics(object):
                 else:
                     data_quality.error = ''
                 data_quality.version = today
-                data_quality.format  = resource['format']
+                data_quality.format  = detected_format #resource['format']
                 data_quality.url = resource_url
                 data_quality.metrics = results
                 data_quality.file_size    = round(file_size_mb,3)
@@ -1278,6 +1354,7 @@ class ResourceFetchData(object):
                     headers = {'Authorization': sysadmin_api_key}
                 return self._download_resource_from_url(
                     resource['url'],
+                    resource['format'],
                     headers
                 )
         except OSError as e:
@@ -1292,7 +1369,7 @@ class ResourceFetchData(object):
             return self._download_resource_from_ckan(self.resource)
         if self.resource.get('url'):
             log.debug('Getting data from remote URL...')
-            return self._download_resource_from_url(self.resource['url'])
+            return self._download_resource_from_url(self.resource['url'], self.resource['format'])
         raise Exception('Resource {} is not available '
                         'for download.'.format(self.resource.get('id')))
 
@@ -1471,7 +1548,7 @@ class ResourceFetchData2(object):
                 wait *= 3
         response.raise_for_status()
         return response
-    def _download_resource_from_url(self, url, headers=None):
+    def _download_resource_from_url(self, url, resource_format, headers=None):
         
         #---------------------------------------
         data = []
@@ -1480,10 +1557,19 @@ class ResourceFetchData2(object):
         filepath = url
         format_url = filepath.split(".")[-1]
         mimetype = ResourceFetchData2.detect_mimetype(filepath)
+        if mimetype == "text/html":
+            log.debug(f"Skip HTML file by mimetype: {filepath}")
+            return []
         log.debug(f"Downloading {filepath}, detected mimetype: {mimetype}")
 
         try:
             response = self.get_response(url, {})
+            # --- เช็ค Content-Type ---
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" in content_type:
+                log.debug(f"Skip HTML resource: {url}")
+                response.close()
+                return []   # หรือ return None ตามที่ระบบหลักคุณรองรับ
         except requests.exceptions.RequestException as e:
             log.error(f"Cannot download file: {e}")
             return []
@@ -1547,8 +1633,19 @@ class ResourceFetchData2(object):
             result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
             encoding = result['encoding'] or 'utf-8'
             log.debug(f"Detected encoding: {encoding}")
-            # log.debug("---dir tempfile----")
-            # log.debug(os.listdir(tempfile.gettempdir()))
+
+            # ใช้ priority: mimetype ก่อน → format ทีหลัง
+            if not mimetype and resource_format:
+                if resource_format == "CSV":
+                    mimetype = "text/csv"
+                elif resource_format == "JSON":
+                    mimetype = "application/json"
+                elif resource_format == "XLSX":
+                    mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                elif resource_format == "XLS":
+                    mime_type = "application/vnd.ms-excel"
+
+
             if(mimetype == 'text/csv'): #(resource_format =='CSV'):
                 log.debug('----csv----')     
                 # log.debug(filepath)
@@ -1567,10 +1664,12 @@ class ResourceFetchData2(object):
                     # log.debug(data)
                 except UnicodeDecodeError:
                     log.debug("An UnicodeDecodeError occurred")
-                    data = self._fetch_data_datastore_defined_row(self.resource) 
+                    data = []
+                    # data = self._fetch_data_datastore_defined_row(self.resource) 
                 except Exception as e:
                     log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
-                    data = self._fetch_data_datastore_defined_row(self.resource) 
+                    data = []
+                    # data = self._fetch_data_datastore_defined_row(self.resource) 
 
                 
             elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
@@ -1609,13 +1708,11 @@ class ResourceFetchData2(object):
                     data = []
                 except json.JSONDecodeError as e:
                     log.debug("Error decoding JSON")
-                    log.debug(e)
                     log.debug("Response content")
                     log.debug(response.content)
                     data = []
                 except Exception as e:
                     log.debug("Unexpected error occurred")
-                    log.debug(e)
                     data = []
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 log.debug('--Reading XLSX data--')
@@ -1633,7 +1730,8 @@ class ResourceFetchData2(object):
                             break 
                 except Exception as e:
                     log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
-                    data = self._fetch_data_datastore_defined_row(self.resource)
+                    data = []
+                    # data = self._fetch_data_datastore_defined_row(self.resource)
             elif(mimetype == 'application/vnd.ms-excel'):
                 log.debug('--Reading XLS data--')
                 try:
@@ -1646,10 +1744,10 @@ class ResourceFetchData2(object):
                     data = [sheet.row_values(i) for i in range(sheet.nrows)]
                 except Exception as e:
                     log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
-                    data = self._fetch_data_datastore_defined_row(self.resource)
+                    # data = self._fetch_data_datastore_defined_row(self.resource)
             else:
                 data = []
-            # log.debug('===before reading end ====')
+                log.debug('mimetype ไม่ตรง ไม่มีเครื่องมืออ่าน')
             # log.debug(data)
         finally:
             # ลบไฟล์ด้วยตัวเอง
@@ -2178,6 +2276,7 @@ class ResourceFetchData2(object):
                 #     headers = {'Authorization': sysadmin_api_key}
                 return self._download_resource_from_url(
                     resource['url'],
+                    resource['format'],
                     headers
                 )
         except OSError as e:
@@ -2190,10 +2289,10 @@ class ResourceFetchData2(object):
         if self.resource.get('url_type') == 'upload':
             log.debug('2 Getting data from CKAN...')
             # return self._download_resource_from_ckan(self.resource)
-            return self._download_resource_from_url(self.resource['url'])
+            return self._download_resource_from_url(self.resource['url'], self.resource['format'])
         if self.resource.get('url'):
             log.debug('2 Getting data from remote URL...')
-            return self._download_resource_from_url(self.resource['url'])
+            return self._download_resource_from_url(self.resource['url'], self.resource['format'])
         raise Exception('Resource {} is not available '
                         'for download.'.format(self.resource.get('id')))
 
@@ -3389,10 +3488,18 @@ class Completeness():#DimensionMetric
         # # สร้าง DataFrame จาก records
         # df = pd.DataFrame(records)
         #--------------------------------------------
+        rows_count = data['total']
         df = pd.DataFrame(data['records'])
-        # log.debug(df)
-        # เช็คว่าข้อมูลมีหรือไม่
-        if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+        log.debug(df)
+        # เช็คว่ามีข้อมูลดิบหรือไม่ และ df แปลงเป็น DataFrame ได้หรือไม่
+        if rows_count > 1 and df.empty:
+            return {
+                'error': 'Cannot parse table to DataFrame', 
+                'value': None
+            } 
+
+        # เช็คว่าข้อมูลมีหรือไม่ (กรณีไม่มีข้อมูลดิบเลย หรือ df ว่างจริง)
+        elif df.empty or df.shape[0] == 0 or df.shape[1] == 0:
             return {
                 'error': 'Data is empty', 
                 'value': None
@@ -3579,7 +3686,10 @@ class Uniqueness(): #DimensionMetric
     def __init__(self):
         # super(Uniqueness, self).__init__('uniqueness')
         self.name = 'uniqueness'
-
+    def nan_to_none(self, value):
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        return value
     def calculate_metric(self, resource, data):
         '''Calculates the uniqueness of the values in the data for the given
         resource.
@@ -3607,66 +3717,84 @@ class Uniqueness(): #DimensionMetric
             * `unique`, `int`, number unique values in the data.
             * `columns`, `dict`, detailed report for each column in the data.
         '''
-        # total = {}
-        # distinct = {}
-
-        # for row in data['records']:
-        #     for col, value in row.items():
-        #         total[col] = total.get(col, 0) + 1
-        #         if distinct.get(col) is None:
-        #             distinct[col] = set()
-        #         distinct[col].add(value)
-
-        # result = {
-        #     'total': sum(v for _, v in total.items()),
-        #     'unique': sum([len(s) for _, s in distinct.items()]),
-        #     'columns': {},
-        # }
-        # if result['total'] > 0:
-        #     result['value'] = round(100.0 *
-        #                        float(result['unique'])/float(result['total']),2)
-        # else:
-        #     result['value'] = 0.0
-
-        # for col, tot in total.items():
-        #     unique = len(distinct.get(col, set()))
-        #     result['columns'][col] = {
-        #         'total': tot,
-        #         'unique': unique,
-        #         'value': round(100.0*float(unique)/float(tot),2) if tot > 0 else 0.0,
-        #     }
-        # return result
-        # แปลง data['records'] เป็น DataFrame
         df = pd.DataFrame(data['records'])
         if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
             return {
-                'error': 'Data is empty', 
+                'error': 'Data is empty',
                 'value': None
             }
         else:
-            
             total_rows = len(df)
-            # duplicates = df[df.duplicated(keep=False)]  # แสดงแถวที่ซ้ำทั้งหมด ไม่ว่าจะแถวแรกหรือถัดไป
-            # หาแถวที่ซ้ำทั้งหมด (keep=False คือ mark ทั้งแถวที่ซ้ำ)
-            duplicates_bool = df.duplicated(keep=False)
-            # ดึง index ของแถวที่ซ้ำ
-            duplicate_indices = df.index[duplicates_bool].tolist()
 
+            # หาแถวที่ซ้ำทั้งหมด
+            duplicates_bool = df.duplicated(keep=False)
+            duplicate_rows = df[duplicates_bool].copy()
+
+            # group duplicates
+            grouped = (
+                duplicate_rows
+                .reset_index()
+                .groupby(list(df.columns), dropna=False)['index']
+                .apply(list)
+                .reset_index()
+            )
+
+            # แปลงให้อ่านง่าย
+            duplicate_details = []
+            for _, row in grouped.iterrows():
+                # row_data = {col: row[col] for col in df.columns}
+                row_data = {col: self.nan_to_none(row[col]) for col in df.columns}
+                # แปลง index ให้เป็นลำดับ row (เริ่มที่ 1 แทน 0)
+                human_rows = [i + 1 for i in row["index"]]
+                duplicate_details.append({
+                    "row": row_data,          # ค่า row ที่ซ้ำ
+                    "rows": human_rows        # บรรทัดที่ซ้ำ (อ่านง่าย)
+                })
+
+            # นับจำนวน unique rows
             unique_rows = len(df.drop_duplicates())
 
+            # คำนวณ score
             uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
-            log.debug("----Uniqueness start----")
-            log.debug("Total rows: %d", total_rows)
-            log.debug("Unique rows: %d", unique_rows)
-            log.debug("Uniqueness score: %.2f%%", uniqueness_score)
-            # log.debug(df)
-            # log.debug(duplicate_indices)
+
             return {
                 'value': round(uniqueness_score, 2),
                 'total': total_rows,
                 'unique': unique_rows,
-                'duplicates': duplicate_indices
+                'duplicates': duplicate_details
             }
+
+        # # แปลง data['records'] เป็น DataFrame
+        # df = pd.DataFrame(data['records'])
+        # if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+        #     return {
+        #         'error': 'Data is empty', 
+        #         'value': None
+        #     }
+        # else:
+            
+        #     total_rows = len(df)
+        #     # duplicates = df[df.duplicated(keep=False)]  # แสดงแถวที่ซ้ำทั้งหมด ไม่ว่าจะแถวแรกหรือถัดไป
+        #     # หาแถวที่ซ้ำทั้งหมด (keep=False คือ mark ทั้งแถวที่ซ้ำ)
+        #     duplicates_bool = df.duplicated(keep=False)
+        #     # ดึง index ของแถวที่ซ้ำ
+        #     duplicate_indices = df.index[duplicates_bool].tolist()
+
+        #     unique_rows = len(df.drop_duplicates())
+
+        #     uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
+        #     log.debug("----Uniqueness start----")
+        #     log.debug("Total rows: %d", total_rows)
+        #     log.debug("Unique rows: %d", unique_rows)
+        #     log.debug("Uniqueness score: %.2f%%", uniqueness_score)
+        #     # log.debug(df)
+        #     # log.debug(duplicate_indices)
+        #     return {
+        #         'value': round(uniqueness_score, 2),
+        #         'total': total_rows,
+        #         'unique': unique_rows,
+        #         'duplicates': duplicate_indices
+        #     }
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates uniqueness for all resources based on the metrics
         calculated in the previous phase for each resource.
@@ -3850,11 +3978,11 @@ class Validity():#DimensionMetric
                 extra_value = 0
 
             validity_score = (blank_header+duplicate_header+extra_value) / 3 * 100
-            log.debug("---validity_score---")
-            log.debug(blank_header)
-            log.debug(duplicate_header)
-            log.debug(extra_value)
-            log.debug(validity_score)
+            # log.debug("---validity_score---")
+            # log.debug(blank_header)
+            # log.debug(duplicate_header)
+            # log.debug(extra_value)
+            # log.debug(validity_score)
             is_valid = 1 if validity_score == 100 else 0
 
             return {
@@ -4247,35 +4375,57 @@ class Consistency():#DimensionMetric
         # super(Consistency, self).__init__('consistency')
         self.name = 'consistency'
 
-    def validate_date(self, field, value, _type, report):
-        date_format = detect_date_format(value) or 'unknown'
-        formats = report['formats']
-        formats[date_format] = formats.get(date_format, 0) + 1
+    # def validate_date(self, field, value, _type, report):
+    #     date_format = detect_date_format(value) or 'unknown'
+    #     formats = report['formats']
+    #     formats[date_format] = formats.get(date_format, 0) + 1
 
     # def validate_numeric(self, field, value, _type, report):
-    #     num_format = detect_numeric_format(value) or 'unknown'
-    #     formats = report['formats']  
-    #     formats[num_format] = formats.get(num_format, 0) + 1
+    #     if value is None or (isinstance(value, str) and value.strip() == ""):
+    #         return
+    #     formats = report['formats']
+    #     num_format = detect_numeric_format(value)
+
+    #     if num_format:
+    #         formats[num_format] = formats.get(num_format, 0) + 1
+    #     else:
+    #         formats['non-numeric'] = formats.get('non-numeric', 0) + 1
+        
+    # def validate_string(self, field, value, _type, report):
+    #     if value is None or (isinstance(value, str) and value.strip() == ""):
+    #         return
+    #     formats = report['formats']
+    #     formats['text'] = formats.get('text', 0) + 1  # ใช้ 'text' แทนทุกกรณี
+    def validate_date(self, field, value, _type, report):
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            return
+        formats = report['formats']
+        date_format = detect_date_format(value)
+        if date_format:
+            formats['timestamp'] = formats.get('timestamp', 0) + 1
+        else:
+            formats['other'] = formats.get('other', 0) + 1
+
     def validate_numeric(self, field, value, _type, report):
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            return
         formats = report['formats']
         num_format = detect_numeric_format(value)
-
         if num_format:
-            formats[num_format] = formats.get(num_format, 0) + 1
+            formats['numeric'] = formats.get('numeric', 0) + 1
         else:
-            formats['non-numeric'] = formats.get('non-numeric', 0) + 1
-        
-    
-    # def validate_int(self, field, value, _type, report):
-    #     num_format = detect_numeric_format(value) or 'unknown'
-    #     formats = report['formats']
-    #     formats[num_format] = formats.get(num_format, 0) + 1
+            formats['other'] = formats.get('other', 0) + 1
 
     def validate_string(self, field, value, _type, report):
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            return
         formats = report['formats']
-        # formats[_type] = formats.get(_type, 0) + 1
-        formats['text'] = formats.get('text', 0) + 1  # ใช้ 'text' แทนทุกกรณี
+        # text ทุกค่า ถือเป็น text
+        formats['text'] = formats.get('text', 0) + 1
     def validate_default(self, field, value, _type, report):
+        # ข้ามค่าว่าง ไม่ต้องนับ
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            return
         formats = report['formats']
         formats['unknown'] = formats.get('unknown', 0) + 1
     def get_consistency_validators(self):
@@ -4284,7 +4434,6 @@ class Consistency():#DimensionMetric
             'numeric': self.validate_numeric,
             'int': self.validate_numeric,
             'float': self.validate_numeric,
-            # 'int': self.validate_int,
             'string': self.validate_string,
             'text': self.validate_string,
             'default': self.validate_default  # ใช้กรณีไม่มี type
@@ -4331,62 +4480,57 @@ class Consistency():#DimensionMetric
         for row in data['records']:
             count_row=count_row+1
             for field, value in row.items():
+                # ข้ามค่าว่าง
+                if value is None or (isinstance(value, str) and str(value).strip() == ""):
+                    continue  
                 field_type = fields.get(field, {}).get('type')
                 validator = validators.get(field_type)
                 field_report = report[field]         
                 if validator:
                     validator(field, value, field_type, field_report)
                     field_report['count'] += 1
+      
         for field, field_report in report.items():
-            #------------------------------------------------------------------
-            # # New dictionary to store the merged result
-            merged_data = {'numeric': 0,'timestamp': 0}
+            merged_data = {}   # <-- สร้าง dict ใหม่
             datetime_formats = {
-                '%Y-%m-%d',
-                '%d/%m/%Y',
-                '%Y-%m-%d',
-                '%Y/%m/%d',
-                '%Y-%m-%d %H:%M:%S',
-                '%d/%m/%Y %H:%M:%S',
-                '%Y-%m-%dT%H:%M:%S',
-                '%Y/%m/%d %H:%M',
-                # เพิ่ม pattern ที่อยากรองรับ
+                '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d',
+                '%Y-%m-%d %H:%M:%S', '%d/%m/%Y %H:%M:%S',
+                '%Y-%m-%dT%H:%M:%S', '%Y/%m/%d %H:%M',
             }
-            chk_timestamp = False
-
-            
-            #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
-            format_dict = field_report['formats']   
-            keys_to_merge = {'int', 'float', 'unknown',
-                            '^\\d+$',
-                            '^[+-]\\d+$',
-                            '^(\\d{1,3},)+(\\d{3})$',
-                            '^(\\d{1,3},)+(\\d{3})\\.\\d+$',
-                            '^[+-](\\d{1,3},)(\\d{3})+$',
-                            '^[+-](\\d{1,3},)+(\\d{3})\\.\\d+$',
-                            '^\\d+\\.\\d+$',
-                            '^[+-]\\d+\\.\\d+$'
-                            } 
-            
-            # # Iterate through the original dictionary
-            chk_numeric = False
+            numeric_count = 0
+            timestamp_count = 0
+            format_dict = field_report['formats'] 
+            log.debug('--format_dict before--')
+            log.debug(field) 
+            log.debug(format_dict) 
             for key, value in format_dict.items():
-                if key in keys_to_merge:
-                    merged_data['numeric'] += value
-                    chk_numeric = True
-                if key in datetime_formats:
-                    merged_data['timestamp'] += value
-                    chk_timestamp = True
+                if key in {'int', 'float', 'unknown',
+                        '^\\d+$', '^[+-]\\d+$',
+                        '^(\\d{1,3},)+(\\d{3})$', '^(\\d{1,3},)+(\\d{3})\\.\\d+$',
+                        '^[+-](\\d{1,3},)(\\d{3})+$', '^[+-](\\d{1,3},)+(\\d{3})\\.\\d+$',
+                        '^\\d+\\.\\d+$', '^[+-]\\d+\\.\\d+$'}:
+                    numeric_count  += value      # <-- นับแต่ไม่ใส่ key เดิม       
+                elif key in datetime_formats:
+                    timestamp_count  += value
+                else:
+                    # เก็บ string/text หรือ format ที่ไม่ใช่ numeric/timestamp
+                    # merged_data[key] = merged_data.get(key, 0) + value
+                    merged_data[key] = value
+
+
+            # เพิ่ม numeric/timestamp ลงไป
+            if numeric_count > 0:
+                merged_data['numeric'] = numeric_count
+            if timestamp_count > 0:
+                merged_data['timestamp'] = timestamp_count
+
+            # เขียนกลับ → เอา key เดิมออกแล้วรวม numeric/timestamp/text
+            field_report['formats'] = merged_data
+                
             # log.debug('--format_dict--')
             # log.debug(field) 
             # log.debug(format_dict) 
             # log.debug(merged_data)
-            # if(chk_numeric):
-            #     field_report['formats'] = merged_data
-            # แค่มีอย่างใดอย่างหนึ่ง ก็เขียนกลับ
-            if merged_data['timestamp'] > 0 or merged_data['numeric'] > 0:
-                field_report['formats'] = merged_data
-                log.debug(field_report['formats']) 
             #[End Pang Edit]--------------------------------------------------------------------
             if field_report['formats']:
                 #เลือก count format ที่มีค่ามากสุด เช่น int 30 float 4 แปลว่าคอลัมน์นี้คือ int
@@ -4421,7 +4565,57 @@ class Consistency():#DimensionMetric
             'report': report
         }
         
-           
+      # for field, field_report in report.items():
+        #     #------------------------------------------------------------------
+        #     # # New dictionary to store the merged result
+        #     merged_data = {'numeric': 0,'timestamp': 0}
+        #     datetime_formats = {
+        #         '%Y-%m-%d',
+        #         '%d/%m/%Y',
+        #         '%Y-%m-%d',
+        #         '%Y/%m/%d',
+        #         '%Y-%m-%d %H:%M:%S',
+        #         '%d/%m/%Y %H:%M:%S',
+        #         '%Y-%m-%dT%H:%M:%S',
+        #         '%Y/%m/%d %H:%M',
+        #         # เพิ่ม pattern ที่อยากรองรับ
+        #     }
+        #     chk_timestamp = False
+
+            
+        #     #[Pang Edit]update report for numeric values ==> merge int, float, unknown to numeric
+        #     format_dict = field_report['formats']   
+        #     keys_to_merge = {'int', 'float', 'unknown',
+        #                     '^\\d+$',
+        #                     '^[+-]\\d+$',
+        #                     '^(\\d{1,3},)+(\\d{3})$',
+        #                     '^(\\d{1,3},)+(\\d{3})\\.\\d+$',
+        #                     '^[+-](\\d{1,3},)(\\d{3})+$',
+        #                     '^[+-](\\d{1,3},)+(\\d{3})\\.\\d+$',
+        #                     '^\\d+\\.\\d+$',
+        #                     '^[+-]\\d+\\.\\d+$'
+        #                     } 
+            
+        #     # # Iterate through the original dictionary
+        #     chk_numeric = False
+        #     for key, value in format_dict.items():
+        #         if key in keys_to_merge:
+        #             merged_data['numeric'] += value
+        #             chk_numeric = True
+        #         if key in datetime_formats:
+        #             merged_data['timestamp'] += value
+        #             chk_timestamp = True
+        #     # log.debug('--format_dict--')
+        #     # log.debug(field) 
+        #     # log.debug(format_dict) 
+        #     # log.debug(merged_data)
+        #     # if(chk_numeric):
+        #     #     field_report['formats'] = merged_data
+        #     # แค่มีอย่างใดอย่างหนึ่ง ก็เขียนกลับ
+        #     if merged_data['timestamp'] > 0 or merged_data['numeric'] > 0:
+        #         field_report['formats'] = merged_data
+        #         log.debug(field_report['formats']) 
+        #-------------       
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the total percentage of consistent values in the data for
         all the given resources.
@@ -5220,27 +5414,27 @@ def detect_extra_columns_from_rows(rows, expected_columns):
             })
 
     return extra_rows
-# def detect_columns_and_validate(records, encoding='utf-8'):
-#     # แปลง dict เป็น list ของ row values
-#     # rows = [list(record.values()) for record in records]
-#     # ตรวจว่ามีข้อมูลอย่างน้อย 2 แถว (1 header + 1 data)
-#     if not records or len(records) < 2:
-#         return {
-#             "expected_columns": 0,
-#             "extra_rows": []
-#         }
+def detect_columns_and_validate(records):
+    # แปลง dict เป็น list ของ row values
+    # rows = [list(record.values()) for record in records]
+    # ตรวจว่ามีข้อมูลอย่างน้อย 2 แถว (1 header + 1 data)
+    if not records or len(records) < 2:
+        return {
+            "expected_columns": 0,
+            "extra_rows": []
+        }
 
-#     # ใช้แถวที่ 1 เป็น header
-#     header = records[1]
-#     data_rows = records[2:]  # ข้ามแถวคำอธิบาย (row 0)
+    # ใช้แถวที่ 1 เป็น header
+    header = records[1]
+    data_rows = records[2:]  # ข้ามแถวคำอธิบาย (row 0)
 
-#     # แปลงเป็น list of dict (ใช้ header)
-#     rows = [dict(zip(header, row)) for row in data_rows]
-#     # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
-#     sample_size=20
-#     sample_rows = rows[:sample_size] 
-#     log.debug('---sample_rows---')
-#     log.debug(sample_rows)
+    # แปลงเป็น list of dict (ใช้ header)
+    rows = [dict(zip(header, row)) for row in data_rows]
+    # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
+    sample_size=20
+    sample_rows = rows[:sample_size] 
+    log.debug('---sample_rows---')
+    log.debug(sample_rows)
 #     # sample_rows = rows[1:sample_size+1]  # ข้าม header
     def count_nonempty_except_last(row):
         """
@@ -5392,7 +5586,7 @@ def validate_resource_data(resource,data):
         #  แปลงเป็น list of dict
         records = [dict(zip(headers, row)) for row in rows]
         # log.debug(raw_data)
-        # check extra values ------------------
+        #check extra values ------------------
         # extra_result = detect_columns_and_validate(records)
         # extra_rows = extra_result.get("extra_rows", [])
         # log.debug('----extra_rows----')
