@@ -359,7 +359,7 @@ class DataQualityMetrics(object):
             'records': LazyStreamingList(_fetch_page),
             'fields': result['fields'],  # metadata
         }
-    def calculate_metrics_for_dataset(self, package_id):
+    def calculate_metrics_for_dataset(self, package_id, job_id=None):
         '''Calculates the Data Qualtity for the given dataset identified with
         `package_id`.
 
@@ -390,7 +390,7 @@ class DataQualityMetrics(object):
             resource['data_quality_settings'] = self._data_quality_settings(
                 resource)
        
-            result = self.calculate_metrics_for_resource(resource)
+            result = self.calculate_metrics_for_resource(resource, job_id=job_id)
             if result is None:
                 result = {}
             # self.logger.debug('Result: %s', result)
@@ -401,7 +401,8 @@ class DataQualityMetrics(object):
                           package_id)
         self.calculate_cumulative_metrics(package_id,
                                           dataset['resources'],
-                                          results)
+                                          results,
+                                          job_id=job_id)
         self.logger.info('Data Quality metrcis calculated for dataset: %s.',
                          package_id)
         
@@ -714,7 +715,7 @@ class DataQualityMetrics(object):
         data_quality.resource_last_modified = last_modified
         return False
 
-    def calculate_metrics_for_resource(self, resource):
+    def calculate_metrics_for_resource(self, resource, job_id=None):
         log.debug('calculate_metrics_for_resource')
         if resource.get('last_modified') is not None:
             last_modified = dateutil.parser.parse(resource.get('last_modified') or resource.get('created'))
@@ -849,6 +850,7 @@ class DataQualityMetrics(object):
                         
                 data_quality.ref_id = resource_id                   
                 data_quality.resource_last_modified = last_modified
+                data_quality.job_id = job_id  # เก็บ job_id ลง DB
                 #----------------------------------------------------
                 #----------------Calculate Metrics--------------------
                 data_stream2 = None
@@ -1141,6 +1143,7 @@ class DataQualityMetrics(object):
                 data_quality.version = today
                 data_quality.format  = resource['format']
                 data_quality.url = resource_url
+                data_quality.job_id = job_id
                 data_quality.file_size = None
                 data_quality.execute_time = None
                 data_quality.save()
@@ -1149,7 +1152,7 @@ class DataQualityMetrics(object):
 
         return results
 
-    def calculate_cumulative_metrics(self, package_id, resources, results):
+    def calculate_cumulative_metrics(self, package_id, resources, results, job_id=None):
         '''Calculates the cumulative metrics (reduce phase), from the results
         calculated for each resource in the dataset.
 
@@ -1218,6 +1221,7 @@ class DataQualityMetrics(object):
 
         data_quality.metrics = cumulative
         data_quality.modified_at = datetime.now()
+        data_quality.job_id = job_id
         data_quality.save()
         self.logger.debug('Cumulative metrics calculated for: %s', package_id)
 

@@ -39,7 +39,7 @@ data_quality_metrics_table = Table(
     Column('type', types.UnicodeText, nullable=False),
     Column('ref_id', types.UnicodeText, nullable=False),
     Column('package_id', types.UnicodeText, nullable=True),
-    Column('org_name', types.String),
+    # Column('org_name', types.String),
     Column('resource_last_modified', types.DateTime),
     Column('openness', types.Float),
     Column('timeliness', types.Float),
@@ -56,14 +56,13 @@ data_quality_metrics_table = Table(
     Column('validity', types.Float),   
     Column('consistency', types.Float),
     Column('format', types.String),
-    # Column('mimetype', types.String),
     Column('file_size', types.Float),
     Column('execute_time', types.Float),
     Column('error', types.String),
     Column('version', types.Date),
     Column('url', types.String),
     Column('metrics', types.JSON),
-    # Column('job_id', types.UnicodeText, ForeignKey('data_quality_job.job_id'), nullable=True)
+    Column('job_id', types.UnicodeText, ForeignKey('data_quality_job.job_id'), nullable=True)
 )
 
 
@@ -104,40 +103,40 @@ class DataQualityMetrics(DomainObject):
 
 mapper(DataQualityMetrics, data_quality_metrics_table)
 
-# # ตารางใหม่ job_dq
-# job_dq_table = Table(
-#     'data_quality_job',
-#     metadata,
-#     Column('job_id', types.UnicodeText,
-#            primary_key=True, default=make_uuid),
-#     Column('org_parent_id', types.String),
-#     Column('org_parent_name', types.String),
-#     Column('org_id', types.String),
-#     Column('org_name', types.String),
-#     Column('status', types.String, nullable=False),
-#     Column('requested_timestamp', types.Date, default=datetime.date.today),
-#     Column('started_timestamp', types.Date, default=datetime.date.today),
-#     Column('finish_timestamp', types.Date, default=datetime.date.today),
-#     Column('active', types.Boolean, nullable=True)
-# )
+# ตารางใหม่ job_dq
+job_dq_table = Table(
+    'data_quality_job',
+    metadata,
+    Column('job_id', types.UnicodeText,
+           primary_key=True, default=make_uuid),
+    Column('org_parent_id', types.String),
+    Column('org_parent_name', types.String),
+    Column('org_id', types.String),
+    Column('org_name', types.String),
+    Column('status', types.String, nullable=False),
+    Column('requested_timestamp', types.Date, default=datetime.date.today),
+    Column('started_timestamp', types.Date, default=datetime.date.today),
+    Column('finish_timestamp', types.Date, default=datetime.date.today),
+    Column('active', types.Boolean, nullable=True)
+)
 
 
-# class JobDQ(DomainObject):
-#     @classmethod
-#     def get(cls, job_id):
-#         return Session.query(cls).filter_by(job_id=job_id).first()
+class JobDQ(DomainObject):
+    @classmethod
+    def get(cls, job_id):
+        return Session.query(cls).filter_by(job_id=job_id).first()
 
-#     @classmethod
-#     def update_status(cls, job_id, status, error=None, finish_time=None):
-#         obj = Session.query(cls).filter_by(job_id=job_id).first()
-#         if obj:
-#             obj.status = status
-#             obj.error = error
-#             obj.finish_timestamp = finish_time or datetime.datetime.utcnow()
-#             Session.commit()
-#         return obj
+    @classmethod
+    def update_status(cls, job_id, status, error=None, finish_time=None):
+        obj = Session.query(cls).filter_by(job_id=job_id).first()
+        if obj:
+            obj.status = status
+            obj.error = error
+            obj.finish_timestamp = finish_time or datetime.datetime.utcnow()
+            Session.commit()
+        return obj
 
-# mapper(JobDQ, job_dq_table)
+mapper(JobDQ, job_dq_table)
 
 def setup():
     metadata.create_all(engine)

@@ -16,8 +16,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 from ckanext.opendquality.model.data_quality import DataQualityMetrics
-
+from ckanext.opendquality.model.data_quality import JobDQ
 
 __all__ = [
     'DataQualityMetrics',
+    'JobDQ',
 ]

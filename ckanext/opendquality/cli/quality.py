@@ -23,6 +23,11 @@ import ckanext.opendquality.quality as quality_lib
 from logging import getLogger
 import ckan.model as model
 from ckanext.opendquality.model import DataQualityMetrics as qa_table
+from ckanext.opendquality.model import JobDQ
+import uuid
+from datetime import datetime
+import requests
+
 
 log = getLogger(__name__)
 
@@ -107,17 +112,54 @@ def calculate(organization=None, dataset=None,dimension='all'):
             all_packages(_process_batch)
 
         else:
-            def _process_batch(packages):
-                for pkg in packages:
-                    try:
-                        metrics.calculate_metrics_for_dataset(pkg)
-                    except Exception as e:
-                        log.error('Failed to calculate metrics for %s. Error: %s',
-                                pkg, str(e))
-                        log.exception(e)
-            
-            org_packages(_process_batch, organization)
+            parent_org_id, parent_org_name = get_parent_organization(organization)
+            org_id = get_org_id_from_name(organization)
 
+            if not org_id:
+                log.error(f"Organization '{organization}' not found in CKAN.")
+                raise ValueError(f"Organization '{organization}' not found in CKAN.")
+
+            job_id = str(uuid.uuid4())
+            job = JobDQ(
+                job_id=job_id,
+                org_parent_id=parent_org_id,
+                org_parent_name=parent_org_name,
+                org_id=org_id,
+                org_name=organization,
+                status="pending",
+                requested_date=datetime.utcnow(),
+                active=True
+            )
+            Session.add(job)
+            Session.commit()
+            try:
+                # เปลี่ยนเป็น running
+                job.status = "running"
+                job.started_date = datetime.utcnow()
+                Session.commit()
+                def _process_batch(packages):
+                    for pkg in packages:
+                        try:
+                            metrics.calculate_metrics_for_dataset(pkg,job_id=job_id)
+                        except Exception as e:
+                            log.error('Failed to calculate metrics for %s. Error: %s',
+                                    pkg, str(e))
+                            log.exception(e)
+                
+                org_packages(_process_batch, organization)
+
+                # จบงาน → mark finish
+                job.status = "finish"
+                job.finish_date = datetime.utcnow()
+                job.activate = True
+
+                Session.commit()
+            except Exception as e:
+                job.status = "fail"
+                job.finish_date = datetime.utcnow()
+                Session.commit()
+                log.error("Job %s failed. Error: %s", job_id, str(e))
+                log.exception(e)
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one
     from paste.registry import Registry
@@ -238,4 +280,49 @@ def del_metrict(organization=None, dataset=None):
             log.info("Deleted data quality metrics for organization %s", organization)
     else:
         log.error("Please provide either --dataset or --organization")
+def get_parent_organization(org_id):
+    # url = f"https://data.go.th/api/3/action/group_tree_section?type=organization&id={org_id}"
+    url = f"https://ckan-dev.opend.cloud/api/3/action/group_tree_section?type=organization&id={org_id}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
 
+        if not data.get("success"):
+            return None, None
+
+        results = data.get("result")
+
+        # --- case 1: result เป็น dict (เช่นที่คุณเจอ) ---
+        if isinstance(results, dict):
+            parent_id = results.get("id")
+            parent_name = results.get("name")
+            return parent_id, parent_name
+
+        # --- case 2: result เป็น list ---
+        if isinstance(results, list) and results:
+            org_node = results[0]
+            parent = org_node.get("parent")
+            if parent:
+                return parent.get("id"), parent.get("name")
+            else:
+                return None, None
+
+        # ถ้าไม่เข้า case ไหนเลย
+        return None, None
+
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP error: {e}")
+        return None, None
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return None, None
+
+def get_org_id_from_name(org_name):
+    org = model.Session.query(model.Group) \
+        .filter(model.Group.name == org_name) \
+        .filter(model.Group.type == 'organization') \
+        .first()
+    if org:
+        return org.id
+    return None
