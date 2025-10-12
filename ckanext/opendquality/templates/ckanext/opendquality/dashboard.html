@@ -21,20 +21,38 @@
 {% block primary_content_inner %}
 <h1>{{ title }}</h1>
 <div class="row table-responsive">
-  <form id='org-filter-form' class="form-inline" method="GET">
+  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('opendquality.dashboard') }}">
     {{ h.csrf_input() }}
     {%- set options=[] -%}
-    {%- do options.append({'value': '', 'text': _('หน่วยงานทั้งหมด')}) -%}
-    {%- for org in orgs -%}
-    {%- do options.append({'value': org.org_id|string, 'text': org.org_title}) -%}
+    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%}
+    {%- for p in parents -%}
+    {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
     {%- endfor -%}
     {{ form.select(
-    'org-select',
-    label=_('หน่วยงาน'),
-    selected=org_id,
+    'org_main',
+    label=_('หน่วยงานหลัก'),
+    selected=selected_main,
     options=options,
     classes=[],
-    id='org-select',
+    id='org_main',
+    attrs={'data-module': 'autocomplete'},
+    error={}
+    )}}
+
+    {%- set options=[] -%}
+    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานย่อย --')}) -%}
+    {% if sub_options %}
+    {%- for c in sub_options -%}
+    {%- do options.append({'value': c.id|string, 'text': c.title}) -%}
+    {%- endfor -%}
+    {% endif %}
+    {{ form.select(
+    'org_sub',
+    label=_('หน่วยงานย่อย'),
+    selected=selected_sub,
+    options=options,
+    classes=[],
+    id='org_sub',
     attrs={'data-module': 'autocomplete'},
     error={}
     )}}
@@ -52,7 +70,7 @@
     <div class="col-md-12">erRRREERRE</div>
   </div>
 </div> -->
-<div class="row qa-radar-row">
+<div class="row qa-radar-row" style="z-index: 2;">
   <div class="primary col-md-6 col-xs-12">
     <canvas id="radar_chart" data-module="opendquality-radar-chart"></canvas>
   </div>
@@ -80,34 +98,89 @@
   </div>
 </div>
 
+<div class="card mt-3" style="z-index: 2;">
+  <div class="card-header text-center">
+    <div class="h5 mb-0">มิติด้าน</div>
+    <div class="h4 fw-bold">Timeliness</div>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-stretch">
 
-<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3">
+      <!-- Freshness panel -->
+      <div class="col-lg-4">
+        <div class="border rounded h-100 p-3 position-relative">
+          <div class="fw-bold mb-2">Freshness</div>
+          <div class="position-absolute top-0 end-0 m-2 badge bg-warning text-dark"
+               id="badge-freshness">Dataset AVG Freshness: –</div>
+          <canvas id="chart-freshness" style="height:120px; width:100%;"></canvas>
+          <div class="text-center mt-2 text-muted">ความสดใหม่ของข้อมูล</div>
+        </div>
+      </div>
 
-  <!-- 1) Validity -->
-  <div class="col d-flex">
-    <div class="card flex-fill">
-      <div class="card-header fw-semibold">
-        มิติด้าน Machine-Readable
-        <small class="text-muted d-block">(Validity)</small>
+      <!-- Acceptable Latency + Outdated -->
+      <div class="col-lg-8">
+        <div class="border rounded h-100 p-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-bold">Acceptable Latency</div>
+            <span class="badge bg-warning text-dark" id="badge-latmax">
+              Dataset Acceptable Latency MAX: –
+            </span>
+          </div>
+          <div class="row g-3">
+            <div class="col-8">
+              <canvas id="chart-latency" style="height:220px; width:100%;"></canvas>
+              <div class="small text-muted mt-1">ชุดข้อมูลที่ควรปรับปรุง</div>
+            </div>
+            <div class="col-4 border-start">
+              <canvas id="chart-outdated" style="height:220px; width:100%;"></canvas>
+              <div class="small text-center text-muted mt-1">ชุดข้อมูลล้าสมัยเกินไป</div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="card-body">
-        <canvas id="chart-validity"></canvas>
-      </div>
+
     </div>
   </div>
+</div>
 
+<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
   <!-- 2) Relevancy -->
-  <div class="col d-flex">
+  <div class="col col-lg-8 d-flex">
     <div class="card flex-fill">
-      <div class="card-header fw-semibold">มิติด้าน Relevancy</div>
+      <div class="card-header fw-semibold">ชุดข้อมูลที่ตรงตามความต้องการของผู้ใช้ (Relevancy)</div>
       <div class="card-body">
-        <canvas id="chart-relevancy"></canvas>
+        <div class="row table-responsive" style="position: relative;">
+          <table id="tb-relevance-result" class="table table-borderless table-striped">
+            <thead>
+              <tr>
+                <th width="10%">{{ _("หน่วยงาน") }}</th>
+                <th width="30%">{{ _("ชื่อชุดข้อมูล") }}</th>
+                <th width="70%">{{ _(" ") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rev in top_relevance %}
+                <tr>
+                  <td><a href="{{ h.url_for('opendquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}">
+                    {{ rev.org.title }}</a></td>
+                  <td><a href="{{ h.url_for('opendquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}"
+            target="qa-link">{{ rev.title }}</a></td>
+                  <td>
+                    <div class="progress">
+                      <div class="progress-bar bg-info" role="progressbar" style="width: {{_(rev.relevance)}}%;" aria-valuenow="{{_(rev.relevance)}}" aria-valuemin="0" aria-valuemax="100">{{_(rev.relevance)}}%</div>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- 3) Availability -->
-  <div class="col d-flex">
+  <div class="col col-lg-4 d-flex">
     <div class="card flex-fill">
       <div class="card-header fw-semibold">มิติด้าน Availability</div>
       <div class="card-body">
@@ -139,12 +212,17 @@
 {{ super() }}
 {% asset "opendquality/opendquality-js" %}
 <script>
-  document.getElementById('org-filter-form').addEventListener('submit', function (e) {
-    e.preventDefault();
-    const selected = document.getElementById('org-select').value;
-    const newUrl = selected ? `/qa/dashboard/${selected}` : '/qa/dashboard';
-    window.location.href = newUrl;
-  });
+  window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};
+  window.SUB_DEFAULT_LABEL  = {{ _('-- เลือกหน่วยงานย่อย --') | tojson }};
+  window.SUB_SELECTED       = "{{ selected_sub }}";
+</script>
+<script>
+  // document.getElementById('org-filter-form').addEventListener('submit', function (e) {
+  //   e.preventDefault();
+  //   const selected = document.getElementById('org-select').value;
+  //   const newUrl = selected ? `/qa/dashboard/${selected}` : '/qa/dashboard';
+  //   window.location.href = newUrl;
+  // });
   const radar_chart_config = {
     labels: {{ radar_data.labels | tojson }},
     datasets: [
@@ -159,6 +237,7 @@
   }
 
   var M = {{ metrics| tojson | safe}};
+  var T = {{ timeliness_summary | tojson | safe}};
 
   // สร้างกราฟสำหรับแต่ละมิติ
 //   document.addEventListener('DOMContentLoaded', function () {

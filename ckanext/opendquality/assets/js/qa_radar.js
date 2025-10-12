@@ -94,28 +94,131 @@ function donut(canvasId, centerId, yes, no) {
     options: { cutout: '70%', plugins: { legend: { display: false } } }
   });
 }
-new Chart(document.getElementById('chart-validity'), {
-  type: 'bar',
-  data: {
-    labels: ['blank header', 'duplicate header', 'extra value'],
-    datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
-  },
-  options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-});
-
-// Relevancy – horizontal bar
-new Chart(document.getElementById('chart-relevancy'), {
-  type: 'bar',
-  data: {
-    labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
-    datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
-  },
-  options: {
-    indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
-  }
-});
 
 // Availability – donuts
 donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
 donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
+
+/* =========================
+ * Timeliness (Chart.js 4.5.0)
+ * ========================= */
+
+(() => {
+  const dqCharts = {}; // เก็บ instance
+
+  function getCtx(id) {
+    const el = document.getElementById(id);
+    if (!el || !(el instanceof HTMLCanvasElement)) return null;
+    return el.getContext('2d');
+  }
+
+  function destroyIfExist(key) {
+    if (dqCharts[key]) {
+      dqCharts[key].destroy();
+      dqCharts[key] = null;
+    }
+  }
+
+  function toPct(v) {
+    if (v == null || isNaN(v)) return 0;
+    const n = Number(v);
+    return n <= 1 ? Math.round(n * 100) : Math.round(n);
+  }
+
+  function renderTimeliness() {
+    let data;
+    console.log(T)
+    try { data = T } 
+    catch (e) { console.error('Timeliness API error', e); return; }
+
+    /* ---------- 1) Freshness ---------- */
+    const freshnessPct = toPct(data.avg_freshness);
+    const badgeF = document.getElementById('badge-freshness');
+    if (badgeF) badgeF.textContent = `Dataset AVG Freshness: ${freshnessPct}%`;
+
+    const fctx = getCtx('chart-freshness');
+    if (fctx) {
+      destroyIfExist('freshness');
+      const grad = fctx.createLinearGradient(0, 0, fctx.canvas.width, 0);
+      grad.addColorStop(1, '#2e7d32');
+      grad.addColorStop(0, '#a5d6a7');
+
+      dqCharts.freshness = new Chart(fctx, {
+        type: 'bar',
+        data: {
+          labels: [''],
+          datasets: [{ data: [freshnessPct], backgroundColor: grad }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}%` } } },
+          scales: {
+            x: {
+              min: 0, max: 100,
+              ticks: { callback: (v) => `${v}%` },
+              grid: { display: true }
+            },
+            y: { display: false }
+          }
+        }
+      });
+    }
+
+    /* ---------- 2) Acceptable Latency ---------- */
+    const order = ['ไม่มีการอัพเดตหลังจัดเก็บ','อัพเดตตามรอบ','รบกวนปรับปรุง','ควรปรับปรุง','ต้องปรับปรุง'];
+    const counts = order.map(k => Number(data.latency_buckets?.[k] || 0));
+    const badgeL = document.getElementById('badge-latmax');
+    if (badgeL) badgeL.textContent = `Dataset Acceptable Latency MAX: ${data.max_latency ?? 0}`;
+
+    const lctx = getCtx('chart-latency');
+    if (lctx) {
+      destroyIfExist('latency');
+      const colors = ['#9e9e9e','#ffe0b2','#ffccbc','#ffab91','#ef5350'];
+      dqCharts.latency = new Chart(lctx, {
+        type: 'bar',
+        data: { labels: order, datasets: [{ data: counts, backgroundColor: colors }] },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw}` } } },
+          scales: {
+            x: { beginAtZero: true, ticks: { precision: 0 } },
+            y: { ticks: { autoSkip: false } }
+          }
+        }
+      });
+    }
+
+    /* ---------- 3) Outdated ---------- */
+    const octx = getCtx('chart-outdated');
+    if (octx) {
+      destroyIfExist('outdated');
+      dqCharts.outdated = new Chart(octx, {
+        type: 'bar',
+        data: { labels: [''], datasets: [{ data: [Number(data.outdated_count || 0)], backgroundColor: '#e53935' }] },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}` } } },
+          scales: {
+            x: { beginAtZero: true, ticks: { precision: 0 } },
+            y: { display: false }
+          }
+        }
+      });
+    }
+  }
+
+  // window._dqRefreshTimeliness = renderTimeliness;
+  renderTimeliness();
+  // document.addEventListener('DOMContentLoaded', () => {
+  //   renderTimeliness();
+  //   document.getElementById('btn-apply')?.addEventListener('click', renderTimeliness);
+  // });
+})();
+
+

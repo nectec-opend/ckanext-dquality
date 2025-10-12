@@ -117,6 +117,7 @@ job_dq_table = Table(
     Column('requested_timestamp', types.Date, default=datetime.date.today),
     Column('started_timestamp', types.Date, default=datetime.date.today),
     Column('finish_timestamp', types.Date, default=datetime.date.today),
+    Column('run_type', types.String),
     Column('active', types.Boolean, nullable=True)
 )
 

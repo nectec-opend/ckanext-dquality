@@ -161,3 +161,19 @@
 @media (max-width: 992px){
   .qa-donut .fw-semibold[style]{ width:auto !important; }
 }
+
+#chart-freshness {
+  height: 120px !important;
+  width: 100% !important;
+}
+#chart-latency,
+#chart-outdated {
+  height: 220px !important;
+  width: 100% !important;
+}
+.card canvas {
+  display: block;
+}
+.progress {
+  display: block !important;
+}

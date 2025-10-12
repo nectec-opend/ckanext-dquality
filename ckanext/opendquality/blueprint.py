@@ -1,15 +1,15 @@
 # encoding: utf-8
 
-from flask import Blueprint, request, Response
+from flask import Blueprint, request, Response, jsonify
 import ckan.plugins.toolkit as toolkit 
 from logging import getLogger
 # from ckan.common import config
 from ckan.model import package_table, Session, Package, Group, Resource
-from ckanext.opendquality.model import DataQualityMetrics as DQM
+from ckanext.opendquality.model import DataQualityMetrics as DQM , JobDQ
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
-from sqlalchemy import and_
-from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks
+from sqlalchemy import and_, literal, case, func, Date, cast
+from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
@@ -31,6 +31,125 @@ def shutdown_session(exception=None):
         Session.rollback()
     Session.remove()
 
+def export_data_quality(data_quality, quality_type):
+    if quality_type == 'package':
+        columes_name = ["รหัสชุดข้อมูล","ชื่อชุดข้อมูล", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
+    else:
+        columes_name = ["รหัสชุดข้อมูล", "ชื่อชุดข้อมูล", "รหัสทรัพยากร", "ชื่อทรัพยากร", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
+    import csv
+    from io import StringIO
+    output = StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+    writer.writerow(columes_name)
+    for row in data_quality:
+        if quality_type == 'package':
+            writer.writerow([row.package_id, row.package_title, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
+        else:
+            writer.writerow([row.package_id, row.package_title, row.resource_id, row.resource_name, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
+    output.seek(0)
+    response = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
+    response.headers['Content-Disposition'] = f'attachment; filename="data_quality_{quality_type}_report.csv"'
+    return response
+
+def build_hierachy_with_orgs():
+    # 1) เลือกลำดับคอลัมน์ให้ถูก: ... org_id, org_name
+    rows = (
+        Session.query(
+            JobDQ.org_parent_id,
+            JobDQ.org_parent_name,
+            JobDQ.org_id,
+            JobDQ.org_name,
+        )
+        .filter(JobDQ.active == True, JobDQ.status == 'finish')
+        .distinct()
+        .all()
+    )
+
+    parent_ids = set()
+    child_ids = set()
+    pairs = []  # (pid, pname, cid, cname)  ← ชัดเจนว่า 3 = id ลูก, 4 = ชื่อลูก
+
+    for pid, pname, cid, cname in rows:
+        # 2) sanitize กัน None/ช่องว่าง และบังคับเป็น str
+        pid_s = str(pid).strip() if pid is not None else ""
+        cid_s = str(cid).strip() if cid is not None else ""
+        pname_s = (pname or "").strip()
+        cname_s = (cname or "").strip()
+
+        if not pid_s or not cid_s:
+            continue
+
+        parent_ids.add(pid_s)
+        child_ids.add(cid_s)
+        pairs.append((pid_s, pname_s, cid_s, cname_s))
+
+    if not parent_ids:
+        return [], {}
+
+    # 3) ดึงชื่อไทยจากตาราง group ทีเดียว
+    all_ids = list(parent_ids | child_ids)
+    groups = (
+        Session.query(Group)
+        .filter(
+            Group.type == 'organization',
+            Group.state == 'active',
+            Group.id.in_(all_ids),
+        )
+        .all()
+    )
+    gmap = {g.id: g for g in groups}
+
+    def pick_title(g, fallback_name, fallback_id):
+        if g:
+            return (g.title or g.name or fallback_name or fallback_id)
+        return (fallback_name or fallback_id)
+
+    # 4) parents
+    parents = []
+    for pid in sorted(parent_ids):  # ทุกอย่างเป็น str แล้ว sort ได้
+        g = gmap.get(pid)
+        # fallback name ของ parent จากแถวแรกที่เจอใน pairs
+        pname_fallback = next((pf for p, pf, _, _ in pairs if p == pid), "")
+        parents.append({
+            'id': pid,
+            'title': pick_title(g, pname_fallback, pid),
+            'name': (g.name if g else pname_fallback) or pid,
+        })
+
+    # 5) children_by_parent
+    children_by_parent = {}
+    for pid, pname_fallback, cid, cname_fallback in pairs:
+        cg = gmap.get(cid)
+        item = {
+            'id': cid,
+            'title': pick_title(cg, cname_fallback, cid),
+            'name': (cg.name if cg else cname_fallback) or cid,
+        }
+        children_by_parent.setdefault(pid, []).append(item)
+
+    # 6) dedup + sort
+    parents.sort(key=lambda x: (x['title'] or '').lower())
+    for pid, lst in list(children_by_parent.items()):
+        dedup = {it['id']: it for it in lst}   # ← แก้ชื่อให้ถูก
+        lst = list(dedup.values())
+        lst.sort(key=lambda x: (x['title'] or '').lower())
+        children_by_parent[pid] = lst
+
+    return parents, children_by_parent
+
+
+def _get_extra(org_dict, key, default=None):
+    """ดึงค่า extras[key] จาก org (รองรับทั้งรูปแบบ list/dict)"""
+    extras = org_dict.get('extras') or {}
+    if isinstance(extras, dict):
+        return extras.get(key, default)
+    # บางเวอร์ชัน extras เป็น list[{key:.., value:..}]
+    if isinstance(extras, list):
+        for item in extras:
+            if item.get('key') == key:
+                return item.get('value')
+    return default
 # group query
 # group_query = (
 #     Session.query(Group)
@@ -49,6 +168,12 @@ def make_group_query():
             .join(DQM, and_(DQM.ref_id == Package.id,
                             DQM.type == 'package'))
             .filter(Package.state == 'active')
+            .distinct())
+def make_group_query_main():
+
+    return (Session.query(Group)
+            .join(JobDQ, Group.id == JobDQ.org_parent_id)
+            .filter(JobDQ.active == True, JobDQ.status == 'finish')
             .distinct())
 
 # @qa.before_request
@@ -128,6 +253,18 @@ def _register_mock_translator():
 #         ).all()
 
 #     return org
+def _get_org_main():
+    try:
+        q = (make_group_query_main()
+             .with_entities(
+                 Group.id.label('org_id'),
+                 Group.name.label('org_name'),
+                 Group.title.label('org_title'),
+             ))
+        return q.all()
+    except Exception:
+        Session.rollback()
+        raise
 
 def _get_org():
     try:
@@ -189,102 +326,209 @@ def home():
 def admin_report(org_id=None):
     # if h.check_access('sysadmin') is False:
     #     return toolkit.redirect_to('opendquality.dashboard')
+    selected_main = request.args.get('org_main', None)
+    selected_sub = request.args.get('org_sub', None)
+
+    package_id = request.args.get('package_id')
+    
+
+    # parents = [o for o in orgss if not _get_extra(o, 'parent_org_id')]
+    parents ,children_by_parent = build_hierachy_with_orgs()
+    sub_options = children_by_parent.get(selected_main, []) if selected_main else []
+    org_id = org_id if org_id is not None else selected_sub
+
     export = request.args.get('export') == '1'
-    if 'package_id' not in request.args:
-        quality_type = 'package'
-        data_quality = Session.query(
+    export_all = request.args.get('export_all') == '1'
+
+    base_filters = [
+        JobDQ.status == 'finish',
+        JobDQ.active.is_(True),
+        JobDQ.run_type == 'organization'
+    ]
+    # org_id = request.view_args.get('org_id') or request.args.get('org_id')
+
+    if export_all:
+        # -------- รวมทั้ง package และ resource ด้วย UNION ALL --------
+        # คอลัมน์ “ร่วม” ที่จะส่งไป render/export (เรียงเหมือนกันทั้งสองขา)
+        pkg_cols = [
             Package.title.label('package_title'),
             Package.id.label('package_id'),
+            literal(None).label('resource_id'),
+            literal(None).label('resource_name'),
             Group.title.label('org_title'),
             Group.id.label('org_id'),
-            DQM.openness,
-            DQM.timeliness,
-            DQM.acc_latency,
-            DQM.freshness,
-            DQM.availability,
-            DQM.downloadable,
-            DQM.access_api,
-            DQM.relevance,
-            DQM.utf8,
-            DQM.preview,
-            DQM.completeness,
-            DQM.uniqueness,
-            DQM.validity,
-            DQM.consistency,
-            DQM.metrics
-        ) \
-        .join(Package, Package.id == DQM.ref_id)\
-        .join(Group, Group.id == Package.owner_org)\
-
-        if org_id is not None:
-            data_quality = data_quality.filter(Group.id == org_id)
-        
-        # if request.args.get('package_id', None):
-        data_quality = data_quality.filter(
-            DQM.type == quality_type)
-
-    else:
-        quality_type = 'resource'
-        data_quality = Session.query(
-            DQM.package_id,
-            Resource.name.label('resource_name'),
+            DQM.openness.label('openness'),
+            DQM.timeliness.label('timeliness'),
+            DQM.acc_latency.label('acc_latency'),
+            DQM.freshness.label('freshness'),
+            DQM.availability.label('availability'),
+            DQM.downloadable.label('downloadable'),
+            DQM.access_api.label('access_api'),
+            DQM.relevance.label('relevance'),
+            DQM.utf8.label('utf8'),
+            DQM.preview.label('preview'),
+            DQM.completeness.label('completeness'),
+            DQM.uniqueness.label('uniqueness'),
+            DQM.validity.label('validity'),
+            DQM.consistency.label('consistency'),
+            DQM.metrics.label('metrics'),
+            JobDQ.org_parent_id,
+            DQM.type.label('dq_type'),
+            DQM.modified_at.label('modified_at')
+        ]
+        res_cols = [
+            Package.title.label('package_title'),
+            Package.id.label('package_id'),
             Resource.id.label('resource_id'),
             Resource.name.label('resource_name'),
-            Package.name.label('package_name'),
-            Package.title.label('package_title'),
             Group.title.label('org_title'),
             Group.id.label('org_id'),
-            DQM.openness,
-            DQM.timeliness,
-            DQM.acc_latency,
-            DQM.freshness,
-            DQM.availability,
-            DQM.downloadable,
-            DQM.access_api,
-            DQM.relevance,
-            DQM.utf8,
-            DQM.preview,
-            DQM.completeness,
-            DQM.uniqueness,
-            DQM.validity,
-            DQM.consistency,
-            DQM.metrics
-        ) \
-        .join(Resource, Resource.id == DQM.ref_id) \
-        .join(Package, Package.id == DQM.package_id)\
-        .join(Group, Group.id == Package.owner_org)
+            DQM.openness.label('openness'),
+            DQM.timeliness.label('timeliness'),
+            DQM.acc_latency.label('acc_latency'),
+            DQM.freshness.label('freshness'),
+            DQM.availability.label('availability'),
+            DQM.downloadable.label('downloadable'),
+            DQM.access_api.label('access_api'),
+            DQM.relevance.label('relevance'),
+            DQM.utf8.label('utf8'),
+            DQM.preview.label('preview'),
+            DQM.completeness.label('completeness'),
+            DQM.uniqueness.label('uniqueness'),
+            DQM.validity.label('validity'),
+            DQM.consistency.label('consistency'),
+            DQM.metrics.label('metrics'),
+            JobDQ.org_parent_id,
+            DQM.type.label('dq_type'),
+            DQM.modified_at.label('modified_at')
+        ]
 
-        if org_id is not None:
-            data_quality = data_quality.filter(Group.id == org_id)
+        q_pkg = (
+            Session.query(*pkg_cols)
+            .join(Package, Package.id == DQM.ref_id)             # ref_id ชี้ package เมื่อ type='package'
+            .join(Group, Group.id == Package.owner_org)
+            .join(JobDQ, DQM.job_id == JobDQ.job_id)
+            .filter(DQM.type == 'package', *base_filters)
+        )
+        q_res = (
+            Session.query(*res_cols)
+            .join(Resource, Resource.id == DQM.ref_id)           # ref_id ชี้ resource เมื่อ type='resource'
+            .join(Package, Package.id == DQM.package_id)
+            .join(Group, Group.id == Package.owner_org)
+            .join(JobDQ, DQM.job_id == JobDQ.job_id)
+            .filter(DQM.type == 'resource', *base_filters)
+        )
+
+        if org_id:
+            q_pkg = q_pkg.filter(JobDQ.org_id == org_id)
+            q_res = q_res.filter(JobDQ.org_id == org_id)
         
-        # if request.args.get('package_id', None):
-        data_quality = data_quality.filter(
-            DQM.type == quality_type, DQM.package_id == request.args.get('package_id'))
-            
-    data_quality = data_quality.order_by(DQM.modified_at.desc()).all()
+        if package_id:
+            q_res = q_res.filter(DQM.package_id == package_id)
+            q_pkg = q_pkg.filter(DQM.package_id == package_id)
+
+        union_sq = q_pkg.union_all(q_res).subquery()
+        data_quality = (
+            Session.query(union_sq)
+            .order_by(union_sq.c.modified_at.desc())
+            .all()
+        )
+        quality_type = 'all'
+
+    else:
+        # -------- โหมดปกติ: แยกตามว่ามี package_id ใน query หรือไม่ --------
+        if 'package_id' not in request.args:
+            quality_type = 'package'
+            data_quality = (
+                Session.query(
+                    Package.title.label('package_title'),
+                    Package.id.label('package_id'),
+                    Group.title.label('org_title'),
+                    Group.id.label('org_id'),
+                    DQM.openness.label('openness'),
+                    DQM.timeliness.label('timeliness'),
+                    DQM.acc_latency.label('acc_latency'),
+                    DQM.freshness.label('freshness'),
+                    DQM.availability.label('availability'),
+                    DQM.downloadable.label('downloadable'),
+                    DQM.access_api.label('access_api'),
+                    DQM.relevance.label('relevance'),
+                    DQM.utf8.label('utf8'),
+                    DQM.preview.label('preview'),
+                    DQM.completeness.label('completeness'),
+                    DQM.uniqueness.label('uniqueness'),
+                    DQM.validity.label('validity'),
+                    DQM.consistency.label('consistency'),
+                    DQM.metrics.label('metrics'),
+                    JobDQ.org_parent_id,
+                    DQM.modified_at.label('modified_at')
+                )
+                .join(Package, Package.id == DQM.ref_id)
+                .join(Group, Group.id == Package.owner_org)
+                .join(JobDQ, DQM.job_id == JobDQ.job_id)
+                .filter(DQM.type == 'package', *base_filters)
+            )
+            if org_id:
+                data_quality = data_quality.filter(JobDQ.org_id == org_id)
+
+            data_quality = data_quality.order_by(DQM.modified_at.desc()).all()
+
+        else:
+            quality_type = 'resource'
+            data_quality = (
+                Session.query(
+                    DQM.package_id,
+                    Resource.name.label('resource_name'),
+                    Resource.id.label('resource_id'),
+                    Package.name.label('package_name'),
+                    Package.title.label('package_title'),
+                    Group.title.label('org_title'),
+                    Group.id.label('org_id'),
+                    DQM.openness.label('openness'),
+                    DQM.timeliness.label('timeliness'),
+                    DQM.acc_latency.label('acc_latency'),
+                    DQM.freshness.label('freshness'),
+                    DQM.availability.label('availability'),
+                    DQM.downloadable.label('downloadable'),
+                    DQM.access_api.label('access_api'),
+                    DQM.relevance.label('relevance'),
+                    DQM.utf8.label('utf8'),
+                    DQM.preview.label('preview'),
+                    DQM.completeness.label('completeness'),
+                    DQM.uniqueness.label('uniqueness'),
+                    DQM.validity.label('validity'),
+                    DQM.consistency.label('consistency'),
+                    DQM.metrics.label('metrics'),
+                    JobDQ.org_parent_id,
+                    DQM.modified_at.label('modified_at')
+                )
+                .join(Resource, Resource.id == DQM.ref_id)
+                .join(Package, Package.id == DQM.package_id)
+                .join(Group, Group.id == Package.owner_org)
+                .join(JobDQ, DQM.job_id == JobDQ.job_id)
+                .filter(DQM.type == 'resource', *base_filters)
+            )
+            if org_id:
+                data_quality = data_quality.filter(JobDQ.org_id == org_id)
+
+            # มี package_id → กรองเฉพาะ package นั้น (ยกเว้น export_all ซึ่งเราแยกไปแล้ว)
+            if package_id:
+                data_quality = data_quality.filter(DQM.package_id == package_id)
+
+            data_quality = data_quality.order_by(DQM.modified_at.desc()).all()
+    # log.debug(data_quality[0].keys())
     if export:
         # Export logic here, e.g., to CSV or JSON
-        if quality_type == 'package':
-            columes_name = ["รหัสชุดข้อมูล","ชื่อชุดข้อมูล", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
-        else:
-            columes_name = ["รหัสชุดข้อมูล", "ชื่อชุดข้อมูล", "รหัสทรัพยากร", "ชื่อทรัพยากร", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
-        import csv
-        from io import StringIO
-        output = StringIO()
-        output.write('\ufeff')
-        writer = csv.writer(output)
-        writer.writerow(columes_name)
-        for row in data_quality:
-            if quality_type == 'package':
-                writer.writerow([row.package_id, row.package_title, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
-            else:
-                writer.writerow([row.package_id, row.package_title, row.resource_id, row.resource_name, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
-        output.seek(0)
-        response = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
-        response.headers['Content-Disposition'] = f'attachment; filename="data_quality_{quality_type}_report.csv"'
-        return response
+        return export_data_quality(data_quality, quality_type)
+        
 
     extra_vars = {
+        'parents': parents,
+        'children_by_parent': children_by_parent,
+        'sub_options': sub_options,
+        'selected_main': selected_main,
+        'selected_sub': selected_sub,
+        'main_orgs': _get_org_main(),
         'orgs': _get_org(),
         'org_id': org_id if org_id is not None else '',
         'reports': data_quality,
@@ -302,13 +546,28 @@ def admin_report(org_id=None):
     return toolkit.render('ckanext/opendquality/admin_reports.html', extra_vars)
 
 def dashboard(org_id=None):
+    selected_main = request.args.get('org_main', None)
+    selected_sub = request.args.get('org_sub', None)
+    
+
+    # parents = [o for o in orgss if not _get_extra(o, 'parent_org_id')]
+    parents ,children_by_parent = build_hierachy_with_orgs()
+    sub_options = children_by_parent.get(selected_main, []) if selected_main else []
+    org_id = org_id if org_id is not None else selected_sub
     extra_vars = {
+        'parents': parents,
+        'children_by_parent': children_by_parent,
+        'sub_options': sub_options,
+        'selected_main': selected_main,
+        'selected_sub': selected_sub,
         'orgs': _get_org(),
         'org_id': org_id if org_id is not None else '',
         'title': toolkit._('ผลการตรวจคุณภาพชุดข้อมูลเปิด'),
         'dashboard': True,
         'radar_data': get_radar_aggregate_all(org_id),
+        'timeliness_summary': get_timeliness_summary(org_id),
         'counts': qa_counts(org_id),
+        'top_relevance': get_relevance_top(org_id),
         'metrics': qa_detail_blocks(org_id),
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
@@ -329,6 +588,83 @@ def calculate_quality(): #completeness
             #metrics.calculate_metrics_for_dataset('bird')  
     }
 
+def timeliness_summary():
+    """
+    JSON รวมสำหรับแผง Timeliness:
+    - avg_freshness: ค่าเฉลี่ย 0..1
+    - latency_buckets: นับจำนวนตามบัคเก็ต
+    - outdated_count: จำนวนที่ล้าสมัยเกินไป
+    - max_latency: ค่าสูงสุดของ acc_latency (ใช้แสดงเป็น MAX)
+    """
+    org_id = request.args.get('org_id')
+    package_id = request.args.get('package_id')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    # ---- ปรับค่าบัคเก็ตได้ที่นี่ ----
+    # สมมติ DQM.acc_latency = จำนวน "วันเกินรอบ" (<=0 = ทันรอบ)
+    # B1_NONE_UPDATE = case((DQM.acc_latency.is_(None), 1), else_=0)          # ไม่มีการอัพเดตหลังจัดเก็บ
+    # B2_ON_SCHEDULE = case((DQM.acc_latency <= 0, 1), else_=0)
+    # B3_NEEDS_ATTENTION = case(
+    # [((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1)], else_=0
+    # )
+    # B4_SHOULD_IMPROVE = case(
+    #     [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
+    # )               # อัพเดตตามรอบ
+    # # B3_NEEDS_ATTENTION = case((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1, else_=0)   # รบกวนปรับปรุง
+    # # B4_SHOULD_IMPROVE = case((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1, else_=0)   # ควรปรับปรุง
+    # B5_MUST_IMPROVE = case((DQM.acc_latency > 30), 1, else_=0)       
+    B1_NONE_UPDATE = case([(DQM.acc_latency.is_(None), 1)], else_=0)
+    B2_ON_SCHEDULE = case([(DQM.acc_latency <= 0, 1)], else_=0)
+    B3_NEEDS_ATTENTION = case(
+        [((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1)], else_=0
+    )
+    B4_SHOULD_IMPROVE = case(
+        [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
+    )
+    B5_MUST_IMPROVE = case([(DQM.acc_latency > 30, 1)], else_=0)                        # ต้องปรับปรุง
+    OUTDATED_THRESHOLD = 30   # ปรับได้ตามนโยบายองค์กร (เช่น 30/60/90 วัน)
+
+    q = Session.query(
+        func.avg(DQM.freshness).label('avg_freshness'),
+        func.sum(B1_NONE_UPDATE).label('b1'),
+        func.sum(B2_ON_SCHEDULE).label('b2'),
+        func.sum(B3_NEEDS_ATTENTION).label('b3'),
+        func.sum(B4_SHOULD_IMPROVE).label('b4'),
+        func.sum(B5_MUST_IMPROVE).label('b5'),
+        func.sum(case((DQM.acc_latency > OUTDATED_THRESHOLD, 1), else_=0)).label('outdated'),
+        func.max(DQM.acc_latency).label('max_latency')
+    ).join(Package, Package.id == DQM.ref_id)\
+     .join(Group, Group.id == Package.owner_org)\
+     .join(JobDQ, DQM.job_id == JobDQ.job_id)
+
+    cond = []
+    if org_id:
+        cond.append(Group.id == org_id)
+    if package_id:
+        cond.append(Package.id == package_id)
+    if date_from:
+        cond.append(cast(JobDQ.created_at, Date) >= date_from)
+    if date_to:
+        cond.append(cast(JobDQ.created_at, Date) <= date_to)
+    if cond:
+        q = q.filter(and_(*cond))
+
+    r = q.one()
+
+    return jsonify({
+        "avg_freshness": float(r.avg_freshness or 0),
+        "latency_buckets": {
+            "ไม่มีการอัพเดตหลังจัดเก็บ": int(r.b1 or 0),
+            "อัพเดตตามรอบ": int(r.b2 or 0),
+            "รบกวนปรับปรุง": int(r.b3 or 0),
+            "ควรปรับปรุง": int(r.b4 or 0),
+            "ต้องปรับปรุง": int(r.b5 or 0)
+        },
+        "outdated_count": int(r.outdated or 0),
+        "max_latency": int(r.max_latency or 0)
+    })
+
 def quality_reports():
     return {'msg': 'quality reports'}
 # def top_package_owners(limit=100, page=1):
@@ -345,3 +681,4 @@ qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report
 qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)
 qa.add_url_rule('/dashboard/<org_id>', endpoint="dashboard", view_func=dashboard)
+# qa.add_url_rule('/api/graph/timeliness_summary', endpoint="timeliness_summary", view_func=timeliness_summary)

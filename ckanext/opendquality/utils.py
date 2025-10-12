@@ -1,6 +1,6 @@
-from sqlalchemy import func, desc, cast, Integer, case, Float
+from sqlalchemy import func, desc, cast, Integer, case, Float, and_
 from ckan.model import package_table, Session, Package, Group, Resource
-from ckanext.opendquality.model import DataQualityMetrics as DQM
+from ckanext.opendquality.model import DataQualityMetrics as DQM, JobDQ
 from sqlalchemy.dialects import postgresql
 
 # ใช้ created_at ถ้ามี; ไม่งั้นใช้ id แทน
@@ -25,8 +25,10 @@ def get_radar_aggregate_all(org_id=None):
     latest = (
         Session.query(
             DQM.ref_id.label("ref_id"),
+            DQM.job_id,
             DQM.validity, DQM.completeness, DQM.consistency,
             DQM.freshness, DQM.relevance, DQM.availability,
+            DQM.type,
             func.row_number().over(
                 partition_by=DQM.ref_id,
                 order_by=desc(order_col)
@@ -48,7 +50,8 @@ def get_radar_aggregate_all(org_id=None):
         .select_from(Package)
         .join(latest, latest.c.ref_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
-        .filter(latest.c.rn == 1)
+        .join(JobDQ, latest.c.job_id == JobDQ.job_id)
+        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
     )
     if org_id is not None:
         q = q.filter(Group.id == org_id)
@@ -71,8 +74,9 @@ def qa_counts(org_id=None):
         Session.query(Package.id.label("package_id"))
         .join(DQM, DQM.ref_id == Package.id)              # ผูก DQM กับ dataset
         .join(Group, Group.id == Package.owner_org)       # ผูกกับหน่วยงาน
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)  # ผูกกับ JobDQ
         .filter(Package.state == "active")                # นับเฉพาะชุดข้อมูล active
-        .filter(DQM.type == "package")                    # ถ้ามีคอลัมน์ type
+        .filter(DQM.type == "package", JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')                    # ถ้ามีคอลัมน์ type
     )
     if org_id:
         qa_pkg_ids = qa_pkg_ids.filter(Group.id == org_id)
@@ -108,9 +112,11 @@ def qa_detail_blocks(org_id=None):
     latest = (
         Session.query(
             DQM.ref_id.label("package_id"),
+            DQM.job_id,
             DQM.metrics,
             DQM.downloadable,
             DQM.access_api,
+            DQM.type,
             func.row_number().over(
                 partition_by=DQM.ref_id,
                 order_by=desc(order_col)
@@ -128,7 +134,8 @@ def qa_detail_blocks(org_id=None):
         )
         .join(latest, latest.c.package_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
-        .filter(latest.c.rn == 1)
+        .join(JobDQ, latest.c.job_id == JobDQ.job_id)
+        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
     )
     if org_id:
         base_q = base_q.filter(Group.id == org_id)
@@ -173,4 +180,114 @@ def qa_detail_blocks(org_id=None):
         "availability":{"downloadable": {"yes": int(dl_yes or 0), "no": int(dl_no or 0)},
                         "access_api":  {"yes": int(api_yes or 0), "no": int(api_no or 0)},
                         "total": int(total or 0)},
+    }
+
+def get_relevance_top(org_id=None, limit=5):
+    order_col = getattr(DQM, "created_at", DQM.id)
+    latest = (
+        Session.query(
+            DQM.ref_id.label("package_id"),
+            DQM.job_id,
+            DQM.relevance,
+            DQM.type,
+            func.row_number().over(
+                partition_by=DQM.ref_id,
+                order_by=desc(order_col)
+            ).label("rn")
+        )
+    ).subquery("latest")
+
+    q = (
+        Session.query(
+            Package.id, Package.title, Package.name,
+            Group.title.label("org_title"), Group.name.label("org_name"),
+            Group.id.label("org_id"),
+            JobDQ.org_parent_id.label('parent_id'),
+            latest.c.relevance
+        )
+        .join(latest, latest.c.package_id == Package.id)
+        .join(Group, Group.id == Package.owner_org)
+        .join(JobDQ, latest.c.job_id == JobDQ.job_id)
+        .filter(latest.c.rn == 1, latest.c.type == "package", JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+        .filter(Package.state == "active")
+    )
+    if org_id:
+        q = q.filter(Group.id == org_id)
+
+    q = q.order_by(desc(latest.c.relevance)).limit(limit)
+
+    results = []
+    for pid, title, name, org_title, org_name, org_id, parent_id, relevance in q.all():
+        results.append({
+            "id": pid,
+            "title": title,
+            "name": name,
+            "org": {
+                "title": org_title,
+                "name": org_name,
+                "id": org_id,
+                "parent_id": parent_id
+            },
+            "relevance": float(relevance or 0)
+        })
+
+    return results
+
+def get_timeliness_summary(org_id=None):
+    # B1_NONE_UPDATE = case((DQM.acc_latency.is_(None), 1), else_=0)          # ไม่มีการอัพเดตหลังจัดเก็บ
+    # B2_ON_SCHEDULE = case((DQM.acc_latency <= 0, 1), else_=0)               # อัพเดตตามรอบ
+    # B3_NEEDS_ATTENTION = case((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1, else_=0)   # รบกวนปรับปรุง
+    # B4_SHOULD_IMPROVE = case((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1, else_=0)   # ควรปรับปรุง
+    # B5_MUST_IMPROVE = case((DQM.acc_latency > 30), 1, else_=0)                               # ต้องปรับปรุง
+    # OUTDATED_THRESHOLD = 30   # ปรับได้ตามนโยบายองค์กร (เช่น 30/60/90 วัน)
+    B1_NONE_UPDATE = case([(DQM.acc_latency.is_(None), 1)], else_=0)
+    B2_ON_SCHEDULE = case([(DQM.acc_latency <= 0, 1)], else_=0)
+    B3_NEEDS_ATTENTION = case(
+        [((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1)], else_=0
+    )
+    B4_SHOULD_IMPROVE = case(
+        [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
+    )
+    B5_MUST_IMPROVE = case([(DQM.acc_latency > 30, 1)], else_=0)                        # ต้องปรับปรุง
+    OUTDATED_THRESHOLD = 30   # ปรับได้ตามนโยบายองค์กร (เช่น 30/60/90 วัน)
+
+    q = Session.query(
+        func.avg(DQM.freshness).label('avg_freshness'),
+        func.sum(B1_NONE_UPDATE).label('b1'),
+        func.sum(B2_ON_SCHEDULE).label('b2'),
+        func.sum(B3_NEEDS_ATTENTION).label('b3'),
+        func.sum(B4_SHOULD_IMPROVE).label('b4'),
+        func.sum(B5_MUST_IMPROVE).label('b5'),
+        func.sum(case((DQM.acc_latency > OUTDATED_THRESHOLD, 1), else_=0)).label('outdated'),
+        func.max(DQM.acc_latency).label('max_latency')
+    ).join(Package, Package.id == DQM.ref_id)\
+     .join(Group, Group.id == Package.owner_org)\
+     .join(JobDQ, DQM.job_id == JobDQ.job_id)\
+     .filter(DQM.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+
+    cond = []
+    if org_id:
+        cond.append(Group.id == org_id)
+    # if package_id:
+    #     cond.append(Package.id == package_id)
+    # if date_from:
+    #     cond.append(cast(JobDQ.created_at, Date) >= date_from)
+    # if date_to:
+    #     cond.append(cast(JobDQ.created_at, Date) <= date_to)
+    if cond:
+        q = q.filter(and_(*cond))
+
+    r = q.one()
+
+    return {
+        "avg_freshness": float(r.avg_freshness or 0),
+        "latency_buckets": {
+            "ไม่มีการอัพเดตหลังจัดเก็บ": int(r.b1 or 0),
+            "อัพเดตตามรอบ": int(r.b2 or 0),
+            "รบกวนปรับปรุง": int(r.b3 or 0),
+            "ควรปรับปรุง": int(r.b4 or 0),
+            "ต้องปรับปรุง": int(r.b5 or 0)
+        },
+        "outdated_count": int(r.outdated or 0),
+        "max_latency": int(r.max_latency or 0)
     }

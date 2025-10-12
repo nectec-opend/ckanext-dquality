@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block secondary_content %}
-  {% include "ckanext/opendquality/left_side.html" %}
+{% include "ckanext/opendquality/left_side.html" %}
 {% endblock %}
 
 {% block page_header %}
@@ -22,25 +22,45 @@
 {% block primary_content_inner %}
 <h1>{{ title }}</h1>
 <div class="row table-responsive">
-  <form id='org-filter-form' class="form-inline" method="GET">
+  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('opendquality.admin_report') }}">
     {{ h.csrf_input() }}
     {%- set options=[] -%}
-    {%- do options.append({'value': '', 'text': _('หน่วยงานทั้งหมด')}) -%}
-    {%- for org in orgs -%}
-      {%- do options.append({'value': org.org_id|string, 'text': org.org_title}) -%}
+    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%}
+    {%- for p in parents -%}
+    {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
     {%- endfor -%}
     {{ form.select(
-      'org-select',
-      label=_('หน่วยงาน'),
-      selected=org_id,
-      options=options,
-      classes=[],
-      id='org-select',
-      attrs={'data-module': 'autocomplete'},
-      error={}
+    'org_main',
+    label=_('หน่วยงานหลัก'),
+    selected=selected_main,
+    options=options,
+    classes=[],
+    id='org_main',
+    attrs={'data-module': 'autocomplete'},
+    error={}
+    )}}
+
+    {%- set options=[] -%}
+    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานย่อย --')}) -%}
+    {% if sub_options %}
+    {%- for c in sub_options -%}
+    {%- do options.append({'value': c.id|string, 'text': c.title}) -%}
+    {%- endfor -%}
+    {% endif %}
+    {{ form.select(
+    'org_sub',
+    label=_('หน่วยงานย่อย'),
+    selected=selected_sub,
+    options=options,
+    classes=[],
+    id='org_sub',
+    attrs={'data-module': 'autocomplete'},
+    error={}
     )}}
     <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
     <button type="button" id="export-btn" class="btn btn-success">Export</button>
+    <button type="button" id="export-all-btn" class="btn btn-warning" alt="export data quality result package and resouce">Export All
+    </button>
   </form>
 </div>
 <hr>
@@ -52,8 +72,8 @@
         <th>{{ _("รหัสชุดข้อมูล") }}</th>
         <th>{{ _("ชื่อชุดข้อมูล") }}</th>
         {%if quality_type == 'resource'%}
-          <th>{{ _("รหัสทรัพยากร") }}</th>
-          <th>{{ _("ชื่อทรัพยากร") }}</th>
+        <th>{{ _("รหัสทรัพยากร") }}</th>
+        <th>{{ _("ชื่อทรัพยากร") }}</th>
         {% endif %}
         <th>{{ _("ชื่อหน่วยงาน") }}</th>
         <th>{{ _("openess") }}</th>
@@ -78,10 +98,11 @@
       <tr>
         <td>{{ loop.index }}</td>
         <td>{{ report.package_id }}</td>
-        <td><a href="{{ h.url_for('opendquality.admin_report',org_id=report.org_id, package_id=report.package_id) }}" target="qa-link">{{ report.package_title }}</a></td>
+        <td><a href="{{ h.url_for('opendquality.admin_report',org_id=report.org_id, package_id=report.package_id, org_main=report.org_parent_id, org_sub=report.org_id) }}"
+            target="qa-link">{{ report.package_title }}</a></td>
         {%if quality_type == 'resource'%}
-          <td>{{ report.resource_id }}</td>
-          <td>{{ report.resource_name }}</td>
+        <td>{{ report.resource_id }}</td>
+        <td>{{ report.resource_name }}</td>
         {% endif %}
         <td>{{ report.org_title }}</td>
         <td>{{ report.openness }}</td>
@@ -135,6 +156,13 @@
   });
 </script> -->
 <script>
+  window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};
+  window.SUB_DEFAULT_LABEL  = {{ _('-- เลือกหน่วยงานย่อย --') | tojson }};
+  window.SUB_SELECTED       = "{{ selected_sub }}";
+</script>
+
+<script>
+  // ✅ Modal JSON Preview
   document.addEventListener('DOMContentLoaded', function () {
     var modal = document.getElementById('jsonModal');
     modal.addEventListener('show.bs.modal', function (event) {
@@ -149,24 +177,28 @@
       }
     });
   });
-  document.getElementById('org-filter-form').addEventListener('submit', function (e) {
-    e.preventDefault();
-    const selected = document.getElementById('org-select').value;
-    const newUrl = selected ? `/qa/admin_report/${selected}` : '/qa/admin_report';
-    window.location.href = newUrl;
-  });
-  document.getElementById('export-btn').addEventListener('click', function () {
-    const orgId = document.getElementById('org-select').value;
+
+  // ✅ ปุ่ม Export ให้ใช้ id จริง ๆ ของ org_main/org_sub
+  // document.getElementById('export-btn').addEventListener('click', function () {
+  document.querySelectorAll('#export-btn, #export-all-btn').forEach( btn => {
+    btn.addEventListener('click', function () {
+    const orgSub = document.getElementById('org_sub').value;
     const params = new URLSearchParams(window.location.search);
     const packageId = params.get('package_id');
-    let url = orgId ? `/qa/admin_report/${orgId}` : `/qa/admin_report`;
-    if (packageId) {
-      url += `?package_id=${encodeURIComponent(packageId)}&export=1`;
-    }else {
-      url += `?export=1`;
+
+    let url = '/qa/admin_report';
+    // if (orgMain) url += `/${encodeURIComponent(orgMain)}`;
+    if (orgSub) url += `/${encodeURIComponent(orgSub)}`;
+
+    const query = [];
+    if (packageId) query.push(`package_id=${encodeURIComponent(packageId)}`);
+    query.push('export=1');
+    if (this.id === 'export-all-btn') {
+      query.push('export_all=1');
     }
-    window.location.href = url;
+
+    window.location.href = url + '?' + query.join('&');
+    });
   });
 </script>
-
 {% endblock %}

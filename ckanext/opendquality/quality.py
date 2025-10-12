@@ -182,8 +182,8 @@ class ResourceCSVData(object):
         if len(csv_data):
             self.total = len(csv_data) - 1
         log.debug('-------------ResourceCSVData----------')
-        log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
-                  str(self), self.total, self.column_names, self.fields)
+        # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
+        #           str(self), self.total, self.column_names, self.fields)
 
     def _get_fields(self, csv_data):
         if not csv_data:
@@ -536,7 +536,7 @@ class DataQualityMetrics(object):
             return False
         normalized_format = data_format.replace('.', '').upper()
         return normalized_format in OPENNESS_5_STAR_FORMATS
-    def convert_mimetype_to_format(self, mimetype, resource_format):
+    def convert_mimetype_to_format(self, mimetype, resource_format, resource_url):
         file_format = resource_format.upper().strip()
         mimetype_map = {
             # Excel
@@ -590,16 +590,11 @@ class DataQualityMetrics(object):
         mimetype_format = mimetype_map.get(mimetype, None)
 
         # 2. fallback ถ้าเจอ octet-stream → เดาจาก extension
-        if mimetype == "application/octet-stream" and ext:
-            ext = ext.lower()
-            if ext == ".csv":
-                mimetype_format = "CSV"
-            elif ext == ".xlsx":
-                mimetype_format = "XLSX"
-            elif ext == ".xls":
-                mimetype_format = "XLS"
-            elif ext == ".json":
-                mimetype_format = "JSON"
+        if mimetype == "application/octet-stream" and resource_url:
+            path = urlparse(resource_url).path
+            ext = os.path.splitext(path)[1].lower()
+            if ext in ['.csv', '.xlsx', '.xls', '.json','.ppt','.pptx','.doc','.docx','.rdf']:
+                mimetype_format = ext.replace('.', '').upper()
 
         # 3. ถ้าไม่มี mapping เลย ให้ใช้ resource_format ที่ส่งมา
         result = mimetype_format or file_format
@@ -771,7 +766,7 @@ class DataQualityMetrics(object):
             #----Check mimetype-----------------------
             mimetype = ResourceFetchData2.detect_mimetype(resource_url)
             detected_format = ''
-            detected_format = self.convert_mimetype_to_format(mimetype,resource['format'])
+            detected_format = self.convert_mimetype_to_format(mimetype,resource['format'],resource_url)
             if file_size is not None:
                 file_size_mb = file_size/1024**2
                 log.debug("File size (MB): %s", file_size_mb)

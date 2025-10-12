@@ -23,10 +23,11 @@ import ckanext.opendquality.quality as quality_lib
 from logging import getLogger
 import ckan.model as model
 from ckanext.opendquality.model import DataQualityMetrics as qa_table
-from ckanext.opendquality.model import JobDQ
+from ckanext.opendquality.model import JobDQ as job_table
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 import requests
+from ckan.plugins.toolkit import config
 
 
 log = getLogger(__name__)
@@ -92,8 +93,88 @@ def calculate(organization=None, dataset=None,dimension='all'):
             all_packages(_process_batch)
 
         else:
-            pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset, package_table.c.type == 'dataset', package_table.c.private == False,package_table.c.state == 'active').first()
-            metrics.calculate_metrics_for_dataset(pkg[0])
+            # pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset, package_table.c.type == 'dataset', package_table.c.private == False,package_table.c.state == 'active').first()
+            # metrics.calculate_metrics_for_dataset(pkg[0])
+            #-------------------------------
+            # หา dataset id
+            pkg = Session.query(package_table.c.id, package_table.c.name).filter(
+                package_table.c.name == dataset,
+                package_table.c.type == 'dataset',
+                package_table.c.private == False,
+                package_table.c.state == 'active'
+            ).first()
+
+            if not pkg:
+                log.error(f"Dataset '{dataset}' not found or inactive.")
+                raise ValueError(f"Dataset '{dataset}' not found or inactive.")
+
+            dataset_id, dataset_name = pkg
+
+            # 1. ปิด job เก่า (active=False)
+            old_jobs = Session.query(job_table).filter(
+                job_table.org_id == None,     # แยกกรณี dataset job
+                job_table.org_name == dataset_name,
+                job_table.active == True
+            ).all()
+
+            for old_job in old_jobs:
+                old_job.active = False
+            Session.commit()
+            if old_jobs:
+                log.info("Deactivated %s previous active job(s) for dataset %s", len(old_jobs), dataset_name)
+
+            # 2. ตรวจสอบ job ของวันนี้ → ถ้ามี → ลบ metrics + job
+            today = date.today()
+            today_jobs = Session.query(job_table).filter(
+                job_table.org_name == dataset_name,
+                job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+            ).all()
+
+            if today_jobs:
+                for job in today_jobs:
+                    Session.query(qa_table).filter(
+                        qa_table.job_id == job.job_id
+                    ).delete(synchronize_session='fetch')
+                    Session.delete(job)
+                Session.commit()
+                log.info("Deleted %s old job(s) and metrics for dataset %s today",
+                         len(today_jobs), dataset_name)
+
+            # 3. สร้าง job ใหม่
+            job_id = str(uuid.uuid4())
+            job = job_table(
+                job_id=job_id,
+                org_id=None,
+                org_name=dataset_name,
+                status="pending",
+                requested_timestamp=date.today(),
+                run_type='dataset',
+                active=True
+            )
+            Session.add(job)
+            Session.commit()
+
+            try:
+                # เปลี่ยนเป็น running
+                job.status = "running"
+                job.started_timestamp = date.today()
+                Session.commit()
+
+                # run metric calculation
+                metrics.calculate_metrics_for_dataset(dataset_id, job_id=job_id)
+
+                # mark finish
+                job.status = "finish"
+                job.finish_timestamp = date.today()
+                job.active = True
+                Session.commit()
+
+            except Exception as e:
+                log.error("Job %s for dataset %s failed. Error: %s", job_id, dataset_name, str(e))
+                log.exception(e)
+                job.status = "fail"
+                job.finish_timestamp = date.today()
+                Session.commit()
 
     #------------------------------
     if organization:  
@@ -113,21 +194,56 @@ def calculate(organization=None, dataset=None,dimension='all'):
 
         else:
             parent_org_id, parent_org_name = get_parent_organization(organization)
-            org_id = get_org_id_from_name(organization)
-
+            org_id = get_org_id_from_name(organization)      
+            # 1. ตรวจสอบ org_id
             if not org_id:
                 log.error(f"Organization '{organization}' not found in CKAN.")
                 raise ValueError(f"Organization '{organization}' not found in CKAN.")
 
+            # 2. ปิด job เก่าทั้งหมดของ org (active=False)
+            old_all_jobs = Session.query(job_table).filter(
+                job_table.org_id == org_id,
+                job_table.active == True
+            ).all()
+
+            for old_job in old_all_jobs:
+                old_job.active = False
+            Session.commit()
+            if old_all_jobs:
+                log.info("Deactivated %s previous active job(s) for organization %s", len(old_all_jobs), organization)
+
+            # 3. ตรวจสอบ job ของวันนี้ → ถ้ามี → ลบ metrics + job
+            today = date.today()
+            today_jobs = Session.query(job_table).filter(
+                job_table.org_id == org_id,
+                job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+            ).all()
+
+            if today_jobs:
+                for job in today_jobs:
+                    # ลบ metrics ของ job เก่า
+                    Session.query(qa_table).filter(
+                        qa_table.job_id == job.job_id
+                    ).delete(synchronize_session='fetch')
+
+                    # ลบ job เอง
+                    Session.delete(job)
+
+                Session.commit()
+                log.info("Deleted %s old job(s) and metrics for organization %s today",
+                        len(today_jobs), organization)
+            
+            # 4. สร้าง job ใหม่
             job_id = str(uuid.uuid4())
-            job = JobDQ(
+            job = job_table(
                 job_id=job_id,
                 org_parent_id=parent_org_id,
                 org_parent_name=parent_org_name,
                 org_id=org_id,
                 org_name=organization,
                 status="pending",
-                requested_date=datetime.utcnow(),
+                requested_timestamp=date.today(),
+                run_type='organization',
                 active=True
             )
             Session.add(job)
@@ -135,31 +251,35 @@ def calculate(organization=None, dataset=None,dimension='all'):
             try:
                 # เปลี่ยนเป็น running
                 job.status = "running"
-                job.started_date = datetime.utcnow()
+                job.started_timestamp = date.today()
                 Session.commit()
                 def _process_batch(packages):
                     for pkg in packages:
                         try:
                             metrics.calculate_metrics_for_dataset(pkg,job_id=job_id)
-                        except Exception as e:
-                            log.error('Failed to calculate metrics for %s. Error: %s',
-                                    pkg, str(e))
-                            log.exception(e)
+                        except Exception as e:                     
+                            log.error('Job failed at Cli: Failed to calculate metrics')
+                            # log.error('Failed to calculate metrics for %s. Error: %s',
+                            #         pkg, str(e))
+                            Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
+                            job.status = "fail"
+                            job.finish_timestamp = date.today()
+                            Session.commit()        
                 
-                org_packages(_process_batch, organization)
+                org_packages(_process_batch, organization,job)
 
                 # จบงาน → mark finish
                 job.status = "finish"
-                job.finish_date = datetime.utcnow()
+                job.finish_timestamp = date.today()
                 job.activate = True
-
                 Session.commit()
             except Exception as e:
+                log.error('Job failed at Cli: Failed to calculate metrics')
+                # log.error("Job %s failed. Error: %s", job_id, str(e))
+                Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
                 job.status = "fail"
-                job.finish_date = datetime.utcnow()
+                job.finish_timestamp = date.today()
                 Session.commit()
-                log.error("Job %s failed. Error: %s", job_id, str(e))
-                log.exception(e)
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one
     from paste.registry import Registry
@@ -197,7 +317,7 @@ def all_packages(handler):
             log.error('Failed to process package batch. Error: %s', str(e))
             log.exception(e)
 
-def org_packages(handler,org_name):
+def org_packages(handler,org_name,job):
     offset = 0
     limit = 64
     while True:
@@ -221,25 +341,29 @@ def org_packages(handler,org_name):
             log.debug('Processing %d packages in current batch.', count)
             handler(packages)
         except Exception as e:
+            job.status = "fail"
+            job.finish_timestamp = date.today(),
+            Session.commit()
+            log.error('Job failed at Cli-org package')
             log.error('Failed to process package batch. Error: %s', str(e))
             log.exception(e)
-
 
 @quality.command(u'delete', help='Delete data quality metrics')
 @click.option('--dataset',
               help='Delete a dataset by name. Use "all" to delete all datasets.')
 @click.option('--organization',
-              default= None,
+              default=None,
               help='Delete quality metrics by organization')
-def del_metrict(organization=None, dataset=None):
+@click.option('--job_id',
+              default=None,
+              help='Delete quality metrics by job id')
+def del_metrict(organization=None, dataset=None, job_id=None):
     if dataset:
         if dataset == 'all':
-            # ลบทุกแถวในตาราง metrics
             Session.query(qa_table).delete()
             Session.commit()
             log.info("Deleted all data quality metrics")
         else:
-            # หา dataset ที่ตรงกับชื่อ
             pkg = Session.query(package_table.c.id).filter(
                 package_table.c.name == dataset,
                 package_table.c.type == 'dataset'
@@ -251,7 +375,6 @@ def del_metrict(organization=None, dataset=None):
 
             list_ref = [pkg[0]]
 
-            # เพิ่ม resource ที่อยู่ใน dataset นี้ด้วย
             res = Session.query(resource_table.c.id).filter(
                 resource_table.c.package_id == pkg[0]
             ).all()
@@ -265,24 +388,157 @@ def del_metrict(organization=None, dataset=None):
 
     elif organization:
         if organization == 'all':
-            obj = Session.query(qa_table).delete()
+            Session.query(qa_table).delete()
             Session.commit()
+            log.info("Deleted all data quality metrics")
         else:
             org = model.Group.get(organization)
-            pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
-            
-            list_ref = [ row[0] for row in pkg.all()]
+            pkg = Session.query(package_table.c.id).filter(
+                package_table.c.owner_org == org.id
+            )
+
+            list_ref = [row[0] for row in pkg.all()]
             for result in pkg.all():
-                res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
-                list_ref += [ rw[0] for rw in res]
-            qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
+                res = Session.query(resource_table.c.id).filter(
+                    resource_table.c.package_id == result[0]
+                ).all()
+                list_ref += [rw[0] for rw in res]
+
+            Session.query(qa_table).filter(
+                qa_table.ref_id.in_(list_ref)
+            ).delete(synchronize_session='fetch')
             Session.commit()
             log.info("Deleted data quality metrics for organization %s", organization)
+
+    elif job_id:
+        # ตรวจสอบว่า job มีอยู่จริงไหม
+        job_to_delete = Session.query(job_table).filter(job_table.job_id == job_id).first()
+
+        if not job_to_delete:
+            log.warning("No job found for job_id %s", job_id)
+            return
+
+        org_id = job_to_delete.org_id
+        org_name = job_to_delete.org_name
+        was_active = job_to_delete.active
+
+        # ลบ metrics ก่อน
+        deleted_metrics = Session.query(qa_table).filter(
+            qa_table.job_id == job_id
+        ).delete(synchronize_session='fetch')
+
+        # ลบ job
+        Session.delete(job_to_delete)
+        Session.commit()
+        log.info("Deleted job %s and %s metrics", job_id, deleted_metrics)
+
+        # ถ้า job ที่ลบเป็น active ให้หางานก่อนหน้า (ของ org เดียวกัน) ที่จบแล้ว (finish)
+        if was_active:
+            last_finished_job = (
+                Session.query(job_table)
+                .filter(
+                    job_table.org_id == org_id,
+                    job_table.status == 'finish'   # ต้องเป็นงานที่จบแล้วเท่านั้น
+                )
+                .order_by(job_table.requested_timestamp.desc())
+                .first()
+            )
+
+            if last_finished_job:
+                last_finished_job.active = True
+                Session.commit()
+                log.info(
+                    "Set previous finished job (%s) as active for organization %s",
+                    last_finished_job.job_id,
+                    org_name
+                )
+            else:
+                log.info(
+                    "No finished job found to set active for organization %s",
+                    org_name
+                )
+    #-- ok version---
+    # elif job_id:
+    #     deleted_metrics = Session.query(qa_table).filter(
+    #         qa_table.job_id == job_id
+    #     ).delete(synchronize_session='fetch')
+
+    #     # ลบ job ด้วย
+    #     deleted_jobs = Session.query(job_table).filter(
+    #         job_table.job_id == job_id
+    #     ).delete(synchronize_session='fetch')
+
+    #     Session.commit()
+    #     if deleted_metrics or deleted_jobs:
+    #         log.info("Deleted %s metrics and %s jobs for job_id %s",
+    #                 deleted_metrics, deleted_jobs, job_id)
+    #     else:
+    #         log.warning("No data quality metrics or jobs found for job_id %s", job_id)
+
     else:
-        log.error("Please provide either --dataset or --organization")
+        log.error("Please provide either --dataset, --organization, or --job_id")
+# @quality.command(u'delete', help='Delete data quality metrics')
+# @click.option('--dataset',
+#               help='Delete a dataset by name. Use "all" to delete all datasets.')
+# @click.option('--organization',
+#               default= None,
+#               help='Delete quality metrics by organization')
+# def del_metrict(organization=None, dataset=None):
+#     if dataset:
+#         if dataset == 'all':
+#             # ลบทุกแถวในตาราง metrics
+#             Session.query(qa_table).delete()
+#             Session.commit()
+#             log.info("Deleted all data quality metrics")
+#         else:
+#             # หา dataset ที่ตรงกับชื่อ
+#             pkg = Session.query(package_table.c.id).filter(
+#                 package_table.c.name == dataset,
+#                 package_table.c.type == 'dataset'
+#             ).first()
+
+#             if not pkg:
+#                 log.error("Dataset %s not found", dataset)
+#                 return
+
+#             list_ref = [pkg[0]]
+
+#             # เพิ่ม resource ที่อยู่ใน dataset นี้ด้วย
+#             res = Session.query(resource_table.c.id).filter(
+#                 resource_table.c.package_id == pkg[0]
+#             ).all()
+#             list_ref += [rw[0] for rw in res]
+
+#             Session.query(qa_table).filter(
+#                 qa_table.ref_id.in_(list_ref)
+#             ).delete(synchronize_session='fetch')
+#             Session.commit()
+#             log.info("Deleted data quality metrics for dataset %s", dataset)
+
+#     elif organization:
+#         if organization == 'all':
+#             obj = Session.query(qa_table).delete()
+#             Session.commit()
+#         else:
+#             org = model.Group.get(organization)
+#             pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
+            
+#             list_ref = [ row[0] for row in pkg.all()]
+#             for result in pkg.all():
+#                 res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
+#                 list_ref += [ rw[0] for rw in res]
+#             qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
+#             Session.commit()
+#             log.info("Deleted data quality metrics for organization %s", organization)
+#     else:
+#         log.error("Please provide either --dataset or --organization")
 def get_parent_organization(org_id):
     # url = f"https://data.go.th/api/3/action/group_tree_section?type=organization&id={org_id}"
-    url = f"https://ckan-dev.opend.cloud/api/3/action/group_tree_section?type=organization&id={org_id}"
+    # url = f"https://ckan-dev.opend.cloud/api/3/action/group_tree_section?type=organization&id={org_id}"
+    base_url = config.get("ckan.site_url")
+    url = f"{base_url}/api/3/action/group_tree_section?type=organization&id={org_id}"
+    log.debug('base_url')
+    log.debug(url)
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
