@@ -20,9 +20,9 @@ qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
 EXEMPT_ENDPOINTS = {
-    # 'opendquality.index',
-    # 'opendquality.admin_report',
-    # 'opendquality.dashboard',
+    'opendquality.index',
+    'opendquality.admin_report',
+    'opendquality.dashboard',
 }
 
 @qa.teardown_request
