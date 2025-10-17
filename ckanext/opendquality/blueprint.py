@@ -9,7 +9,7 @@ from ckanext.opendquality.model import DataQualityMetrics as DQM , JobDQ
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
 from sqlalchemy import and_, literal, case, func, Date, cast
-from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top
+from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top, get_openness_score, get_openness_counts, get_validity_counts, get_quality_counts, get_resource_format_counts
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
@@ -22,7 +22,7 @@ dquality = quality_lib.OpendQuality()
 EXEMPT_ENDPOINTS = {
     # 'opendquality.index',
     # 'opendquality.admin_report',
-    'opendquality.dashboard',
+    # 'opendquality.dashboard',
 }
 
 @qa.teardown_request
@@ -176,13 +176,13 @@ def make_group_query_main():
             .filter(JobDQ.active == True, JobDQ.status == 'finish')
             .distinct())
 
-# @qa.before_request
-# def request_before():
-#     if request.endpoint in EXEMPT_ENDPOINTS:
-#         return
-#     user = getattr(toolkit.c, 'userobj', None)
-#     if not user or not getattr(user, 'is_sysadmin', False):
-#         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
+@qa.before_request
+def request_before():
+    if request.endpoint in EXEMPT_ENDPOINTS:
+        return
+    user = getattr(toolkit.c, 'userobj', None)
+    if not user or not getattr(user, 'is_sysadmin', False):
+        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
 
 #---------------------Call calculate---------------------------------
 #--------------------------------------------------------------------
@@ -554,6 +554,13 @@ def dashboard(org_id=None):
     parents ,children_by_parent = build_hierachy_with_orgs()
     sub_options = children_by_parent.get(selected_main, []) if selected_main else []
     org_id = org_id if org_id is not None else selected_sub
+
+    resource_format_count = get_resource_format_counts(org_id)
+    priority = ["PDF", "XLSX", "CSV", "JSON", "XLS", "XML", "TXT"]
+    others = sorted([k for k in resource_format_count if k not in priority])
+    resource_format_labels = priority + others
+    resource_format_data = [resource_format_count.get(lbl, 0) for lbl in resource_format_labels]
+
     extra_vars = {
         'parents': parents,
         'children_by_parent': children_by_parent,
@@ -567,6 +574,11 @@ def dashboard(org_id=None):
         'radar_data': get_radar_aggregate_all(org_id),
         'timeliness_summary': get_timeliness_summary(org_id),
         'counts': qa_counts(org_id),
+        'openness_score': get_openness_score(org_id),
+        'openness_count': get_openness_counts(org_id),
+        'validity_count': get_validity_counts(org_id),
+        'quality_count': get_quality_counts(org_id),
+        'resource_format_count': {'labels': resource_format_labels, 'data': resource_format_data},
         'top_relevance': get_relevance_top(org_id),
         'metrics': qa_detail_blocks(org_id),
         'user': toolkit.c.user,

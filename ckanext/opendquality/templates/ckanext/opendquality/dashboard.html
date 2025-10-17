@@ -71,7 +71,7 @@
   </div>
 </div> -->
 <div class="row qa-radar-row" style="z-index: 2;">
-  <div class="primary col-md-6 col-xs-12">
+  <div class="primary col-md-8 col-xs-12">
     <canvas id="radar_chart" data-module="opendquality-radar-chart"></canvas>
   </div>
 
@@ -95,6 +95,41 @@
         </div>
       </div>
     </div>
+    <div class="panel panel-default" style="margin-top: 100px;">
+      <div class="panel-heading h4 fw-bold">มิติด้าน Openness</div>
+      <div class="panel-body">
+        <div class="openness-card">
+          <table class="table table-borderless table-striped openness-table mb-0">
+            <tbody>
+              <tr>
+                <td class="h4 fw-bold">Other</td>
+                <td class="text-center">{{ openness_score.Other }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★</td>
+                <td class="text-center">{{ openness_score.get('1 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★</td>
+                <td class="text-center">{{ openness_score.get('2 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★★</td>
+                <td class="text-center">{{ openness_score.get('3 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★★★</td>
+                <td class="text-center">{{ openness_score.get('4 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★★★★</td>
+                <td class="text-center">{{ openness_score.get('5 Star', 0) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -110,8 +145,8 @@
       <div class="col-lg-4">
         <div class="border rounded h-100 p-3 position-relative">
           <div class="fw-bold mb-2">Freshness</div>
-          <div class="position-absolute top-0 end-0 m-2 badge bg-warning text-dark"
-               id="badge-freshness">Dataset AVG Freshness: –</div>
+          <div class="position-absolute top-0 end-0 m-2 badge bg-warning text-dark" id="badge-freshness">Dataset AVG
+            Freshness: –</div>
           <canvas id="chart-freshness" style="height:120px; width:100%;"></canvas>
           <div class="text-center mt-2 text-muted">ความสดใหม่ของข้อมูล</div>
         </div>
@@ -160,17 +195,21 @@
             </thead>
             <tbody>
               {% for rev in top_relevance %}
-                <tr>
-                  <td><a href="{{ h.url_for('opendquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}">
+              <tr>
+                <td><a
+                    href="{{ h.url_for('opendquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}">
                     {{ rev.org.title }}</a></td>
-                  <td><a href="{{ h.url_for('opendquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}"
-            target="qa-link">{{ rev.title }}</a></td>
-                  <td>
-                    <div class="progress">
-                      <div class="progress-bar bg-info" role="progressbar" style="width: {{_(rev.relevance)}}%;" aria-valuenow="{{_(rev.relevance)}}" aria-valuemin="0" aria-valuemax="100">{{_(rev.relevance)}}%</div>
+                <td><a
+                    href="{{ h.url_for('opendquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}"
+                    target="qa-link">{{ rev.title }}</a></td>
+                <td>
+                  <div class="progress">
+                    <div class="progress-bar bg-info" role="progressbar" style="width: {{_(rev.relevance)}}%;"
+                      aria-valuenow="{{_(rev.relevance)}}" aria-valuemin="0" aria-valuemax="100">{{_(rev.relevance)}}%
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -204,6 +243,76 @@
 
 </div>
 
+<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
+  <div class="col col-lg-6">
+    <div>
+      <div class="card flex-fill text-center">
+        <div class="card-header fw-semibold bg-light">
+          <h4>จำนวน
+            <span class="badge bg-success">Structure</span> /
+            <span class="badge bg-danger">Un-Structure</span>
+            Data
+          </h4>
+        </div>
+        <div class="card-body d-flex justify-content-center align-items-center gap-1">
+          <div class="col col-lg-6 badge bg-success px-4 py-3 fs-4">
+            <span class="fw-bold">{{ openness_count.structured}}</span>
+          </div>
+          <div class="col col-lg-6 badge bg-danger px-4 py-3 fs-4">
+            <span class="fw-bold">{{ openness_count.unstructured}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 20px;">
+      <div class="card flex-fill text-center">
+        <div class="card-header fw-semibold bg-light">
+          <h4>จำนวน
+            <span class="badge bg-success">Validity</span> /
+            <span class="badge bg-danger">Un-Validity</span>
+          </h4>
+        </div>
+        <div class="card-body d-flex justify-content-center align-items-center gap-1">
+          <div class="col col-lg-6 badge bg-success px-4 py-3 fs-4">
+            <span class="fw-bold">{{ validity_count.validity }}</span>
+          </div>
+          <div class="col col-lg-6 badge bg-danger px-4 py-3 fs-4">
+            <span class="fw-bold">{{ validity_count.un_validity }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 20px;">
+      <div class="card flex-fill text-center">
+        <div class="card-header fw-semibold bg-light">
+          <h4>
+            <span class="badge bg-primary">ชุดข้อมูลคุณภาพดี</span> /
+            <span class="badge bg-warning">ชุดข้อมูลที่ควรปรับปรุง</span>
+          </h4>
+        </div>
+        <div class="card-body d-flex justify-content-center align-items-center gap-1">
+          <div class="col col-lg-6 badge bg-primary px-4 py-3 fs-4">
+            <span class="fw-bold">{{ quality_count.good_quality}}</span>
+          </div>
+          <div class="col col-lg-6 badge bg-warning px-4 py-3 fs-4">
+            <span class="fw-bold">{{ quality_count.need_improvement}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col col-lg-6">
+    <div class="card">
+      <div class="card-header fw-semibold bg-light">
+        <h4 class="mb-0">จำนวนไฟล์แบ่งตามประเภท</h4>
+      </div>
+      <div class="card-body" style="height:260px">
+        <canvas id="dqmFormatBar"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% endblock %}
 
@@ -213,8 +322,8 @@
 {% asset "opendquality/opendquality-js" %}
 <script>
   window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};
-  window.SUB_DEFAULT_LABEL  = {{ _('-- เลือกหน่วยงานย่อย --') | tojson }};
-  window.SUB_SELECTED       = "{{ selected_sub }}";
+  window.SUB_DEFAULT_LABEL = {{ _('-- เลือกหน่วยงานย่อย --') | tojson }};
+  window.SUB_SELECTED = "{{ selected_sub }}";
 </script>
 <script>
   // document.getElementById('org-filter-form').addEventListener('submit', function (e) {
@@ -225,49 +334,53 @@
   // });
   const radar_chart_config = {
     labels: {{ radar_data.labels | tojson }},
-    datasets: [
-      {
-        label: '{{ _("คะแนนคุณภาพชุดข้อมูล") }}',
-        data: {{ radar_data.data | tojson }},
-        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-        borderColor: 'rgba(255, 99, 132, 1)',
-        borderWidth: 1
+  datasets: [
+    {
+      label: '{{ _("คะแนนคุณภาพชุดข้อมูล") }}',
+      data: {{ radar_data.data | tojson }},
+    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+    borderColor: 'rgba(255, 99, 132, 1)',
+    borderWidth: 1
         }
-    ]
+  ]
   }
 
   var M = {{ metrics| tojson | safe}};
   var T = {{ timeliness_summary | tojson | safe}};
+  const { labels, data} = {{ resource_format_count | tojson | safe }};
+
+  console.log({{ resource_format_count | tojson | safe }});
+  // console.log(resource_format_data);
 
   // สร้างกราฟสำหรับแต่ละมิติ
-//   document.addEventListener('DOMContentLoaded', function () {
-//     const M = {{ metrics| tojson | safe}};
-//   // Validity – bar
-//   // new Chart(document.getElementById('chart-validity'), {
-//   //   type: 'bar',
-//   //   data: {
-//   //     labels: ['blank header', 'duplicate header', 'extra value'],
-//   //     datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
-//   //   },
-//   //   options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-//   // });
+  //   document.addEventListener('DOMContentLoaded', function () {
+  //     const M = {{ metrics| tojson | safe}};
+  //   // Validity – bar
+  //   // new Chart(document.getElementById('chart-validity'), {
+  //   //   type: 'bar',
+  //   //   data: {
+  //   //     labels: ['blank header', 'duplicate header', 'extra value'],
+  //   //     datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
+  //   //   },
+  //   //   options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  //   // });
 
-//   // // Relevancy – horizontal bar
-//   // new Chart(document.getElementById('chart-relevancy'), {
-//   //   type: 'bar',
-//   //   data: {
-//   //     labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
-//   //     datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
-//   //   },
-//   //   options: {
-//   //     indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-//   //     scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
-//   //   }
-//   // });
+  //   // // Relevancy – horizontal bar
+  //   // new Chart(document.getElementById('chart-relevancy'), {
+  //   //   type: 'bar',
+  //   //   data: {
+  //   //     labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
+  //   //     datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
+  //   //   },
+  //   //   options: {
+  //   //     indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+  //   //     scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+  //   //   }
+  //   // });
 
-//   // // Availability – donuts
-//   // donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
-//   // donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
-// });
+  //   // // Availability – donuts
+  //   // donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
+  //   // donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
+  // });
 </script>
 {%endblock %}

@@ -220,5 +220,35 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
   //   document.getElementById('btn-apply')?.addEventListener('click', renderTimeliness);
   // });
 })();
+(async () => {
+  // // ถ้าจะกรองตาม org ให้ใส่ ?org_id=<id>
+  // const res = await fetch('/api/dqm/resource-format-summary{{ "?org_id=" + org_id if org_id else "" }}');
+  // const { labels, data } = await res.json();
 
+  const ctx = document.getElementById('dqmFormatBar').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'จำนวนไฟล์',
+        data,
+        borderWidth: 0,
+        backgroundColor: '#7bd489' // โทนเขียวคล้ายตัวอย่าง
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => `${c.parsed.y ?? 0}` } }
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+})();
 

@@ -177,3 +177,28 @@
 .progress {
   display: block !important;
 }
+
+.openness-table {
+  border: 2px solid #0c2230;
+  font-size: 16px;
+  background-color: #fff;
+  border-radius: 8px;
+}
+
+.openness-table th {
+  background-color: #f7f9fb;
+  font-weight: 700;
+}
+
+.openness-table td {
+  vertical-align: middle;
+  font-weight: 600;
+}
+
+.openness-table .stars {
+  color: #ffbf00 !important;
+  font-size: 20px;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+

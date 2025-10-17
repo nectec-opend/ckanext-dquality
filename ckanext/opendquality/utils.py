@@ -291,3 +291,180 @@ def get_timeliness_summary(org_id=None):
         "outdated_count": int(r.outdated or 0),
         "max_latency": int(r.max_latency or 0)
     }
+
+def get_openness_score(org_id=None):
+    query = (
+        Session.query(
+            case(
+                (DQM.openness == 0, 'Other'),
+                else_=func.concat(DQM.openness, ' Star')
+            ).label('openness_level'),
+            func.count(DQM.id).label('count')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(DQM.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+        .group_by('openness_level')
+    )
+    if org_id:
+        query = query.filter(JobDQ.org_id == org_id)
+    
+    return {row.openness_level: row.count for row in query.all()}
+
+def get_openness_counts(org_id=None):
+    data_type_expr = case(
+        (DQM.openness.in_([0, 1]), 'unstructured'),
+        else_='structured'
+    ).label('data_type')
+
+    query = (
+        Session.query(
+            data_type_expr,
+            func.count(DQM.id).label('count')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == 'package',
+            JobDQ.status == 'finish',
+            JobDQ.active.is_(True),
+            JobDQ.run_type == 'organization',
+            DQM.openness.isnot(None)
+        )
+    )
+
+    if org_id:
+        query = query.filter(JobDQ.org_id == org_id)
+
+    query = query.group_by(data_type_expr)
+
+    rows = query.all()
+    summary = {'structured': 0, 'unstructured': 0}
+    for row in rows:
+        summary[row.data_type] = row.count
+
+    return summary
+
+def get_validity_counts(org_id=None):
+    query = (
+        Session.query(
+            case(
+                (DQM.validity < 100, 'un_validity'),
+                (DQM.validity == 100, 'validity'),
+                else_='other'
+            ).label('validity_type'),
+            func.count(DQM.id).label('count')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == 'package',
+            JobDQ.status == 'finish',
+            JobDQ.active == True,
+            JobDQ.run_type == 'organization'
+        )
+    )
+
+    if org_id:
+        query = query.filter(JobDQ.org_id == org_id)
+
+    # group by
+    query = query.group_by('validity_type')
+    result = query.all()
+
+    # ค่า default ถ้าไม่มีผลลัพธ์
+    summary = {'validity': 0, 'un_validity': 0}
+    for row in result:
+        if row.validity_type in summary:
+            summary[row.validity_type] = row.count
+
+    return summary
+
+def get_quality_counts(org_id=None):
+    subquery = (
+        Session.query(
+            DQM.ref_id.label('package_id'),
+            func.avg(DQM.validity).label('avg_validity'),
+            func.avg(DQM.completeness).label('avg_completeness'),
+            func.avg(DQM.consistency).label('avg_consistency'),
+            func.avg(DQM.availability).label('avg_availability'),
+            func.avg(DQM.freshness).label('avg_freshness')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == 'package',
+            JobDQ.status == 'finish',
+            JobDQ.active == True,
+            JobDQ.run_type == 'organization'
+        )
+    )
+
+    if org_id:
+        subquery = subquery.filter(JobDQ.org_id == org_id)
+
+    subquery = subquery.group_by(DQM.ref_id).subquery()
+
+    # แบ่งกลุ่ม good / need improvement
+    query = (
+        Session.query(
+            case(
+                (
+                    and_(
+                        subquery.c.avg_validity == 100,
+                        subquery.c.avg_completeness == 100,
+                        subquery.c.avg_consistency == 100,
+                        subquery.c.avg_availability == 100,
+                        subquery.c.avg_freshness > 0
+                    ),
+                    'good_quality'
+                ),
+                else_='need_improvement'
+            ).label('quality_type'),
+            func.count().label('count')
+        )
+        .group_by('quality_type')
+    )
+
+    result = query.all()
+
+    summary = {
+        'good_quality': 0,
+        'need_improvement': 0
+    }
+
+    for row in result:
+        summary[row.quality_type] = row.count
+
+    return summary
+
+def get_resource_format_counts(org_id=None):
+    fmt_norm = func.coalesce(
+        func.nullif(func.upper(func.trim(DQM.format)), ''), 'UNKNOWN'
+    ).label('format')
+
+    q = (
+        Session.query(
+            fmt_norm,
+            func.count(DQM.id).label('count')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == 'resource',           # ใช้เฉพาะ resource
+            JobDQ.status == 'finish',         # เงื่อนไขที่ทีมคุณใช้บ่อย
+            JobDQ.active.is_(True),
+            JobDQ.run_type == 'organization'
+        )
+        .group_by(fmt_norm)
+        .order_by(func.count(DQM.id).desc())
+    )
+
+    if org_id:
+        q = q.filter(JobDQ.org_id == org_id)
+
+    rows = q.all()
+    counts = {r.format: r.count for r in rows}
+
+    # ตั้งค่า default ให้ format สำคัญ ๆ (ถ้ายังไม่มีให้เป็น 0)
+    base = ["PDF", "XLSX", "CSV", "JSON", "XLS", "XML", "TXT"]
+    for k in base:
+        counts.setdefault(k, 0)
+
+    return counts
+    
