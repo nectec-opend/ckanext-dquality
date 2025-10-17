@@ -20,9 +20,9 @@ qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
 EXEMPT_ENDPOINTS = {
-    'opendquality.index',
-    'opendquality.admin_report',
-    'opendquality.dashboard',
+    # 'opendquality.index',
+    # 'opendquality.admin_report',
+    # 'opendquality.dashboard',
 }
 
 @qa.teardown_request
@@ -181,7 +181,7 @@ def request_before():
     if request.endpoint in EXEMPT_ENDPOINTS:
         return
     user = getattr(toolkit.c, 'userobj', None)
-    if not user or not getattr(user, 'is_sysadmin', False):
+    if not user or not getattr(user, 'sysadmin', False):
         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
 
 #---------------------Call calculate---------------------------------
@@ -212,7 +212,6 @@ def calculate(dataset, dimension):
     # self.logger.debug('----Calculators---')
     # self.logger.debug(calculators)
     the_metrics  = quality_lib.DataQualityMetrics(metrics=calculators)
-    # the_metrics = resource.DataQualityMetrics(metrics=calculators)
 
     if dataset == 'all':
 
@@ -230,7 +229,6 @@ def calculate(dataset, dimension):
 
     else:
         the_metrics.calculate_metrics_for_dataset(dataset)
-        # self.calculate_metrics_for_dataset(dataset)
 
 
 def _register_mock_translator():
@@ -242,17 +240,6 @@ def _register_mock_translator():
     from pylons import translator
     registry.register(translator, MockTranslator())
 
-# def _get_org():
-#     org = group_query.with_entities(
-#         Group.id.label('org_id'),
-#         Group.name.label('org_name'),
-#         Group.title.label('org_title'),
-#         ).filter(
-#             Group.state == 'active',
-#             Group.type == 'organization'
-#         ).all()
-
-#     return org
 def _get_org_main():
     try:
         q = (make_group_query_main()
@@ -307,8 +294,8 @@ def all_packages(handler):
             log.exception(e)
 #-----------------------------------------------------
 def home():
-    if h.check_access('sysadmin') is False:
-        return toolkit.redirect_to('opendquality.dashboard')
+    # if h.check_access('sysadmin') is False:
+    #     return toolkit.redirect_to('opendquality.dashboard')
     extra_vars = {
         'title': toolkit._('Open Data Quality index'),
         'home': True,
@@ -321,7 +308,6 @@ def home():
         # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/index.html', extra_vars)
-    # return {'msg': 'hello world quality'}
 
 def admin_report(org_id=None):
     # if h.check_access('sysadmin') is False:
@@ -600,83 +586,6 @@ def calculate_quality(): #completeness
             #metrics.calculate_metrics_for_dataset('bird')  
     }
 
-def timeliness_summary():
-    """
-    JSON รวมสำหรับแผง Timeliness:
-    - avg_freshness: ค่าเฉลี่ย 0..1
-    - latency_buckets: นับจำนวนตามบัคเก็ต
-    - outdated_count: จำนวนที่ล้าสมัยเกินไป
-    - max_latency: ค่าสูงสุดของ acc_latency (ใช้แสดงเป็น MAX)
-    """
-    org_id = request.args.get('org_id')
-    package_id = request.args.get('package_id')
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-
-    # ---- ปรับค่าบัคเก็ตได้ที่นี่ ----
-    # สมมติ DQM.acc_latency = จำนวน "วันเกินรอบ" (<=0 = ทันรอบ)
-    # B1_NONE_UPDATE = case((DQM.acc_latency.is_(None), 1), else_=0)          # ไม่มีการอัพเดตหลังจัดเก็บ
-    # B2_ON_SCHEDULE = case((DQM.acc_latency <= 0, 1), else_=0)
-    # B3_NEEDS_ATTENTION = case(
-    # [((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1)], else_=0
-    # )
-    # B4_SHOULD_IMPROVE = case(
-    #     [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
-    # )               # อัพเดตตามรอบ
-    # # B3_NEEDS_ATTENTION = case((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1, else_=0)   # รบกวนปรับปรุง
-    # # B4_SHOULD_IMPROVE = case((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1, else_=0)   # ควรปรับปรุง
-    # B5_MUST_IMPROVE = case((DQM.acc_latency > 30), 1, else_=0)       
-    B1_NONE_UPDATE = case([(DQM.acc_latency.is_(None), 1)], else_=0)
-    B2_ON_SCHEDULE = case([(DQM.acc_latency <= 0, 1)], else_=0)
-    B3_NEEDS_ATTENTION = case(
-        [((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1)], else_=0
-    )
-    B4_SHOULD_IMPROVE = case(
-        [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
-    )
-    B5_MUST_IMPROVE = case([(DQM.acc_latency > 30, 1)], else_=0)                        # ต้องปรับปรุง
-    OUTDATED_THRESHOLD = 30   # ปรับได้ตามนโยบายองค์กร (เช่น 30/60/90 วัน)
-
-    q = Session.query(
-        func.avg(DQM.freshness).label('avg_freshness'),
-        func.sum(B1_NONE_UPDATE).label('b1'),
-        func.sum(B2_ON_SCHEDULE).label('b2'),
-        func.sum(B3_NEEDS_ATTENTION).label('b3'),
-        func.sum(B4_SHOULD_IMPROVE).label('b4'),
-        func.sum(B5_MUST_IMPROVE).label('b5'),
-        func.sum(case((DQM.acc_latency > OUTDATED_THRESHOLD, 1), else_=0)).label('outdated'),
-        func.max(DQM.acc_latency).label('max_latency')
-    ).join(Package, Package.id == DQM.ref_id)\
-     .join(Group, Group.id == Package.owner_org)\
-     .join(JobDQ, DQM.job_id == JobDQ.job_id)
-
-    cond = []
-    if org_id:
-        cond.append(Group.id == org_id)
-    if package_id:
-        cond.append(Package.id == package_id)
-    if date_from:
-        cond.append(cast(JobDQ.created_at, Date) >= date_from)
-    if date_to:
-        cond.append(cast(JobDQ.created_at, Date) <= date_to)
-    if cond:
-        q = q.filter(and_(*cond))
-
-    r = q.one()
-
-    return jsonify({
-        "avg_freshness": float(r.avg_freshness or 0),
-        "latency_buckets": {
-            "ไม่มีการอัพเดตหลังจัดเก็บ": int(r.b1 or 0),
-            "อัพเดตตามรอบ": int(r.b2 or 0),
-            "รบกวนปรับปรุง": int(r.b3 or 0),
-            "ควรปรับปรุง": int(r.b4 or 0),
-            "ต้องปรับปรุง": int(r.b5 or 0)
-        },
-        "outdated_count": int(r.outdated or 0),
-        "max_latency": int(r.max_latency or 0)
-    })
-
 def quality_reports():
     return {'msg': 'quality reports'}
 # def top_package_owners(limit=100, page=1):
@@ -693,4 +602,3 @@ qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report
 qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)
 qa.add_url_rule('/dashboard/<org_id>', endpoint="dashboard", view_func=dashboard)
-# qa.add_url_rule('/api/graph/timeliness_summary', endpoint="timeliness_summary", view_func=timeliness_summary)
