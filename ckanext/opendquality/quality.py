@@ -4042,15 +4042,7 @@ class Validity():#DimensionMetric
                             relevant_errors += 1
                     else:                              
                         continue
-                #     if  item_code != 'duplicate-row'
-                #         error_message = error_message + error.get('message')+','
-                #         count_val = dict_error[item_code]+1
-                #         dict_error[item_code] = count_val
-                #         if error['code'] in error_types:
-                #             relevant_errors += 1
-                #     else
-                #         continue
-                # encoding = table.get('encoding')
+                encoding = table.get('encoding')
                 valid = table.get('valid')
                 log.debug("---encoding---")
                 log.debug(encoding)
