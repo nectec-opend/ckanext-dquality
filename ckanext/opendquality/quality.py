@@ -30,7 +30,6 @@ import xlrd
 import io
 from io import BytesIO
 from io import StringIO
-import chardet
 from six import string_types
 import time
 from functools import reduce
@@ -45,6 +44,7 @@ from ckan.plugins.toolkit import config
 from ckan.model import Session, Package, Group
 import ckan.logic as logic
 from ckan import model
+from typing import List, Dict, Any, Tuple
 # from frictionless import Schema
 
 log = getLogger(__name__)
@@ -3450,7 +3450,7 @@ class Completeness():#DimensionMetric
         log.debug('---completeness start----')
         log.debug(data['fields'])
         log.debug(data['total'])
-        # log.debug('---completeness records----')
+        # log.debug('---completeness list records----')
         # log.debug(list(data['records']))
         # columns_count = len(data['fields'])
         # rows_count = data['total']
@@ -3488,14 +3488,27 @@ class Completeness():#DimensionMetric
         # df = pd.DataFrame(records)
         #--------------------------------------------
         rows_count = data['total']
-        df = pd.DataFrame(data['records'])
+        # df = pd.DataFrame(data['records'])
+        # แปลง raw_data เป็น DataFrame โดยข้ามแถวแรก (header)
+        df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
         log.debug(df)
         # เช็คว่ามีข้อมูลดิบหรือไม่ และ df แปลงเป็น DataFrame ได้หรือไม่
         if rows_count > 1 and df.empty:
-            return {
-                'error': 'Cannot parse table to DataFrame', 
-                'value': None
-            } 
+            log.debug("--df.empty--")
+            records = data['raw_data']  # ดึงข้อมูลทั้งหมดออกจาก LazyStreamingList
+            log.debug(records)
+            clean_records = []
+            for r in records:
+                if None in r:
+                    r.pop(None)
+                clean_records.append(r)
+
+            df = pd.DataFrame(clean_records) 
+            if rows_count > 1 and df.empty: 
+                return {
+                    'error': 'Cannot parse table to DataFrame', 
+                    'value': None
+                } 
 
         # เช็คว่าข้อมูลมีหรือไม่ (กรณีไม่มีข้อมูลดิบเลย หรือ df ว่างจริง)
         elif df.empty or df.shape[0] == 0 or df.shape[1] == 0:
@@ -3689,6 +3702,28 @@ class Uniqueness(): #DimensionMetric
         if isinstance(value, float) and math.isnan(value):
             return None
         return value
+    def _rename_columns(self, columns):
+        """ตั้งชื่อใหม่ให้คอลัมน์ซ้ำหรือชื่อ NaN"""
+        seen = {}
+        null_count = 0
+        new_cols = []
+        for col in columns:
+            # ถ้าชื่อคอลัมน์เป็น NaN หรือ None → แปลงเป็น Null_1, Null_2, ...
+            if pd.isna(col) or str(col).strip() == "":
+                null_count += 1
+                new_col = f"Null_{null_count}"
+            else:
+                new_col = str(col)
+
+            # ถ้ามีชื่อซ้ำ → เพิ่ม _1, _2, ...
+            if new_col in seen:
+                seen[new_col] += 1
+                new_col = f"{new_col}_{seen[new_col]}"
+            else:
+                seen[new_col] = 0
+
+            new_cols.append(new_col)
+        return new_cols
     def calculate_metric(self, resource, data):
         '''Calculates the uniqueness of the values in the data for the given
         resource.
@@ -3716,44 +3751,46 @@ class Uniqueness(): #DimensionMetric
             * `unique`, `int`, number unique values in the data.
             * `columns`, `dict`, detailed report for each column in the data.
         '''
-        df = pd.DataFrame(data['records'])
-        if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
-            return {
-                'error': 'Data is empty',
-                'value': None
-            }
-        else:
+        try:
+            # ✅ แปลง raw_data → DataFrame โดยข้าม header
+            df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
+
+            # ✅ ตั้งชื่อคอลัมน์ใหม่ (รวม NaN และชื่อซ้ำ)
+            df.columns = self._rename_columns(df.columns)
+
+            # ✅ ไม่ลบคอลัมน์ชื่อ NaN แล้ว
+            df = df.dropna(axis=1, how='all')  # ลบเฉพาะคอลัมน์ที่ว่างทั้งหมด (ไม่มีข้อมูลเลย)
+
+            if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+                return {'error': 'Data is empty', 'value': None}
+
             total_rows = len(df)
 
-            # หาแถวที่ซ้ำทั้งหมด
+            # ✅ หาแถวซ้ำ
             duplicates_bool = df.duplicated(keep=False)
             duplicate_rows = df[duplicates_bool].copy()
 
-            # group duplicates
-            grouped = (
-                duplicate_rows
-                .reset_index()
-                .groupby(list(df.columns), dropna=False)['index']
-                .apply(list)
-                .reset_index()
-            )
+            if not duplicate_rows.empty:
+                grouped = (
+                    duplicate_rows
+                    .reset_index()
+                    .groupby(list(df.columns), dropna=False, as_index=False)
+                    .agg({'index': list})
+                )
 
-            # แปลงให้อ่านง่าย
-            duplicate_details = []
-            for _, row in grouped.iterrows():
-                # row_data = {col: row[col] for col in df.columns}
-                row_data = {col: self.nan_to_none(row[col]) for col in df.columns}
-                # แปลง index ให้เป็นลำดับ row (เริ่มที่ 1 แทน 0)
-                human_rows = [i + 1 for i in row["index"]]
-                duplicate_details.append({
-                    "row": row_data,          # ค่า row ที่ซ้ำ
-                    "rows": human_rows        # บรรทัดที่ซ้ำ (อ่านง่าย)
-                })
+                duplicate_details = []
+                for _, row in grouped.iterrows():
+                    row_data = {col: self.nan_to_none(row[col]) for col in df.columns}
+                    human_rows = [i + 1 for i in row["index"]]
+                    duplicate_details.append({
+                        "row": row_data,
+                        "rows": human_rows
+                    })
+            else:
+                duplicate_details = []
 
-            # นับจำนวน unique rows
+            # ✅ คำนวณ uniqueness
             unique_rows = len(df.drop_duplicates())
-
-            # คำนวณ score
             uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
 
             return {
@@ -3763,6 +3800,60 @@ class Uniqueness(): #DimensionMetric
                 'duplicates': duplicate_details
             }
 
+        except Exception as e:
+            import traceback
+            log.error(f"[Uniqueness] Failed: {e}\n{traceback.format_exc()}")
+            return {'error': str(e), 'value': None}
+        #-----old1 ------
+        # # df = pd.DataFrame(data['records'])
+        # # แปลง raw_data เป็น DataFrame โดยข้ามแถวแรก (header)
+        # df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
+        # if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+        #     return {
+        #         'error': 'Data is empty',
+        #         'value': None
+        #     }
+        # else:
+        #     total_rows = len(df)
+
+        #     # หาแถวที่ซ้ำทั้งหมด
+        #     duplicates_bool = df.duplicated(keep=False)
+        #     duplicate_rows = df[duplicates_bool].copy()
+
+        #     # group duplicates
+        #     grouped = (
+        #         duplicate_rows
+        #         .reset_index()
+        #         .groupby(list(df.columns), dropna=False)['index']
+        #         .apply(list)
+        #         .reset_index()
+        #     )
+
+        #     # แปลงให้อ่านง่าย
+        #     duplicate_details = []
+        #     for _, row in grouped.iterrows():
+        #         # row_data = {col: row[col] for col in df.columns}
+        #         row_data = {col: self.nan_to_none(row[col]) for col in df.columns}
+        #         # แปลง index ให้เป็นลำดับ row (เริ่มที่ 1 แทน 0)
+        #         human_rows = [i + 1 for i in row["index"]]
+        #         duplicate_details.append({
+        #             "row": row_data,          # ค่า row ที่ซ้ำ
+        #             "rows": human_rows        # บรรทัดที่ซ้ำ (อ่านง่าย)
+        #         })
+
+        #     # นับจำนวน unique rows
+        #     unique_rows = len(df.drop_duplicates())
+
+        #     # คำนวณ score
+        #     uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
+
+        #     return {
+        #         'value': round(uniqueness_score, 2),
+        #         'total': total_rows,
+        #         'unique': unique_rows,
+        #         'duplicates': duplicate_details
+        #     }
+        #------old old --------------------------------------
         # # แปลง data['records'] เป็น DataFrame
         # df = pd.DataFrame(data['records'])
         # if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
@@ -3794,6 +3885,7 @@ class Uniqueness(): #DimensionMetric
         #         'unique': unique_rows,
         #         'duplicates': duplicate_indices
         #     }
+        #---------------------------------
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates uniqueness for all resources based on the metrics
         calculated in the previous phase for each resource.
@@ -3933,20 +4025,32 @@ class Validity():#DimensionMetric
                 'error': str(e),
             }      
         if validation:
-            # log.debug('---validation get report---')
-            dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 , 'duplicate-row': 0,'extra-value':0,'extra-header':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
+            # log.debug('---validation get report---') remove , 'duplicate-row': 0
+            dict_error = {'blank-header': 0, 'duplicate-header': 0, 'blank-row': 0 ,'extra-value':0,'extra-header':0,'missing-value':0,'format-error':0, 'schema-error':0, 'encoding-error':0, 'source-error':0,'encoding':'', 'error':''}
             error_types=['blank-header', 'duplicate-header', 'extra-value','source-error']
             for table in validation.get('tables', []):
                 total_rows += table.get('row-count', 0)
                 total_errors += table.get('error-count', 0)
                 for error in table.get('errors', []):
                     item_code = error.get('code')
-                    error_message = error_message + error.get('message')+','
-                    count_val = dict_error[item_code]+1
-                    dict_error[item_code] = count_val
-                    if error['code'] in error_types:
-                        relevant_errors += 1
-                encoding = table.get('encoding')
+                    if item_code != 'duplicate-row':   
+                        error_message += error.get('message', '') + ','   
+                        count_val = dict_error.get(item_code, 0) + 1      
+                        dict_error[item_code] = count_val
+
+                        if item_code in error_types:   
+                            relevant_errors += 1
+                    else:                              
+                        continue
+                #     if  item_code != 'duplicate-row'
+                #         error_message = error_message + error.get('message')+','
+                #         count_val = dict_error[item_code]+1
+                #         dict_error[item_code] = count_val
+                #         if error['code'] in error_types:
+                #             relevant_errors += 1
+                #     else
+                #         continue
+                # encoding = table.get('encoding')
                 valid = table.get('valid')
                 log.debug("---encoding---")
                 log.debug(encoding)
@@ -4474,11 +4578,16 @@ class Consistency():#DimensionMetric
         # log.debug(data)
         # log.debug(fields)
         count_row=0
-        # log.debug('-----consistency record--------')
-
-        for row in data['records']:
-            count_row=count_row+1
-            for field, value in row.items():
+        log.debug('-----consistency record--------') # version แรกใช้ data record
+        field_names = [f['id'] for f in data['fields']]
+        # ข้าม header แถวแรกของ raw_data
+        for row in data['raw_data'][1:]:#data['records']:
+            # count_row=count_row+1
+            # for field, value in row.items():
+            count_row += 1
+            row_dict = dict(zip(field_names, row))  # แปลง list -> dict
+            log.debug(row_dict)
+            for field, value in row_dict.items():
                 # ข้ามค่าว่าง
                 if value is None or (isinstance(value, str) and str(value).strip() == ""):
                     continue  
@@ -5413,101 +5522,228 @@ def detect_extra_columns_from_rows(rows, expected_columns):
             })
 
     return extra_rows
-def detect_columns_and_validate(records):
-    # แปลง dict เป็น list ของ row values
-    # rows = [list(record.values()) for record in records]
-    # ตรวจว่ามีข้อมูลอย่างน้อย 2 แถว (1 header + 1 data)
-    if not records or len(records) < 2:
-        return {
-            "expected_columns": 0,
-            "extra_rows": []
-        }
+# def detect_columns_and_validate(records):
+#     # แปลง dict เป็น list ของ row values
+#     # rows = [list(record.values()) for record in records]
+#     # ตรวจว่ามีข้อมูลอย่างน้อย 2 แถว (1 header + 1 data)
+#     if not records or len(records) < 2:
+#         return {
+#             "expected_columns": 0,
+#             "extra_rows": []
+#         }
 
-    # ใช้แถวที่ 1 เป็น header
-    header = records[1]
-    data_rows = records[2:]  # ข้ามแถวคำอธิบาย (row 0)
+#     # ใช้แถวที่ 1 เป็น header
+#     header = records[1]
+#     data_rows = records[2:]  # ข้ามแถวคำอธิบาย (row 0)
 
-    # แปลงเป็น list of dict (ใช้ header)
-    rows = [dict(zip(header, row)) for row in data_rows]
-    # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
-    sample_size=20
-    sample_rows = rows[:sample_size] 
-    log.debug('---sample_rows---')
-    log.debug(sample_rows)
-#     # sample_rows = rows[1:sample_size+1]  # ข้าม header
-    def count_nonempty_except_last(row):
-        """
-        รับได้ทั้ง row ที่เป็น list หรือ dict
-        แปลงค่าทุก cell เป็น string และนับ cell ที่ไม่ว่าง (ยกเว้นช่องสุดท้ายถ้าว่าง)
-        """
-        if not row:
-            return 0
-        # รองรับกรณี row เป็น dict (เช่นจาก XLSX) → แปลงเป็น list
-        if isinstance(row, dict):
-            # sort ตาม key เพื่อความสม่ำเสมอ ถ้า key เป็น None จะไว้ท้าย
-            ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
-        else:
-            ordered_values = row
-        # แปลงทุก cell เป็น string และ trim
-        str_row = [str(cell).strip() if cell is not None else '' for cell in ordered_values]
-        # ถ้าช่องสุดท้ายว่าง → ไม่เอา
-        trimmed = str_row[:-1] if str_row and str_row[-1] == '' else str_row
-        # นับช่องที่มีข้อมูลจริง
-        return sum(1 for cell in trimmed if cell != '')
+#     # แปลงเป็น list of dict (ใช้ header)
+#     rows = [dict(zip(header, row)) for row in data_rows]
+#     # 1) ตรวจหา "จำนวนคอลัมน์ที่มีข้อมูลจริง" จาก sample rows
+#     sample_size=20
+#     sample_rows = rows[:sample_size] 
+#     log.debug('---sample_rows---')
+#     log.debug(sample_rows)
+# #     # sample_rows = rows[1:sample_size+1]  # ข้าม header
+#     def count_nonempty_except_last(row):
+#         """
+#         รับได้ทั้ง row ที่เป็น list หรือ dict
+#         แปลงค่าทุก cell เป็น string และนับ cell ที่ไม่ว่าง (ยกเว้นช่องสุดท้ายถ้าว่าง)
+#         """
+#         if not row:
+#             return 0
+#         # รองรับกรณี row เป็น dict (เช่นจาก XLSX) → แปลงเป็น list
+#         if isinstance(row, dict):
+#             # sort ตาม key เพื่อความสม่ำเสมอ ถ้า key เป็น None จะไว้ท้าย
+#             ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
+#         else:
+#             ordered_values = row
+#         # แปลงทุก cell เป็น string และ trim
+#         str_row = [str(cell).strip() if cell is not None else '' for cell in ordered_values]
+#         # ถ้าช่องสุดท้ายว่าง → ไม่เอา
+#         trimmed = str_row[:-1] if str_row and str_row[-1] == '' else str_row
+#         # นับช่องที่มีข้อมูลจริง
+#         return sum(1 for cell in trimmed if cell != '')
     
-    #กรองแถวที่มีข้อมูลน้อยกว่า 50% ทิ้งไป
-    cleaned_sample_rows = [
-        r for r in sample_rows if r and count_nonempty_except_last(r) >= len(r) * 0.5
-    ]
-    col_counts = [count_nonempty_except_last(r) for r in cleaned_sample_rows]
+#     #กรองแถวที่มีข้อมูลน้อยกว่า 50% ทิ้งไป
+#     cleaned_sample_rows = [
+#         r for r in sample_rows if r and count_nonempty_except_last(r) >= len(r) * 0.5
+#     ]
+#     col_counts = [count_nonempty_except_last(r) for r in cleaned_sample_rows]
 
-    # col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
-    log.debug('---cleaned_sample_rows---')
-    log.debug(cleaned_sample_rows)
-    # col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
-    if not col_counts:
-        expected_columns = 0
-    else:
-        expected_columns, freq = Counter(col_counts).most_common(1)[0]
+#     # col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+#     log.debug('---cleaned_sample_rows---')
+#     log.debug(cleaned_sample_rows)
+#     # col_counts = [count_nonempty_except_last(r) for r in sample_rows if r]
+#     if not col_counts:
+#         expected_columns = 0
+#     else:
+#         expected_columns, freq = Counter(col_counts).most_common(1)[0]
 
-    # new logic: sampling_confidence based on missing value ratio
-    total_cells = 0
-    total_missing = 0
-    for row in sample_rows:
-        if isinstance(row, dict):
-            # แปลง dict เป็น list ของ values (sorted keys รวม None)
-            ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
-        else:
-            ordered_values = row
+#     # new logic: sampling_confidence based on missing value ratio
+#     total_cells = 0
+#     total_missing = 0
+#     for row in sample_rows:
+#         if isinstance(row, dict):
+#             # แปลง dict เป็น list ของ values (sorted keys รวม None)
+#             ordered_values = [row[k] for k in sorted(row.keys(), key=lambda x: str(x) if x is not None else 'zzz')]
+#         else:
+#             ordered_values = row
 
-        for cell in ordered_values:
-            total_cells += 1
-            # กรณี cell เป็น None, '' หรือ '   ' → ถือว่า missing
-            if cell is None or str(cell).strip() == '':
-                total_missing += 1
-    # log.debug('missing/total')            
-    # log.debug(total_missing)
-    # log.debug(total_cells)
-    if total_cells == 0:
-        sampling_confidence = 0
-    else:
-        sampling_confidence = 1 - (total_missing / total_cells)
+#         for cell in ordered_values:
+#             total_cells += 1
+#             # กรณี cell เป็น None, '' หรือ '   ' → ถือว่า missing
+#             if cell is None or str(cell).strip() == '':
+#                 total_missing += 1
+#     # log.debug('missing/total')            
+#     # log.debug(total_missing)
+#     # log.debug(total_cells)
+#     if total_cells == 0:
+#         sampling_confidence = 0
+#     else:
+#         sampling_confidence = 1 - (total_missing / total_cells)
 
-    sampling_confidence_percent = round(sampling_confidence * 100, 2)
+#     sampling_confidence_percent = round(sampling_confidence * 100, 2)
 
-    result = {
-        "method": "sampling",
-        "expected_columns": expected_columns,
-        "header_row": None,
-        "sampling_confidence": sampling_confidence_percent
-    }
+#     result = {
+#         "method": "sampling",
+#         "expected_columns": expected_columns,
+#         "header_row": None,
+#         "sampling_confidence": sampling_confidence_percent
+#     }
     
-    if sampling_confidence_percent >= 80:
-        result["extra_rows"] = detect_extra_columns_from_rows(rows, expected_columns)
-    else:
-        result["extra_rows"] = []
-        result["note"] = "Low confidence from sampling; skipped extra value check"
-    return result
+#     if sampling_confidence_percent >= 80:
+#         result["extra_rows"] = detect_extra_columns_from_rows(rows, expected_columns)
+#     else:
+#         result["extra_rows"] = []
+#         result["note"] = "Low confidence from sampling; skipped extra value check"
+#     return result
+#---------[Start] detect extra value ---
+# ---------- normalize rows -----------
+def normalize_row(row: List[Any], trim_trailing_empty: bool = True) -> List[str]:
+    """Convert each cell to string, strip, convert None -> ''. Optionally trim trailing empty cells."""
+    str_cells = []
+    for c in row:
+        if c is None:
+            s = ''
+        else:
+            s = str(c).strip()
+        str_cells.append(s)
+    if trim_trailing_empty:
+        # pop trailing empty cells
+        while str_cells and str_cells[-1] == '':
+            str_cells.pop()
+    return str_cells
+
+# ---------- header detection ----------
+def analyze_header_candidates(rows: List[List[str]], top_n: int = 10) -> Dict[str, Any]:
+    """
+    Examine top_n rows, produce best header candidate with confidence.
+    returns dict: { 'line_no', 'row', 'num_columns', 'confidence' }
+    """
+    def is_label_like(cell: str) -> bool:
+        # label-like if not empty and not numeric-only and shortish
+        if not cell: 
+            return False
+        s = cell.strip()
+        # consider numeric if digits and optionally comma/dot
+        digits = s.replace(',', '').replace('.', '').isdigit()
+        if digits:
+            return False
+        # also treat if contains many letters
+        return len(s) <= 200
+
+    candidates = []
+    for i in range(min(top_n, len(rows))):
+        r = normalize_row(rows[i], trim_trailing_empty=False)  # keep length to judge
+        if not r:
+            continue
+        num_cols = len(r)
+        non_empty = sum(1 for c in r if c != '')
+        nonempty_ratio = non_empty / num_cols if num_cols else 0
+        label_score = sum(1 for c in r if is_label_like(c)) / num_cols if num_cols else 0
+        # line weight: higher weight for earlier lines
+        line_weight = 1.0 - (i * 0.05)  # adjust factor if wanted
+        # confidence = (nonempty_ratio * 0.6) + (label_score * 0.3) + (line_weight * 0.1)
+        confidence = (nonempty_ratio * 0.6) +  (line_weight * 0.3) + (label_score * 0.1)
+        candidates.append({
+            'line_no': i,
+            'row': r,
+            'num_columns': num_cols,
+            'nonempty_ratio': nonempty_ratio,
+            'label_score': label_score,
+            'confidence': confidence
+        })
+    if not candidates:
+        return {}
+    # choose best by confidence
+    best = max(candidates, key=lambda x: x['confidence'])
+    return best
+
+# ---------- sampling-based expected column ----------
+def sample_expected_columns(rows: List[List[Any]], header_index: int = 0, sample_size: int = 20) -> Tuple[int, float]:
+    """
+    Count columns across a sample of rows and return (expected_columns, sampling_confidence)
+    sampling_confidence = fraction of sample rows that match the mode column count AND have low missing ratio
+    """
+    sample_rows = []
+    start = header_index + 1 if header_index is not None else 0
+    for r in rows[start:start + sample_size]:
+        sr = normalize_row(r, trim_trailing_empty=True)
+        sample_rows.append(sr)
+
+    if not sample_rows:
+        return 0, 0.0
+
+    col_counts = [len(r) for r in sample_rows]
+    counter = Counter(col_counts)
+    mode_count, freq = counter.most_common(1)[0]
+    # confidence compute: proportion of sample rows that equal mode AND have < 50% missing
+    good = 0
+    for r in sample_rows:
+        if len(r) == mode_count:
+            non_empty = sum(1 for c in r if c != '')
+            if mode_count == 0:
+                continue
+            if (non_empty / mode_count) >= 0.5:
+                good += 1
+    sampling_confidence = good / len(sample_rows)
+    return mode_count, sampling_confidence
+
+# ---------- detect_empty_columns ----------
+def detect_empty_columns(rows: List[List[Any]], header_index: int = 0) -> List[int]:
+    """
+    คืน index ของ column ที่เป็นค่าว่างทั้งหมด (ไม่รวม header)
+    """
+    # normalize ทุก row
+    norm_rows = [normalize_row(r, trim_trailing_empty=False) for r in rows[header_index+1:]]
+    
+    if not norm_rows:
+        return []
+
+    # transpose
+    cols = list(zip(*norm_rows))
+    
+    empty_col_idx = []
+    for i, col in enumerate(cols):
+        if all(c == '' for c in col):
+            empty_col_idx.append(i)
+    return empty_col_idx
+# ---------- detect extra rows ----------
+def detect_extra_rows(rows: List[List[Any]], expected_cols: int, trim_trailing_empty: bool = True):
+    extra = []
+    for i, raw in enumerate(rows, start=1):
+        r = normalize_row(raw, trim_trailing_empty=trim_trailing_empty)
+        if len(r) > expected_cols:
+            extra_vals = r[expected_cols:]
+            # ignore all-empty extras
+            if any(v != '' for v in extra_vals):
+                extra.append({
+                    'row_number': i,
+                    'cols': len(r),
+                    'extra_values': extra_vals
+                })
+    return extra
+# ---------- [End] detect extra rows ----------
 def validate_resource_data(resource,data):
     '''Performs a validation of a resource data, given the resource metadata.
 
@@ -5585,11 +5821,86 @@ def validate_resource_data(resource,data):
         #  แปลงเป็น list of dict
         records = [dict(zip(headers, row)) for row in rows]
         # log.debug(raw_data)
-        #check extra values ------------------
+        #[old]check extra values ------------------
         # extra_result = detect_columns_and_validate(records)
         # extra_rows = extra_result.get("extra_rows", [])
         # log.debug('----extra_rows----')
         # log.debug(extra_result)
+        #[new]check extra values ---------------
+
+        # 1) header candidate
+        top_n_header=10
+        sample_size=20
+        trim_trailing=True
+
+        header_info = analyze_header_candidates(raw_data, top_n=top_n_header)
+        header_idx = header_info.get('line_no') if header_info else 0
+        header_row = header_info.get('row') if header_info else raw_data[0]
+        header_conf = header_info.get('confidence', 0)
+
+        # 4) คำนวณ sampling expected cols
+        mode_cols, sampling_conf = sample_expected_columns(raw_data, header_index=header_idx, sample_size=sample_size)
+
+        # 5) ตัดสินใจเลือก expected cols
+        while header_row and (header_row[-1] is None or str(header_row[-1]).strip() == ''):
+                header_row.pop()
+                
+        extra_by_column = []
+        if sampling_conf < 0.5:
+            empty_col_idx = detect_empty_columns(raw_data, header_index=header_idx)
+            log.debug('empty_col_idx:', empty_col_idx)
+
+            if empty_col_idx:
+                # กำหนด expected_cols = column ก่อน column ว่างแรก
+                expected_cols = min(empty_col_idx)
+            else:
+                # ถ้าไม่มี column ว่าง ให้ใช้ header length
+                expected_cols = len(header_row)
+
+            chosen_from = 'header (sampling low)'
+            
+        
+        elif header_conf >= sampling_conf + 0.15:
+            expected_cols = len(header_row)
+            chosen_from = 'header (conf higher)'
+        else:
+            expected_cols = mode_cols
+            chosen_from = 'sampling'
+
+        # 6) ตรวจ extra rows
+        extra_rows = detect_extra_rows(raw_data, expected_cols, trim_trailing_empty=trim_trailing)
+        # header_info = analyze_header_candidates(raw_data, top_n=top_n_header)
+        # header_idx = header_info.get('line_no') if header_info else None
+        # header_row = header_info.get('row') if header_info else None
+        # header_conf = header_info.get('confidence', 0)
+
+        # # 2) เลือกเฉพาะ rows หลัง header
+        # rows_for_extra = raw_data[header_idx + 1:]
+
+        # # 3) clean rows
+        # clean_rows = [r for r in rows_for_extra if any((c is not None and str(c).strip() != '') for c in r)]
+        # if not clean_rows:
+        #     return {'error': 'no data', 'rows': 0}
+
+        # # 4) คำนวณ sampling expected cols
+        # mode_cols, sampling_conf = sample_expected_columns(rows_for_extra, header_index=header_idx, sample_size=sample_size)
+
+        # # 5) ตัดสินใจเลือก expected cols
+        # if sampling_conf < 0.5:
+        #     expected_cols = len(header_row)
+        #     chosen_from = 'header (sampling low)'
+        # elif header_conf >= sampling_conf + 0.15:
+        #     expected_cols = len(header_row)
+        #     chosen_from = 'header (conf higher)'
+        # else:
+        #     expected_cols = mode_cols
+        #     chosen_from = 'sampling'
+
+        # # 6) ตรวจ extra rows
+        # extra_rows = detect_extra_rows(rows_for_extra, expected_cols, trim_trailing_empty=trim_trailing)
+        log.debug(header_info)
+        log.debug(chosen_from)
+        log.debug(extra_rows)
         #---------------------------------------
         report = validate_from_records(records)
 
@@ -5606,20 +5917,22 @@ def validate_resource_data(resource,data):
         else:
             log.debug("no duplicate header")
         # --- ตรวจสอบ extra values
-        # if extra_rows:
-        #     log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
-        #     table = report['tables'][0]  # สมมุติว่า table เดียว
-        #     table['valid'] = False
-        #     table.setdefault('errors', []).append({
-        #         'code': 'extra-value',
-        #         'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
-        #         'message-data': {
-        #             'expected_columns': extra_result.get("expected_columns"),
-        #             'extra_rows': extra_rows
-        #         }
-        #     })
-        # else:
-        #     log.debug("--no extra value--")
+        if extra_rows:
+            log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
+            table = report['tables'][0]  # สมมุติว่า table เดียว
+            table['valid'] = False
+            table.setdefault('errors', []).append({
+                'code': 'extra-value',
+                'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
+                'message-data': {
+                    'header_confidence': round(header_conf, 3),
+                    'sampling_confidence': round(sampling_conf, 3),
+                    'expected_columns': expected_cols,
+                    'extra_rows': extra_rows
+                }
+            })
+        else:
+            log.debug("--no extra value--")
     #----------------------------
     # report = _validate_table(source, _format=_format, schema=schema, **options)
     log.debug(report)

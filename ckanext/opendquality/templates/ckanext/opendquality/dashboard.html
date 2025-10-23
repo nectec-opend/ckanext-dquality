@@ -89,14 +89,14 @@
             <span class="qa-stat-value">{{ counts.datasets }}</span>
           </div>
           <div class="qa-stat qa-stat--res">
-            <span class="qa-stat-label">Resource</span>
+            <span class="qa-stat-label">ทรัพยากร</span>
             <span class="qa-stat-value">{{ counts.resources }}</span>
           </div>
         </div>
       </div>
     </div>
     <div class="panel panel-default" style="margin-top: 100px;">
-      <div class="panel-heading h4 fw-bold">มิติด้าน Openness</div>
+      <div class="panel-heading h4 fw-bold">มิติด้าน Openness (ชุดข้อมูล)</div>
       <div class="panel-body">
         <div class="openness-card">
           <table class="table table-borderless table-striped openness-table mb-0">
@@ -136,7 +136,7 @@
 <div class="card mt-3" style="z-index: 2;">
   <div class="card-header text-center">
     <div class="h5 mb-0">มิติด้าน</div>
-    <div class="h4 fw-bold">Timeliness</div>
+    <div class="h4 fw-bold">Timeliness (ชุดข้อมูล)</div>
   </div>
   <div class="card-body">
     <div class="row g-3 align-items-stretch">
@@ -157,9 +157,6 @@
         <div class="border rounded h-100 p-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-bold">Acceptable Latency</div>
-            <span class="badge bg-warning text-dark" id="badge-latmax">
-              Dataset Acceptable Latency MAX: –
-            </span>
           </div>
           <div class="row g-3">
             <div class="col-8">
@@ -182,7 +179,7 @@
   <!-- 2) Relevancy -->
   <div class="col col-lg-8 d-flex">
     <div class="card flex-fill">
-      <div class="card-header fw-semibold">ชุดข้อมูลที่ตรงตามความต้องการของผู้ใช้ (Relevancy)</div>
+      <div class="card-header fw-semibold">ชุดข้อมูลที่ตรงตามความต้องการของผู้ใช้ (Relevancy) (ชุดข้อมูล)</div>
       <div class="card-body">
         <div class="row table-responsive" style="position: relative;">
           <table id="tb-relevance-result" class="table table-borderless table-striped">
@@ -221,7 +218,7 @@
   <!-- 3) Availability -->
   <div class="col col-lg-4 d-flex">
     <div class="card flex-fill">
-      <div class="card-header fw-semibold">มิติด้าน Availability</div>
+      <div class="card-header fw-semibold">มิติด้าน Availability (ทรัพยากร)</div>
       <div class="card-body">
         <div class="d-flex align-items-center gap-4 mb-3 qa-donut">
           <div class="fw-semibold text-muted" style="width:10rem;">Downloadable</div>
@@ -246,56 +243,59 @@
 <div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
   <div class="col col-lg-6">
     <div>
-      <div class="card flex-fill text-center">
-        <div class="card-header fw-semibold bg-light">
-          <h4>จำนวน
-            <span class="badge bg-success">Structure</span> /
-            <span class="badge bg-danger">Un-Structure</span>
-            Data
-          </h4>
-        </div>
-        <div class="card-body d-flex justify-content-center align-items-center gap-1">
-          <div class="col col-lg-6 badge bg-success px-4 py-3 fs-4">
-            <span class="fw-bold">{{ openness_count.structured}}</span>
-          </div>
-          <div class="col col-lg-6 badge bg-danger px-4 py-3 fs-4">
-            <span class="fw-bold">{{ openness_count.unstructured}}</span>
+      <!-- หมวด 1: ความถูกต้องของข้อมูล -->
+      <h3 class="section-title mb-3">
+        <span class="me-2">📊</span> ความถูกต้องของข้อมูล (ชุดข้อมูล)
+      </h3>
+      <div class="row g-3 mb-4">
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">ชุดข้อมูลคุณภาพดี</div>
+            <div class="metric-value value-blue">{{ quality_count.good_quality}}</div>
           </div>
         </div>
-      </div>
-    </div>
-    <div style="margin-top: 20px;">
-      <div class="card flex-fill text-center">
-        <div class="card-header fw-semibold bg-light">
-          <h4>จำนวน
-            <span class="badge bg-success">Validity</span> /
-            <span class="badge bg-danger">Un-Validity</span>
-          </h4>
-        </div>
-        <div class="card-body d-flex justify-content-center align-items-center gap-1">
-          <div class="col col-lg-6 badge bg-success px-4 py-3 fs-4">
-            <span class="fw-bold">{{ validity_count.validity }}</span>
-          </div>
-          <div class="col col-lg-6 badge bg-danger px-4 py-3 fs-4">
-            <span class="fw-bold">{{ validity_count.un_validity }}</span>
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">ชุดข้อมูลที่ควรปรับปรุง</div>
+            <div class="metric-value value-orange">{{ quality_count.need_improvement}}</div>
           </div>
         </div>
       </div>
-    </div>
-    <div style="margin-top: 20px;">
-      <div class="card flex-fill text-center">
-        <div class="card-header fw-semibold bg-light">
-          <h4>
-            <span class="badge bg-primary">ชุดข้อมูลคุณภาพดี</span> /
-            <span class="badge bg-warning">ชุดข้อมูลที่ควรปรับปรุง</span>
-          </h4>
-        </div>
-        <div class="card-body d-flex justify-content-center align-items-center gap-1">
-          <div class="col col-lg-6 badge bg-primary px-4 py-3 fs-4">
-            <span class="fw-bold">{{ quality_count.good_quality}}</span>
+
+      <!-- หมวด 2: โครงสร้างของข้อมูล -->
+      <h3 class="section-title mb-3">
+        <span class="me-2">🧩</span> โครงสร้างของข้อมูล (ทรัพยากร)
+      </h3>
+      <div class="row g-3 mb-4">
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Structured Data</div>
+            <div class="metric-value value-green">{{ openness_count.structured}}</div>
           </div>
-          <div class="col col-lg-6 badge bg-warning px-4 py-3 fs-4">
-            <span class="fw-bold">{{ quality_count.need_improvement}}</span>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Unstructured Data</div>
+            <div class="metric-value value-red">{{ openness_count.unstructured}}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- หมวด 3: ความสามารถในการอ่านด้วยเครื่อง -->
+      <h3 class="section-title mb-3">
+        <span class="me-2">🤖</span> ความสามารถในการอ่านด้วยเครื่อง (ทรัพยากร)
+      </h3>
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Machine-Readable</div>
+            <div class="metric-value value-green">{{ validity_count.validity }}</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Not Machine-Readable</div>
+            <div class="metric-value value-red">{{ validity_count.un_validity }}</div>
           </div>
         </div>
       </div>
@@ -304,7 +304,7 @@
   <div class="col col-lg-6">
     <div class="card">
       <div class="card-header fw-semibold bg-light">
-        <h4 class="mb-0">จำนวนไฟล์แบ่งตามประเภท</h4>
+        <h4 class="mb-0">จำนวนไฟล์แบ่งตามประเภท (ทรัพยากร)</h4>
       </div>
       <div class="card-body" style="height:260px">
         <canvas id="dqmFormatBar"></canvas>
@@ -326,12 +326,6 @@
   window.SUB_SELECTED = "{{ selected_sub }}";
 </script>
 <script>
-  // document.getElementById('org-filter-form').addEventListener('submit', function (e) {
-  //   e.preventDefault();
-  //   const selected = document.getElementById('org-select').value;
-  //   const newUrl = selected ? `/qa/dashboard/${selected}` : '/qa/dashboard';
-  //   window.location.href = newUrl;
-  // });
   const radar_chart_config = {
     labels: {{ radar_data.labels | tojson }},
   datasets: [
@@ -347,40 +341,8 @@
 
   var M = {{ metrics| tojson | safe}};
   var T = {{ timeliness_summary | tojson | safe}};
-  const { labels, data} = {{ resource_format_count | tojson | safe }};
+  const { labels, data } = {{ resource_format_count | tojson | safe }};
 
   console.log({{ resource_format_count | tojson | safe }});
-  // console.log(resource_format_data);
-
-  // สร้างกราฟสำหรับแต่ละมิติ
-  //   document.addEventListener('DOMContentLoaded', function () {
-  //     const M = {{ metrics| tojson | safe}};
-  //   // Validity – bar
-  //   // new Chart(document.getElementById('chart-validity'), {
-  //   //   type: 'bar',
-  //   //   data: {
-  //   //     labels: ['blank header', 'duplicate header', 'extra value'],
-  //   //     datasets: [{ data: [M.validity.blank_header, M.validity.duplicate_header, M.validity.extra_value] }]
-  //   //   },
-  //   //   options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-  //   // });
-
-  //   // // Relevancy – horizontal bar
-  //   // new Chart(document.getElementById('chart-relevancy'), {
-  //   //   type: 'bar',
-  //   //   data: {
-  //   //     labels: ['จำนวนการดาวน์โหลด (Download)', 'จำนวนการเข้าชม (View)'],
-  //   //     datasets: [{ data: [M.relevancy.downloads, M.relevancy.views] }]
-  //   //   },
-  //   //   options: {
-  //   //     indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-  //   //     scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
-  //   //   }
-  //   // });
-
-  //   // // Availability – donuts
-  //   // donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
-  //   // donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
-  // });
 </script>
 {%endblock %}

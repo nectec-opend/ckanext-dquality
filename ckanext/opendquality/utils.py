@@ -323,7 +323,7 @@ def get_openness_counts(org_id=None):
         )
         .join(JobDQ, DQM.job_id == JobDQ.job_id)
         .filter(
-            DQM.type == 'package',
+            DQM.type == 'resource',
             JobDQ.status == 'finish',
             JobDQ.active.is_(True),
             JobDQ.run_type == 'organization',
@@ -355,7 +355,7 @@ def get_validity_counts(org_id=None):
         )
         .join(JobDQ, DQM.job_id == JobDQ.job_id)
         .filter(
-            DQM.type == 'package',
+            DQM.type == 'resource',
             JobDQ.status == 'finish',
             JobDQ.active == True,
             JobDQ.run_type == 'organization'
@@ -449,7 +449,8 @@ def get_resource_format_counts(org_id=None):
             DQM.type == 'resource',           # ใช้เฉพาะ resource
             JobDQ.status == 'finish',         # เงื่อนไขที่ทีมคุณใช้บ่อย
             JobDQ.active.is_(True),
-            JobDQ.run_type == 'organization'
+            JobDQ.run_type == 'organization',
+            DQM.error != 'Connection timed out'
         )
         .group_by(fmt_norm)
         .order_by(func.count(DQM.id).desc())

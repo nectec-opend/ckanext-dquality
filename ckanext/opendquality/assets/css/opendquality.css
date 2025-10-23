@@ -202,3 +202,35 @@
   line-height: 1;
 }
 
+#badge-freshness {
+  background-color: rgb(255, 224, 178) !important;
+  color:#6c6363 !important;
+}
+
+.section-title{
+    font-weight:800; letter-spacing:.2px;
+  }
+  .metric-tile{
+    border:1px solid rgba(0,0,0,.08);
+    border-radius:1rem;
+    background:#fff;
+    padding:1.5rem 1rem;
+    text-align:center;
+  }
+  .metric-label{
+    color:#6c757d;          /* เทาอ่อน */
+    font-size:1.25rem;
+    font-weight:700;
+    margin-bottom:.35rem;
+  }
+  .metric-value{
+    font-weight:800;
+    font-size:3rem;         /* ตัวเลขใหญ่ */
+    line-height:1;
+  }
+  /* โทนสีตัวเลขตามตัวอย่าง */
+  .value-blue   { color:#0d6efd; }
+  .value-orange { color:#fd7e14; }
+  .value-green  { color:#198754; }
+  .value-red    { color:#dc3545; }
+

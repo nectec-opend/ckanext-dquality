@@ -1,7 +1,7 @@
 # encoding: utf-8
 
 from flask import Blueprint, request, Response, jsonify
-import ckan.plugins.toolkit as toolkit 
+import ckan.plugins.toolkit as toolkit, os
 from logging import getLogger
 # from ckan.common import config
 from ckan.model import package_table, Session, Package, Group, Resource
@@ -19,10 +19,11 @@ log = getLogger(__name__)
 qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
+as_agency = toolkit.asbool(os.environ.get('CKANEXT__OPENDQUALITY__AGENT', toolkit.config.get('ckanext.opendquality.agent', True)))
 EXEMPT_ENDPOINTS = {
     # 'opendquality.index',
-    # 'opendquality.admin_report',
-    # 'opendquality.dashboard',
+    'opendquality.admin_report',
+    'opendquality.dashboard',
 }
 
 @qa.teardown_request
@@ -33,9 +34,9 @@ def shutdown_session(exception=None):
 
 def export_data_quality(data_quality, quality_type):
     if quality_type == 'package':
-        columes_name = ["รหัสชุดข้อมูล","ชื่อชุดข้อมูล", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
+        columes_name = ["รหัสชุดข้อมูล","ชื่อชุดข้อมูล", "ชื่อหน่วยงาน", "type", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "format", "file_size", "execute_time", "error", "metrics"]
     else:
-        columes_name = ["รหัสชุดข้อมูล", "ชื่อชุดข้อมูล", "รหัสทรัพยากร", "ชื่อทรัพยากร", "ชื่อหน่วยงาน", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "metrics"]
+        columes_name = ["รหัสชุดข้อมูล", "ชื่อชุดข้อมูล", "รหัสทรัพยากร", "ชื่อทรัพยากร", "ชื่อหน่วยงาน", "type", "openess", "timeliness", "acc_latency", "freshness", "availability", "downloadable", "access_api", "relevance", "utf8", "preview", "completeness", "uniqueness", "validity", "consistency", "format", "file_size", "execute_time", "error", "metrics"]
     import csv
     from io import StringIO
     output = StringIO()
@@ -44,13 +45,36 @@ def export_data_quality(data_quality, quality_type):
     writer.writerow(columes_name)
     for row in data_quality:
         if quality_type == 'package':
-            writer.writerow([row.package_id, row.package_title, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
+            writer.writerow([row.package_id, row.package_title, row.org_title, row.dq_type, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.format, row.file_size, row.execute_time, row.error, row.metrics])
         else:
-            writer.writerow([row.package_id, row.package_title, row.resource_id, row.resource_name, row.org_title, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.metrics])
+            writer.writerow([row.package_id, row.package_title, row.resource_id, row.resource_name, row.org_title, row.dq_type, row.openness, row.timeliness, row.acc_latency, row.freshness, row.availability, row.downloadable, row.access_api, row.relevance, row.utf8, row.preview, row.completeness, row.uniqueness, row.validity, row.consistency, row.format, row.file_size, row.execute_time, row.error, row.metrics])
     output.seek(0)
     response = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
     response.headers['Content-Disposition'] = f'attachment; filename="data_quality_{quality_type}_report.csv"'
     return response
+
+def build_hierachy_with_versions():
+    rows = (
+        Session.query(
+            JobDQ.org_id,
+            JobDQ.org_name,
+            JobDQ.started_timestamp.label('version'),
+        )
+        .filter(JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .order_by(JobDQ.started_timestamp.desc())
+        .all()
+    )
+    versions = {}
+    for oid, oname, version in rows:
+        oid_s = str(oid).strip() if oid is not None else ""
+        item = {
+            'value': version.strftime('%Y-%m-%d'),
+            'label': version.strftime('%d/%m/%Y'),
+            'org_name': oname
+        }
+        versions.setdefault(oid_s, []).append(item) 
+
+    return versions
 
 def build_hierachy_with_orgs():
     # 1) เลือกลำดับคอลัมน์ให้ถูก: ... org_id, org_name
@@ -61,14 +85,14 @@ def build_hierachy_with_orgs():
             JobDQ.org_id,
             JobDQ.org_name,
         )
-        .filter(JobDQ.active == True, JobDQ.status == 'finish')
+        .filter(JobDQ.active == True, JobDQ.status == 'finish', JobDQ.run_type == 'organization')
         .distinct()
         .all()
     )
 
     parent_ids = set()
     child_ids = set()
-    pairs = []  # (pid, pname, cid, cname)  ← ชัดเจนว่า 3 = id ลูก, 4 = ชื่อลูก
+    pairs = [] 
 
     for pid, pname, cid, cname in rows:
         # 2) sanitize กัน None/ช่องว่าง และบังคับเป็น str
@@ -150,17 +174,7 @@ def _get_extra(org_dict, key, default=None):
             if item.get('key') == key:
                 return item.get('value')
     return default
-# group query
-# group_query = (
-#     Session.query(Group)
-#     .join(Package, Group.id == Package.owner_org)
-#     .join(DQM, and_(
-#         DQM.ref_id == Package.id,
-#         DQM.type == 'package'
-#     ))
-#     .filter(Package.state == 'active')
-#     .distinct()
-# )
+
 def make_group_query():
     """Group ที่มี package active และมี DQM type='package' ผูกกับ package นั้นๆ"""
     return (Session.query(Group)
@@ -297,7 +311,7 @@ def home():
     # if h.check_access('sysadmin') is False:
     #     return toolkit.redirect_to('opendquality.dashboard')
     extra_vars = {
-        'title': toolkit._('Open Data Quality index'),
+        'title': toolkit._('วัดผลคุณภาพชุดข้อมูล'),
         'home': True,
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
@@ -357,6 +371,10 @@ def admin_report(org_id=None):
             DQM.uniqueness.label('uniqueness'),
             DQM.validity.label('validity'),
             DQM.consistency.label('consistency'),
+            DQM.format.label('format'),
+            DQM.file_size.label('file_size'),
+            DQM.execute_time.label('execute_time'),
+            DQM.error.label('error'),
             DQM.metrics.label('metrics'),
             JobDQ.org_parent_id,
             DQM.type.label('dq_type'),
@@ -383,6 +401,10 @@ def admin_report(org_id=None):
             DQM.uniqueness.label('uniqueness'),
             DQM.validity.label('validity'),
             DQM.consistency.label('consistency'),
+            DQM.format.label('format'),
+            DQM.file_size.label('file_size'),
+            DQM.execute_time.label('execute_time'),
+            DQM.error.label('error'),
             DQM.metrics.label('metrics'),
             JobDQ.org_parent_id,
             DQM.type.label('dq_type'),
@@ -445,8 +467,13 @@ def admin_report(org_id=None):
                     DQM.uniqueness.label('uniqueness'),
                     DQM.validity.label('validity'),
                     DQM.consistency.label('consistency'),
+                    DQM.format.label('format'),
+                    DQM.file_size.label('file_size'),
+                    DQM.execute_time.label('execute_time'),
+                    DQM.error.label('error'),
                     DQM.metrics.label('metrics'),
                     JobDQ.org_parent_id,
+                    DQM.type.label('dq_type'),
                     DQM.modified_at.label('modified_at')
                 )
                 .join(Package, Package.id == DQM.ref_id)
@@ -484,8 +511,13 @@ def admin_report(org_id=None):
                     DQM.uniqueness.label('uniqueness'),
                     DQM.validity.label('validity'),
                     DQM.consistency.label('consistency'),
+                    DQM.format.label('format'),
+                    DQM.file_size.label('file_size'),
+                    DQM.execute_time.label('execute_time'),
+                    DQM.error.label('error'),
                     DQM.metrics.label('metrics'),
                     JobDQ.org_parent_id,
+                    DQM.type.label('dq_type'),
                     DQM.modified_at.label('modified_at')
                 )
                 .join(Resource, Resource.id == DQM.ref_id)
@@ -532,14 +564,21 @@ def admin_report(org_id=None):
     return toolkit.render('ckanext/opendquality/admin_reports.html', extra_vars)
 
 def dashboard(org_id=None):
-    selected_main = request.args.get('org_main', None)
-    selected_sub = request.args.get('org_sub', None)
-    
 
-    # parents = [o for o in orgss if not _get_extra(o, 'parent_org_id')]
-    parents ,children_by_parent = build_hierachy_with_orgs()
-    sub_options = children_by_parent.get(selected_main, []) if selected_main else []
-    org_id = org_id if org_id is not None else selected_sub
+    if not as_agency:
+        selected_main = request.args.get('org_main', None)
+        selected_sub = request.args.get('org_sub', None)
+        selected_version = request.args.get('version', None)
+
+        versions = build_hierachy_with_versions()
+
+        # return versions
+        
+
+        # parents = [o for o in orgss if not _get_extra(o, 'parent_org_id')]
+        parents ,children_by_parent = build_hierachy_with_orgs()
+        sub_options = children_by_parent.get(selected_main, []) if selected_main else []
+        org_id = org_id if org_id is not None else selected_sub
 
     resource_format_count = get_resource_format_counts(org_id)
     priority = ["PDF", "XLSX", "CSV", "JSON", "XLS", "XML", "TXT"]

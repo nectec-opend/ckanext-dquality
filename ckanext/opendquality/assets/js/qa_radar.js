@@ -169,8 +169,8 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     /* ---------- 2) Acceptable Latency ---------- */
     const order = ['ไม่มีการอัพเดตหลังจัดเก็บ','อัพเดตตามรอบ','รบกวนปรับปรุง','ควรปรับปรุง','ต้องปรับปรุง'];
     const counts = order.map(k => Number(data.latency_buckets?.[k] || 0));
-    const badgeL = document.getElementById('badge-latmax');
-    if (badgeL) badgeL.textContent = `Dataset Acceptable Latency MAX: ${data.max_latency ?? 0}`;
+    // const badgeL = document.getElementById('badge-latmax');
+    // if (badgeL) badgeL.textContent = `Dataset Acceptable Latency MAX: ${data.max_latency ?? 0}`;
 
     const lctx = getCtx('chart-latency');
     if (lctx) {
