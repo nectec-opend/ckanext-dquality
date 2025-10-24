@@ -776,13 +776,18 @@ class DataQualityMetrics(object):
                 #----- connect model: check records----------------------
                 data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
                 cached_calculation = False
-
-                if data_quality:
-                    cached_calculation = self._handle_existing_record(data_quality, last_modified, resource)
-                else:
-                    data_quality = self._new_metrics_record('resource', resource['id'])
-                    data_quality.resource_last_modified = last_modified
-                    self.logger.debug('First time data quality calculation.')
+                #-----ok version: but delete old version-----
+                # if data_quality:
+                #     cached_calculation = self._handle_existing_record(data_quality, last_modified, resource)
+                # else:
+                #     data_quality = self._new_metrics_record('resource', resource['id'])
+                #     data_quality.resource_last_modified = last_modified
+                #     self.logger.debug('First time data quality calculation.')
+                #-----------------------------------------
+                data_quality = self._new_metrics_record('resource', resource['id'])
+                data_quality.resource_last_modified = last_modified
+                self.logger.debug('First time data quality calculation.')
+                #-----------------------------------------
                 # if data_quality:
                 #     self.logger.debug('Data Quality calculated for '
                 #                     'version modified on: %s',
@@ -1072,7 +1077,7 @@ class DataQualityMetrics(object):
                     data_quality.error = results['error']['error']
                 else:
                     data_quality.error = ''
-                data_quality.version = today
+                # data_quality.version = today
                 data_quality.format  = detected_format #resource['format']
                 data_quality.url = resource_url
                 data_quality.metrics = results
@@ -1135,8 +1140,8 @@ class DataQualityMetrics(object):
                 #---- add filepath ----
                 # data_quality.filepath = ''
                 data_quality.error = 'Connection timed out'
-                data_quality.version = today
-                data_quality.format  = resource['format']
+                # data_quality.version = today
+                data_quality.format  = ''
                 data_quality.url = resource_url
                 data_quality.job_id = job_id
                 data_quality.file_size = None
@@ -1675,44 +1680,87 @@ class ResourceFetchData2(object):
                 data = []
                 try:
                     log.debug('--Reading JSON data--')
-                    
-                    # Check if the filepath is a URL or a file path
-                    if filepath.startswith('http'):  # If it's a URL
-                        response = requests.get(filepath)
-                        response.encoding = 'utf-8'  # Ensure correct encoding
-                        content_type = response.headers.get('Content-Type', '')
-                        log.debug(content_type)
-                        # Ensure content type is JSON
-                        if 'application/json' in content_type or 'application/octet-stream' in content_type:
-                            json_data = StringIO(response.text)
-                            data_df = pd.read_json(json_data)
-                        else:
-                            try:
-                                json_obj = json.loads(response.text)
-                                data_df = pd.json_normalize(json_obj)
-                                log.debug("Parsed as JSON despite invalid Content-Type")
-                            except json.JSONDecodeError:
-                                log.debug("Expected JSON but received:")
-                                log.debug("Response content preview:")
-                                raise ValueError("Unsupported Content-Type and invalid JSON")                                
-                    else:  # If it's a file path
-                        data_df = pd.read_json(filepath)
 
-                    # Convert DataFrame to list of lists
-                    data = data_df.values.tolist()                  
-                    log.debug('--Data successfully read--')
-                    # log.debug(data)
-                except ValueError as e:
-                    log.debug("Error parsing JSON")
-                    data = []
-                except json.JSONDecodeError as e:
-                    log.debug("Error decoding JSON")
-                    log.debug("Response content")
-                    log.debug(response.content)
-                    data = []
+                    # ตรวจว่าเป็น URL หรือไฟล์
+                    if filepath.startswith('http'):
+                        response = requests.get(filepath)
+                        response.encoding = 'utf-8'
+                        json_text = response.text
+                    else:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            json_text = f.read()
+
+                    # แปลง JSON ดิบโดยเก็บคู่ key-value ตามลำดับ
+                    def parse_object_pairs(pairs):
+                        return pairs  # คืน list ของ (key, value) ตามลำดับ ไม่ merge key ซ้ำ
+
+                    try:
+                        json_obj = json.loads(json_text, object_pairs_hook=parse_object_pairs)
+                    except json.JSONDecodeError as e:
+                        log.debug("JSON Decode Error: %s", e)
+                        raise ValueError("Invalid JSON format")
+
+                    # --- แปลงเป็น list ของ list ---
+                    if isinstance(json_obj, list) and all(isinstance(x, list) for x in json_obj):
+                        # หัว column จาก first row
+                        headers = [k for k, v in json_obj[0]]
+                        data.append(headers)
+
+                        for item in json_obj:
+                            row = [v for k, v in item]
+                            data.append(row)
+
+                    else:
+                        log.debug("Unsupported JSON structure")
+                        data = []
+
+                    log.debug('--Data successfully read as JSON with duplicate keys preserved--')
+                    log.debug(data)
+
                 except Exception as e:
-                    log.debug("Unexpected error occurred")
+                    log.debug("Unexpected error occurred while reading JSON: %s", e)
                     data = []
+                # data = []
+                # try:
+                #     log.debug('--Reading JSON data--')
+                    
+                #     # Check if the filepath is a URL or a file path
+                #     if filepath.startswith('http'):  # If it's a URL
+                #         response = requests.get(filepath)
+                #         response.encoding = 'utf-8'  # Ensure correct encoding
+                #         content_type = response.headers.get('Content-Type', '')
+                #         log.debug(content_type)
+                #         # Ensure content type is JSON
+                #         if 'application/json' in content_type or 'application/octet-stream' in content_type:
+                #             json_data = StringIO(response.text)
+                #             data_df = pd.read_json(json_data)
+                #         else:
+                #             try:
+                #                 json_obj = json.loads(response.text)
+                #                 data_df = pd.json_normalize(json_obj)
+                #                 log.debug("Parsed as JSON despite invalid Content-Type")
+                #             except json.JSONDecodeError:
+                #                 log.debug("Expected JSON but received:")
+                #                 log.debug("Response content preview:")
+                #                 raise ValueError("Unsupported Content-Type and invalid JSON")                                
+                #     else:  # If it's a file path
+                #         data_df = pd.read_json(filepath)
+
+                #     # Convert DataFrame to list of lists
+                #     data = data_df.values.tolist()                  
+                #     log.debug('--Data successfully read--')
+                #     # log.debug(data)
+                # except ValueError as e:
+                #     log.debug("Error parsing JSON")
+                #     data = []
+                # except json.JSONDecodeError as e:
+                #     log.debug("Error decoding JSON")
+                #     log.debug("Response content")
+                #     log.debug(response.content)
+                #     data = []
+                # except Exception as e:
+                #     log.debug("Unexpected error occurred")
+                #     data = []
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 log.debug('--Reading XLSX data--')
                 try:
@@ -3450,107 +3498,140 @@ class Completeness():#DimensionMetric
         log.debug('---completeness start----')
         log.debug(data['fields'])
         log.debug(data['total'])
-        # log.debug('---completeness list records----')
-        # log.debug(list(data['records']))
-        # columns_count = len(data['fields'])
+        # #-----ok version---------------------------------------
         # rows_count = data['total']
-        # total_values_count = columns_count * rows_count
+        # # df = pd.DataFrame(data['records'])
+        # # แปลง raw_data เป็น DataFrame โดยข้ามแถวแรก (header)
+        # try:
+        #     df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
+        #     log.debug(df)
+        #     # เช็คว่ามีข้อมูลดิบหรือไม่ และ df แปลงเป็น DataFrame ได้หรือไม่
+        #     if rows_count > 1 and df.empty:
+        #         log.debug("--df.empty--")
+        #         records = data['raw_data']  # ดึงข้อมูลทั้งหมดออกจาก LazyStreamingList
+        #         log.debug(records)
+        #         clean_records = []
+        #         for r in records:
+        #             if None in r:
+        #                 r.pop(None)
+        #             clean_records.append(r)
 
-        # log.debug('---Rows: %d, Columns: %d, Total Values: %d',
-        #                   rows_count, columns_count, total_values_count)
-        # total_complete_values = 0
-        # for row in data['records']:
-        #     log.debug('---row---')
-        #     log.debug(row)
-        #     total_complete_values += self._completenes_row(row)
+        #         df = pd.DataFrame(clean_records) 
+        #         if rows_count > 1 and df.empty: 
+        #             return {
+        #                 'error': 'Cannot parse table to DataFrame', 
+        #                 'value': None
+        #             } 
 
-        # result = \
-        #     float(total_complete_values)/float(total_values_count) * 100.0 if \
-        #     total_values_count else 0
-        # log.debug ('Complete (non-empty) values: %s',
-        #                   total_complete_values)
-        # log.debug('Completeness score: %f%%', result)
-        # return {
-        #     'value': round(result,2),
-        #     'total': total_values_count,
-        #     'complete': total_complete_values,
-        # }
+        #     # เช็คว่าข้อมูลมีหรือไม่ (กรณีไม่มีข้อมูลดิบเลย หรือ df ว่างจริง)
+        #     elif df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+        #         return {
+        #             'error': 'Data is empty', 
+        #             'value': None
+        #         }
+        #     else:
+        #         # ลบช่องว่างและจัดการค่าว่างใน string
+        #         # df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        #         # # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
+        #         # df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
+        #         missing_values = [
+        #             "", " ", "-", "ไม่มีข้อมูล", "null", "n/a", "na", "none", "nan"
+        #         ]
 
+        #         # ฟังก์ชัน normalize เพื่อจัดการ missing value
+        #         def normalize_empty_values(x):
+        #             if isinstance(x, str):
+        #                 x_str = x.strip().lower()
+        #                 return np.nan if x_str in missing_values else x
+        #             return x
+        #         # ลบช่องว่างและแปลงค่าที่ไม่มีข้อมูลให้เป็น NaN
+        #         df = df.applymap(normalize_empty_values)
+        #         # คำนวณจำนวนช่องทั้งหมดในตาราง
+        #         rows_count, columns_count = df.shape 
+        #         total_values_count = rows_count * columns_count
+        #         # คำนวณจำนวนค่าที่ ไม่เป็น NaN
+        #         total_complete_values = df.notna().sum().sum()
 
-        # log.debug('------raw_data------')
-        # raw_data = data['raw_data']
-        # headers = raw_data[0]
-        # rows = raw_data[1:]
-        # #  แปลงเป็น list of dict
-        # records = [dict(zip(headers, row)) for row in rows]
-        # # log.debug(records)
-        # # สร้าง DataFrame จาก records
-        # df = pd.DataFrame(records)
-        #--------------------------------------------
-        rows_count = data['total']
-        # df = pd.DataFrame(data['records'])
-        # แปลง raw_data เป็น DataFrame โดยข้ามแถวแรก (header)
-        df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
-        log.debug(df)
-        # เช็คว่ามีข้อมูลดิบหรือไม่ และ df แปลงเป็น DataFrame ได้หรือไม่
-        if rows_count > 1 and df.empty:
-            log.debug("--df.empty--")
-            records = data['raw_data']  # ดึงข้อมูลทั้งหมดออกจาก LazyStreamingList
-            log.debug(records)
-            clean_records = []
-            for r in records:
-                if None in r:
-                    r.pop(None)
-                clean_records.append(r)
+        #         log.debug('---Rows: %d, Columns: %d, Total Values: %d',
+        #                 rows_count, columns_count, total_values_count)
+        #         log.debug('Complete (non-empty) values: %d', total_complete_values)
 
-            df = pd.DataFrame(clean_records) 
-            if rows_count > 1 and df.empty: 
-                return {
-                    'error': 'Cannot parse table to DataFrame', 
-                    'value': None
-                } 
+        #         result = float(total_complete_values) / float(total_values_count) * 100.0 if total_values_count else 0
+        #         log.debug('Completeness score: %f%%', result)
 
-        # เช็คว่าข้อมูลมีหรือไม่ (กรณีไม่มีข้อมูลดิบเลย หรือ df ว่างจริง)
-        elif df.empty or df.shape[0] == 0 or df.shape[1] == 0:
-            return {
-                'error': 'Data is empty', 
-                'value': None
+        #         return {
+        #             'value': round(result, 2),
+        #             'total': total_values_count,
+        #             'complete': int(total_complete_values),
+        #         }
+        #-----------------------------
+        try:
+            # ดึง header และ rows
+            if not data.get('raw_data') or len(data['raw_data']) < 2:
+                return {'error': 'Data is empty', 'value': None}
+
+            header = data['raw_data'][0]
+            rows = data['raw_data'][1:]
+
+            # ตรวจว่ามี header จริงไหม
+            if not header or all((c is None or str(c).strip() == '') for c in header):
+                return {'error': 'Header row is empty or invalid', 'value': None}
+
+            columns_count = len(header)
+
+            # ลบแถวว่างทั้งหมด
+            clean_rows = [r for r in rows if any((c and str(c).strip() != '') for c in r)]
+            rows_count = len(clean_rows)
+
+            if rows_count == 0:
+                return {'error': 'No valid data rows found', 'value': None}
+
+            # ค่าที่ถือว่า “ไม่มีข้อมูล”
+            missing_values = {
+                "", " ", "-", "ไม่มีข้อมูล", "null", "n/a", "na", "none", "nan", "N/A", "NaN"
             }
-        else:
-            # ลบช่องว่างและจัดการค่าว่างใน string
-            # df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-            # # แปลงค่าที่ถือว่าเป็น "ข้อมูลว่าง" ให้กลายเป็น NaN (missing value) ของ Pandas
-            # df.replace(to_replace=["", " ", "-", "ไม่มีข้อมูล", "null", "NaN","N/A","n/a","NA","na"], value=np.nan, inplace=True)
-            missing_values = [
-                "", " ", "-", "ไม่มีข้อมูล", "null", "n/a", "na", "none", "nan"
-            ]
 
-            # ฟังก์ชัน normalize เพื่อจัดการ missing value
-            def normalize_empty_values(x):
-                if isinstance(x, str):
-                    x_str = x.strip().lower()
-                    return np.nan if x_str in missing_values else x
-                return x
-            # ลบช่องว่างและแปลงค่าที่ไม่มีข้อมูลให้เป็น NaN
-            df = df.applymap(normalize_empty_values)
-            # คำนวณจำนวนช่องทั้งหมดในตาราง
-            rows_count, columns_count = df.shape 
             total_values_count = rows_count * columns_count
-            # คำนวณจำนวนค่าที่ ไม่เป็น NaN
-            total_complete_values = df.notna().sum().sum()
+            total_complete_values = 0
 
-            log.debug('---Rows: %d, Columns: %d, Total Values: %d',
-                    rows_count, columns_count, total_values_count)
+            # ตรวจแต่ละแถว
+            for row_index, row in enumerate(clean_rows, start=1):
+                # แก้ให้จำนวนคอลัมน์ตรงกับ header เสมอ
+                if len(row) < columns_count:
+                    row = row + [""] * (columns_count - len(row))
+                elif len(row) > columns_count:
+                    row = row[:columns_count]
+
+                # ตรวจค่าว่าง
+                for col_name, value in zip(header, row):
+                    if value is None:
+                        continue
+                    if isinstance(value, str):
+                        val = value.strip().lower()
+                        if val not in missing_values:
+                            total_complete_values += 1
+                    elif value not in (None, "", " "):
+                        total_complete_values += 1
+
+            # คำนวณ completeness score
+            result = (total_complete_values / total_values_count * 100.0) if total_values_count else 0
+
+            log.debug('---Rows: %d, Columns: %d, Total Values: %d', rows_count, columns_count, total_values_count)
             log.debug('Complete (non-empty) values: %d', total_complete_values)
-
-            result = float(total_complete_values) / float(total_values_count) * 100.0 if total_values_count else 0
             log.debug('Completeness score: %f%%', result)
 
             return {
                 'value': round(result, 2),
                 'total': total_values_count,
-                'complete': int(total_complete_values),
+                'complete': total_complete_values,
             }
+
+        except Exception as e:
+            # self.logger.error(f"[Completeness] Failed due to malformed structure: {e}")
+            result = {
+                'error': 'Data structure mismatch between header and rows'
+            }
+            return result
     # def _completenes_row(self, row):
     #         count = 0
     #         for _, value in row.items():
@@ -3751,46 +3832,106 @@ class Uniqueness(): #DimensionMetric
             * `unique`, `int`, number unique values in the data.
             * `columns`, `dict`, detailed report for each column in the data.
         '''
+        # --------- pandas version-------------
+        # try:
+        #     #  แปลง raw_data → DataFrame โดยข้าม header
+        #     # df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
+        #     # แถวแรก = header จริง
+        #     header = data['raw_data'][0]
+        #     rows = data['raw_data'][1:]  # ข้อมูลจริง
+
+        #     # ลบแถวที่ว่างทั้งหมด (ทุก column เป็น None หรือ "")
+        #     clean_rows = [r for r in rows if any(c not in [None, ""] for c in r)]
+
+        #     df = pd.DataFrame(clean_rows, columns=header)
+
+        #     #  ตั้งชื่อคอลัมน์ใหม่ (รวม NaN และชื่อซ้ำ)
+        #     df.columns = self._rename_columns(df.columns)
+
+        #     #  ไม่ลบคอลัมน์ชื่อ NaN แล้ว
+        #     df = df.dropna(axis=1, how='all')  # ลบเฉพาะคอลัมน์ที่ว่างทั้งหมด (ไม่มีข้อมูลเลย)
+
+        #     if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+        #         return {'error': 'Data is empty', 'value': None}
+
+        #     total_rows = len(df)
+
+        #     #  หาแถวซ้ำ
+        #     duplicates_bool = df.duplicated(keep=False)
+        #     duplicate_rows = df[duplicates_bool].copy()
+
+        #     if not duplicate_rows.empty:
+        #         grouped = (
+        #             duplicate_rows
+        #             .reset_index()
+        #             .groupby(list(df.columns), dropna=False, as_index=False)
+        #             .agg({'index': list})
+        #         )
+
+        #         duplicate_details = []
+        #         for _, row in grouped.iterrows():
+        #             row_data = {col: self.nan_to_none(row[col]) for col in df.columns}
+        #             human_rows = [i + 1 for i in row["index"]]
+        #             duplicate_details.append({
+        #                 "row": row_data,
+        #                 "rows": human_rows
+        #             })
+        #     else:
+        #         duplicate_details = []
+
+        #     #  คำนวณ uniqueness
+        #     unique_rows = len(df.drop_duplicates())
+        #     uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
+
+        #     return {
+        #         'value': round(uniqueness_score, 2),
+        #         'total': total_rows,
+        #         'unique': unique_rows,
+        #         'duplicates': duplicate_details
+        #     }
+        # ----- Start: no-pandas uniqueness check -----
         try:
-            # ✅ แปลง raw_data → DataFrame โดยข้าม header
-            df = pd.DataFrame(data['raw_data'][1:], columns=data['raw_data'][0])
+            header = data['raw_data'][0]
+            rows = data['raw_data'][1:]
 
-            # ✅ ตั้งชื่อคอลัมน์ใหม่ (รวม NaN และชื่อซ้ำ)
-            df.columns = self._rename_columns(df.columns)
+            # ลบแถวที่ว่างทั้งหมด
+            clean_rows = [
+                r for r in rows
+                if any(c not in [None, "", " "] for c in r)
+            ]
 
-            # ✅ ไม่ลบคอลัมน์ชื่อ NaN แล้ว
-            df = df.dropna(axis=1, how='all')  # ลบเฉพาะคอลัมน์ที่ว่างทั้งหมด (ไม่มีข้อมูลเลย)
-
-            if df.empty or df.shape[0] == 0 or df.shape[1] == 0:
+            if not clean_rows:
                 return {'error': 'Data is empty', 'value': None}
 
-            total_rows = len(df)
+            total_rows = len(clean_rows)
 
-            # ✅ หาแถวซ้ำ
-            duplicates_bool = df.duplicated(keep=False)
-            duplicate_rows = df[duplicates_bool].copy()
+            # แปลงแต่ละแถวเป็น tuple เพื่อเช็คซ้ำได้
+            tuple_rows = [tuple(r) for r in clean_rows]
 
-            if not duplicate_rows.empty:
-                grouped = (
-                    duplicate_rows
-                    .reset_index()
-                    .groupby(list(df.columns), dropna=False, as_index=False)
-                    .agg({'index': list})
-                )
+            seen = {}
+            duplicates_dict = {}
 
-                duplicate_details = []
-                for _, row in grouped.iterrows():
-                    row_data = {col: self.nan_to_none(row[col]) for col in df.columns}
-                    human_rows = [i + 1 for i in row["index"]]
-                    duplicate_details.append({
-                        "row": row_data,
-                        "rows": human_rows
-                    })
-            else:
-                duplicate_details = []
+            for idx, row in enumerate(tuple_rows):
+                if row in seen:
+                    # ถ้าเคยเจอแล้ว → บันทึกว่าแถวนี้ซ้ำกับแถวก่อนหน้า
+                    if row not in duplicates_dict:
+                        duplicates_dict[row] = [seen[row]]
+                    duplicates_dict[row].append(idx)
+                else:
+                    seen[row] = idx
 
-            # ✅ คำนวณ uniqueness
-            unique_rows = len(df.drop_duplicates())
+            # สร้างรายละเอียดแถวซ้ำ
+            duplicate_details = []
+            for row_tuple, idx_list in duplicates_dict.items():
+                row_data = {header[i]: row_tuple[i] for i in range(len(header))}
+                # +2 เพราะ header คือแถวที่ 1 และ list index เริ่มที่ 0
+                human_rows = [i + 2 for i in idx_list]
+                duplicate_details.append({
+                    "row": row_data,
+                    "rows": human_rows
+                })
+
+            unique_rows = len(set(tuple_rows))
             uniqueness_score = (unique_rows / total_rows) * 100 if total_rows > 0 else 0
 
             return {
@@ -3799,11 +3940,13 @@ class Uniqueness(): #DimensionMetric
                 'unique': unique_rows,
                 'duplicates': duplicate_details
             }
-
+# ----- End: no-pandas uniqueness check -----
         except Exception as e:
-            import traceback
-            log.error(f"[Uniqueness] Failed: {e}\n{traceback.format_exc()}")
-            return {'error': str(e), 'value': None}
+            # self.log.error(f"[Uniqueness] Failed due to malformed structure: {e}")
+            result = {
+                    'error': 'Data structure mismatch between header and rows'
+                }
+            return result
         #-----old1 ------
         # # df = pd.DataFrame(data['records'])
         # # แปลง raw_data เป็น DataFrame โดยข้ามแถวแรก (header)
@@ -4564,14 +4707,43 @@ class Consistency():#DimensionMetric
         log.debug('-----consistency start-------')
         # log.debug(data['fields'])
         validators = self.get_consistency_validators()
+        # fields = {f['id']: f for f in data['fields']}
+        # report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}  
+        #------Rename duplicate headers and field ids--------------------
+        # ตรวจ header ซ้ำ แล้ว rename key
+        renamed_fields = []
+        seen_headers = {}
+        for name in data['raw_data'][0]:
+            if name in seen_headers:
+                seen_headers[name] += 1
+                new_name = f"{name}_{seen_headers[name]}"
+                log.warning(f"Duplicate header '{name}' renamed to '{new_name}'")
+                renamed_fields.append(new_name)
+            else:
+                seen_headers[name] = 0
+                renamed_fields.append(name)
+
+        field_names = renamed_fields
+
+        # ทำให้ data['fields'] มี id ที่ตรงกับ field_names
+        renamed_fields_meta = []
+        for i, f in enumerate(data['fields']):
+            f = dict(f)  # clone ป้องกันการแก้ object เดิม
+            if i < len(field_names):
+                f['id'] = field_names[i]
+            renamed_fields_meta.append(f)
+
+        data['fields'] = renamed_fields_meta
+
+        #--------------------------------
         fields = {f['id']: f for f in data['fields']}
-        report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}  
-        #
-        # log.debug(data)
-        # log.debug(fields)
+        report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}
+        #--------------------------------
         count_row=0
         log.debug('-----consistency record--------') # version แรกใช้ data record
-        field_names = [f['id'] for f in data['fields']]
+        log.debug(field_names)
+        # field_names = [f['id'] for f in data['fields']]
+        # field_names = data['raw_data'][0] #old
         # ข้าม header แถวแรกของ raw_data
         for row in data['raw_data'][1:]:#data['records']:
             # count_row=count_row+1
@@ -5784,8 +5956,7 @@ def validate_resource_data(resource,data):
         source = resource[u'url']
 
     schema = resource.get(u'schema')
-    log.debug('---data schema1--')
-    log.debug(schema)
+
     if schema and isinstance(schema, string_types):#basestring):
         if schema.startswith('http'):
             r = requests.get(schema)
@@ -5800,131 +5971,142 @@ def validate_resource_data(resource,data):
     # log.debug(data['fields'])
     #------------------------
     mimetype = data['mimetype']
-    if (mimetype == 'application/json'):
-        report = _validate_table(source, _format=_format, schema=schema, **options)
-    else:
-        log.debug('------raw_data------')
-        raw_data = data['raw_data']
-        headers = raw_data[0]
-        rows = raw_data[1:]
-        #  check duplicate header
-        duplicates = [item for item, count in Counter(headers).items() if count > 1]
+    # if (mimetype == 'application/json'):
+    #     report = _validate_table(source, _format=_format, schema=schema, **options)
+    # else:
+    log.debug('------raw_data------')
+    raw_data = data['raw_data']
+    headers = raw_data[0]
+    rows = raw_data[1:]
+    #  check duplicate header
+    duplicates = [item for item, count in Counter(headers).items() if count > 1]
 
-        #  แปลงเป็น list of dict
-        records = [dict(zip(headers, row)) for row in rows]
-        # log.debug(raw_data)
-        #[old]check extra values ------------------
-        # extra_result = detect_columns_and_validate(records)
-        # extra_rows = extra_result.get("extra_rows", [])
-        # log.debug('----extra_rows----')
-        # log.debug(extra_result)
-        #[new]check extra values ---------------
+    #  แปลงเป็น list of dict
+    records = [dict(zip(headers, row)) for row in rows]
+    log.debug(raw_data)
+    #[old]check extra values ------------------
+    # extra_result = detect_columns_and_validate(records)
+    # extra_rows = extra_result.get("extra_rows", [])
+    # log.debug('----extra_rows----')
+    # log.debug(extra_result)
+    #[new]check extra values ---------------
 
-        # 1) header candidate
-        top_n_header=10
-        sample_size=20
-        trim_trailing=True
+    # 1) header candidate
+    top_n_header=10
+    sample_size=20
+    trim_trailing=True
 
-        header_info = analyze_header_candidates(raw_data, top_n=top_n_header)
-        header_idx = header_info.get('line_no') if header_info else 0
-        header_row = header_info.get('row') if header_info else raw_data[0]
-        header_conf = header_info.get('confidence', 0)
+    header_info = analyze_header_candidates(raw_data, top_n=top_n_header)
+    header_idx = header_info.get('line_no') if header_info else 0
+    header_row = header_info.get('row') if header_info else raw_data[0]
+    header_conf = header_info.get('confidence', 0)
 
-        # 4) คำนวณ sampling expected cols
-        mode_cols, sampling_conf = sample_expected_columns(raw_data, header_index=header_idx, sample_size=sample_size)
+    # 4) คำนวณ sampling expected cols
+    mode_cols, sampling_conf = sample_expected_columns(raw_data, header_index=header_idx, sample_size=sample_size)
 
-        # 5) ตัดสินใจเลือก expected cols
-        while header_row and (header_row[-1] is None or str(header_row[-1]).strip() == ''):
-                header_row.pop()
-                
-        extra_by_column = []
-        if sampling_conf < 0.5:
-            empty_col_idx = detect_empty_columns(raw_data, header_index=header_idx)
-            log.debug('empty_col_idx:', empty_col_idx)
-
-            if empty_col_idx:
-                # กำหนด expected_cols = column ก่อน column ว่างแรก
-                expected_cols = min(empty_col_idx)
-            else:
-                # ถ้าไม่มี column ว่าง ให้ใช้ header length
-                expected_cols = len(header_row)
-
-            chosen_from = 'header (sampling low)'
+    # 5) ตัดสินใจเลือก expected cols
+    while header_row and (header_row[-1] is None or str(header_row[-1]).strip() == ''):
+            header_row.pop()
             
+    extra_by_column = []
+    empty_col_idx = detect_empty_columns(raw_data, header_index=header_idx)
+    log.debug(f'empty_col_idx: {empty_col_idx}')
+
+    if empty_col_idx:
+        # กำหนด expected_cols = column ก่อน column ว่างแรก
+        expected_cols = min(empty_col_idx)
+    else:
+        # ถ้าไม่มี column ว่าง ให้ใช้ header length
+        expected_cols = len(header_row)
+
+    chosen_from = 'header (sampling low)'
+    # if sampling_conf < 0.5:
+    #     empty_col_idx = detect_empty_columns(raw_data, header_index=header_idx)
+    #     log.debug('empty_col_idx:', empty_col_idx)
+
+    #     if empty_col_idx:
+    #         # กำหนด expected_cols = column ก่อน column ว่างแรก
+    #         expected_cols = min(empty_col_idx)
+    #     else:
+    #         # ถ้าไม่มี column ว่าง ให้ใช้ header length
+    #         expected_cols = len(header_row)
+
+    #     chosen_from = 'header (sampling low)'
         
-        elif header_conf >= sampling_conf + 0.15:
-            expected_cols = len(header_row)
-            chosen_from = 'header (conf higher)'
-        else:
-            expected_cols = mode_cols
-            chosen_from = 'sampling'
+    
+    # elif header_conf >= sampling_conf + 0.15:
+    #     expected_cols = len(header_row)
+    #     chosen_from = 'header (conf higher)'
+    # else:
+    #     expected_cols = mode_cols
+    #     chosen_from = 'sampling'
 
-        # 6) ตรวจ extra rows
-        extra_rows = detect_extra_rows(raw_data, expected_cols, trim_trailing_empty=trim_trailing)
-        # header_info = analyze_header_candidates(raw_data, top_n=top_n_header)
-        # header_idx = header_info.get('line_no') if header_info else None
-        # header_row = header_info.get('row') if header_info else None
-        # header_conf = header_info.get('confidence', 0)
+    # 6) ตรวจ extra rows
+    extra_rows = detect_extra_rows(raw_data, expected_cols, trim_trailing_empty=trim_trailing)
+    # header_info = analyze_header_candidates(raw_data, top_n=top_n_header)
+    # header_idx = header_info.get('line_no') if header_info else None
+    # header_row = header_info.get('row') if header_info else None
+    # header_conf = header_info.get('confidence', 0)
 
-        # # 2) เลือกเฉพาะ rows หลัง header
-        # rows_for_extra = raw_data[header_idx + 1:]
+    # # 2) เลือกเฉพาะ rows หลัง header
+    # rows_for_extra = raw_data[header_idx + 1:]
 
-        # # 3) clean rows
-        # clean_rows = [r for r in rows_for_extra if any((c is not None and str(c).strip() != '') for c in r)]
-        # if not clean_rows:
-        #     return {'error': 'no data', 'rows': 0}
+    # # 3) clean rows
+    # clean_rows = [r for r in rows_for_extra if any((c is not None and str(c).strip() != '') for c in r)]
+    # if not clean_rows:
+    #     return {'error': 'no data', 'rows': 0}
 
-        # # 4) คำนวณ sampling expected cols
-        # mode_cols, sampling_conf = sample_expected_columns(rows_for_extra, header_index=header_idx, sample_size=sample_size)
+    # # 4) คำนวณ sampling expected cols
+    # mode_cols, sampling_conf = sample_expected_columns(rows_for_extra, header_index=header_idx, sample_size=sample_size)
 
-        # # 5) ตัดสินใจเลือก expected cols
-        # if sampling_conf < 0.5:
-        #     expected_cols = len(header_row)
-        #     chosen_from = 'header (sampling low)'
-        # elif header_conf >= sampling_conf + 0.15:
-        #     expected_cols = len(header_row)
-        #     chosen_from = 'header (conf higher)'
-        # else:
-        #     expected_cols = mode_cols
-        #     chosen_from = 'sampling'
+    # # 5) ตัดสินใจเลือก expected cols
+    # if sampling_conf < 0.5:
+    #     expected_cols = len(header_row)
+    #     chosen_from = 'header (sampling low)'
+    # elif header_conf >= sampling_conf + 0.15:
+    #     expected_cols = len(header_row)
+    #     chosen_from = 'header (conf higher)'
+    # else:
+    #     expected_cols = mode_cols
+    #     chosen_from = 'sampling'
 
-        # # 6) ตรวจ extra rows
-        # extra_rows = detect_extra_rows(rows_for_extra, expected_cols, trim_trailing_empty=trim_trailing)
-        log.debug(header_info)
-        log.debug(chosen_from)
-        log.debug(extra_rows)
-        #---------------------------------------
-        report = validate_from_records(records)
+    # # 6) ตรวจ extra rows
+    # extra_rows = detect_extra_rows(rows_for_extra, expected_cols, trim_trailing_empty=trim_trailing)
+    log.debug(header_info)
+    log.debug(chosen_from)
+    log.debug(extra_rows)
+    #---------------------------------------
+    report = validate_from_records(records)
 
-        #--- เพิ่ม error เข้า report ถ้าพบคอลัมน์ซ้ำ
-        if duplicates:
-            log.debug("duplicate header: %s", duplicates)
-            table = report['tables'][0]  # สมมุติว่าเรามีแค่ table เดียว
-            table['valid'] = False
-            table.setdefault('errors', []).append({
-                'code': 'duplicate-header',
-                'message': f'Duplicate headers found: {duplicates}',
-                'message-data': {'duplicates': duplicates},
-            })
-        else:
-            log.debug("no duplicate header")
-        # --- ตรวจสอบ extra values
-        if extra_rows:
-            log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
-            table = report['tables'][0]  # สมมุติว่า table เดียว
-            table['valid'] = False
-            table.setdefault('errors', []).append({
-                'code': 'extra-value',
-                'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
-                'message-data': {
-                    'header_confidence': round(header_conf, 3),
-                    'sampling_confidence': round(sampling_conf, 3),
-                    'expected_columns': expected_cols,
-                    'extra_rows': extra_rows
-                }
-            })
-        else:
-            log.debug("--no extra value--")
+    #--- เพิ่ม error เข้า report ถ้าพบคอลัมน์ซ้ำ
+    if duplicates:
+        log.debug("duplicate header: %s", duplicates)
+        table = report['tables'][0]  # สมมุติว่าเรามีแค่ table เดียว
+        table['valid'] = False
+        table.setdefault('errors', []).append({
+            'code': 'duplicate-header',
+            'message': f'Duplicate headers found: {duplicates}',
+            'message-data': {'duplicates': duplicates},
+        })
+    else:
+        log.debug("no duplicate header")
+    # --- ตรวจสอบ extra values
+    if extra_rows:
+        log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
+        table = report['tables'][0]  # สมมุติว่า table เดียว
+        table['valid'] = False
+        table.setdefault('errors', []).append({
+            'code': 'extra-value',
+            'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
+            'message-data': {
+                'header_confidence': round(header_conf, 3),
+                'sampling_confidence': round(sampling_conf, 3),
+                'expected_columns': expected_cols,
+                'extra_rows': extra_rows
+            }
+        })
+    else:
+        log.debug("--no extra value--")
     #----------------------------
     # report = _validate_table(source, _format=_format, schema=schema, **options)
     log.debug(report)

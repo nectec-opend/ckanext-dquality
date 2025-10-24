@@ -25,7 +25,7 @@ import ckan.model as model
 from ckanext.opendquality.model import DataQualityMetrics as qa_table
 from ckanext.opendquality.model import JobDQ as job_table
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import requests
 from ckan.plugins.toolkit import config
 
@@ -124,21 +124,44 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 log.info("Deactivated %s previous active job(s) for dataset %s", len(old_jobs), dataset_name)
 
             # 2. ตรวจสอบ job ของวันนี้ → ถ้ามี → ลบ metrics + job
+            # today = date.today()
+            # today_jobs = Session.query(job_table).filter(
+            #     job_table.org_name == dataset_name,
+            #     job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+            # ).all()
+            
+            # if today_jobs:
+            #     for job in today_jobs:
+            #         Session.query(qa_table).filter(
+            #             qa_table.job_id == job.job_id
+            #         ).delete(synchronize_session='fetch')
+            #         Session.delete(job)
+            #     Session.commit()
+            #     log.info("Deleted %s old job(s) and metrics for dataset %s today",
+            #              len(today_jobs), dataset_name)
             today = date.today()
+            start_of_day = datetime(today.year, today.month, today.day)
+            end_of_day = start_of_day + timedelta(days=1)
+
             today_jobs = Session.query(job_table).filter(
                 job_table.org_name == dataset_name,
-                job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+                job_table.requested_timestamp >= start_of_day,
+                job_table.requested_timestamp < end_of_day
             ).all()
-
+            log.debug('--today_jobs--')
+            log.debug(today_jobs)
             if today_jobs:
                 for job in today_jobs:
+                    # ลบ metrics ทั้งหมดที่ผูกกับ job_id นี้
                     Session.query(qa_table).filter(
                         qa_table.job_id == job.job_id
                     ).delete(synchronize_session='fetch')
+
+                    # แล้วค่อยลบ job ตัวนั้น
                     Session.delete(job)
-                Session.commit()
-                log.info("Deleted %s old job(s) and metrics for dataset %s today",
-                         len(today_jobs), dataset_name)
+                    Session.commit()
+                    log.info("Deleted %s old job(s) and metrics for dataset %s today",
+                            len(today_jobs), dataset_name)
 
             # 3. สร้าง job ใหม่
             job_id = str(uuid.uuid4())

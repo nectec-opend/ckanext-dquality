@@ -59,7 +59,6 @@ data_quality_metrics_table = Table(
     Column('file_size', types.Float),
     Column('execute_time', types.Float),
     Column('error', types.String),
-    Column('version', types.Date),
     Column('url', types.String),
     Column('metrics', types.JSON),
     Column('job_id', types.UnicodeText, ForeignKey('data_quality_job.job_id'), nullable=True)
