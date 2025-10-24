@@ -499,24 +499,22 @@ class DataQualityMetrics(object):
         except Exception as e:
             log.debug("Error: %s", e)
             return False
-    def is_tabular(self,resource):
+    def is_tabular(self,resource,mimetype):
         machine_readable_formats = ['CSV', 'XLSX', 'XLS', 'JSON']
-        mimetype_to_format = {
-            'text/csv': 'CSV',
-            'application/vnd.ms-excel': 'XLS',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-            'application/json': 'JSON',
-            'application/xml': 'XML',
-            'text/xml': 'XML'
-        }
+       
+        data_format = ''
+        if mimetype:
+            log.debug('mimetype')
+            log.debug(mimetype)
+            if mimetype.upper() in machine_readable_formats:
+                data_format = mimetype.upper()
 
-        data_format = (resource.get('format') or '').strip().upper()
-        mimetype = (resource.get('mimetype') or '').strip().lower()
-
-        # หาจาก mimetype ถ้า format ยังว่าง
-        if not data_format and mimetype in mimetype_to_format:
-            data_format = mimetype_to_format[mimetype]
-
+        #  ถ้ายังไม่มี format ลองดูจาก resource['format']
+        if not data_format:
+            log.debug('format')
+            log.debug(resource.get('format'))
+            data_format = (resource.get('format') or '').strip().upper()
+       
         # หาจาก URL ถ้า format ยังว่าง
         if not data_format:
             resource_url = resource.get('url', '').strip()
@@ -524,10 +522,11 @@ class DataQualityMetrics(object):
                 clean_url = resource_url.split('?')[0]
                 extension = clean_url.split('.')[-1]
                 data_format = extension.upper()
-
+        
         # ลบจุดและเช็คว่าคือ tabular หรือไม่
         data_format = data_format.replace('.', '').upper()
         is_file_tabular = data_format in machine_readable_formats
+        log.debug(data_format)
         return is_file_tabular
     def is_openness_5_star_format(self, data_format): #special format 
         OPENNESS_5_STAR_FORMATS = ['RDF', 'TTL', 'N3', 'GEOJSON',  'GML', 'KML', 'SHP','WMS', 'ESRI REST']
@@ -939,7 +938,7 @@ class DataQualityMetrics(object):
                             # elif(metric.name == 'machine_readable'):
                             #     log.debug('----machine_readable_val------')       
                             #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
-                            tabular_format = self.is_tabular(resource)
+                            tabular_format = self.is_tabular(resource,detected_format)
                             openness_5_star_format = self.is_openness_5_star_format(resource['format'])
                             log.debug(f"[check tabular_format] => {tabular_format}")
                             if(tabular_format):
