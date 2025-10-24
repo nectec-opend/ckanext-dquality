@@ -1795,7 +1795,8 @@ class ResourceFetchData2(object):
             else:
                 data = []
                 log.debug('mimetype ไม่ตรง ไม่มีเครื่องมืออ่าน')
-            # log.debug(data)
+            log.debug('----check data----')
+            log.debug(data)
         finally:
             # ลบไฟล์ด้วยตัวเอง
             tmp_file.close()       # ปิดไฟล์ก่อน
