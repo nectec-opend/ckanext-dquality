@@ -204,18 +204,109 @@ def calculate(organization=None, dataset=None,dimension='all'):
         log.debug('-------organization--------')  
         log.debug(organization)     
         if organization == 'all':
-            def _process_batch(packages):
-                for pkg in packages:
-                    try:
-                        metrics.calculate_metrics_for_dataset(pkg)
-                    except Exception as e:
-                        log.error('Failed to calculate metrics for %s. Error: %s',
-                                pkg, str(e))
-                        log.exception(e)
+            # def _process_batch(packages):
+            #     for pkg in packages:
+            #         try:
+            #             metrics.calculate_metrics_for_dataset(pkg)
+            #         except Exception as e:
+            #             log.error('Failed to calculate metrics for %s. Error: %s',
+            #                     pkg, str(e))
+            #             log.exception(e)
 
-            all_packages(_process_batch)
+            # all_packages(_process_batch)
+            #---------------------------------------------
+            all_orgs = get_all_organizations()  # ต้องมีฟังก์ชันคืนชื่อหรือ id ของทุก org
+            for org_name in all_orgs:
+                try:
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
+
+                    parent_org_id, parent_org_name = get_parent_organization(org_name)
+                    org_id = get_org_id_from_name(org_name)
+
+                    if not org_id:
+                        log.error(f"Organization '{org_name}' not found in CKAN.")
+                        continue
+
+                    # 1. ปิด job เดิม
+                    old_all_jobs = Session.query(job_table).filter(
+                        job_table.org_id == org_id,
+                        job_table.active == True
+                    ).all()
+                    for old_job in old_all_jobs:
+                        old_job.active = False
+                    Session.commit()
+
+                    # 2. ลบ job เดิมของวันนี้
+                    today = date.today()
+                    today_jobs = Session.query(job_table).filter(
+                        job_table.org_id == org_id,
+                        job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+                    ).all()
+
+                    if today_jobs:
+                        for job in today_jobs:
+                            Session.query(qa_table).filter(
+                                qa_table.job_id == job.job_id
+                            ).delete(synchronize_session='fetch')
+                            Session.delete(job)
+                        Session.commit()
+
+                    # 3. สร้าง job ใหม่
+                    job_id = str(uuid.uuid4())
+                    job = job_table(
+                        job_id=job_id,
+                        org_parent_id=parent_org_id,
+                        org_parent_name=parent_org_name,
+                        org_id=org_id,
+                        org_name=org_name,
+                        status="pending",
+                        requested_timestamp=date.today(),
+                        run_type='organization',
+                        active=True
+                    )
+                    Session.add(job)
+                    Session.commit()
+
+                    # 4. รัน metrics
+                    job.status = "running"
+                    job.started_timestamp = date.today()
+                    Session.commit()
+
+                    def _process_batch(packages):
+                        for pkg in packages:
+                            try:
+                                metrics.calculate_metrics_for_dataset(pkg, job_id=job_id)
+                            except Exception as e:
+                                log.error(f'Job failed for {org_name}: {str(e)}')
+                                Session.rollback()
+                                job.status = "fail"
+                                job.finish_timestamp = date.today()
+                                Session.commit()
+
+                    org_packages(_process_batch, org_name, job)
+
+                    # 5. ปิดงาน
+                    job.status = "finish"
+                    job.finish_timestamp = date.today()
+                    job.active = True
+
+                    timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    log.info(f"Finished organization: {org_name}: date_time_end[{timestamp_end}]")
+                    Session.commit()
+
+                except Exception as e:
+                    log.error(f"Job failed for {org_name}. Error: {e}")
+                    Session.rollback()
+                    if 'job' in locals():
+                        job.status = "fail"
+                        job.finish_timestamp = date.today()
+                        Session.commit()
 
         else:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            log.info(f"Processing organization: {organization}: date_time_start[{timestamp}]")
+
             parent_org_id, parent_org_name = get_parent_organization(organization)
             org_id = get_org_id_from_name(organization)      
             # 1. ตรวจสอบ org_id
@@ -295,6 +386,9 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 job.status = "finish"
                 job.finish_timestamp = date.today()
                 job.activate = True
+
+                timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                log.info(f"Finished organization: {organization}: date_time_end[{timestamp_end}]")
                 Session.commit()
             except Exception as e:
                 log.error('Job failed at Cli: Failed to calculate metrics')
@@ -555,6 +649,11 @@ def del_metrict(organization=None, dataset=None, job_id=None):
 #             log.info("Deleted data quality metrics for organization %s", organization)
 #     else:
 #         log.error("Please provide either --dataset or --organization")
+def get_all_organizations():
+    """ดึงรายชื่อ organization ทั้งหมดจากฐานข้อมูล CKAN"""
+    orgs = model.Session.query(model.Group).filter(model.Group.type == 'organization').all()
+    return [org.name for org in orgs]
+    
 def get_parent_organization(org_id):
     # url = f"https://data.go.th/api/3/action/group_tree_section?type=organization&id={org_id}"
     # url = f"https://ckan-dev.opend.cloud/api/3/action/group_tree_section?type=organization&id={org_id}"

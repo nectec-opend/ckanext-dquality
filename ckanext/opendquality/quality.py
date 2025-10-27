@@ -504,8 +504,8 @@ class DataQualityMetrics(object):
        
         data_format = ''
         if mimetype:
-            log.debug('mimetype')
-            log.debug(mimetype)
+            # log.debug('mimetype')
+            # log.debug(mimetype)
             if mimetype.upper() in machine_readable_formats:
                 data_format = mimetype.upper()
 
@@ -1714,7 +1714,7 @@ class ResourceFetchData2(object):
                         data = []
 
                     log.debug('--Data successfully read as JSON with duplicate keys preserved--')
-                    log.debug(data)
+                    # log.debug(data)
 
                 except Exception as e:
                     log.debug("Unexpected error occurred while reading JSON: %s", e)
@@ -1795,7 +1795,7 @@ class ResourceFetchData2(object):
                 data = []
                 log.debug('mimetype ไม่ตรง ไม่มีเครื่องมืออ่าน')
             log.debug('----check data----')
-            log.debug(data)
+            # log.debug(data)
         finally:
             # ลบไฟล์ด้วยตัวเอง
             tmp_file.close()       # ปิดไฟล์ก่อน

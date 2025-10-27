@@ -308,8 +308,8 @@ def all_packages(handler):
             log.exception(e)
 #-----------------------------------------------------
 def home():
-    # if h.check_access('sysadmin') is False:
-    #     return toolkit.redirect_to('opendquality.dashboard')
+    if h.check_access('sysadmin') is False:
+        return toolkit.redirect_to('opendquality.dashboard')
     extra_vars = {
         'title': toolkit._('วัดผลคุณภาพชุดข้อมูล'),
         'home': True,
