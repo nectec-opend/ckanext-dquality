@@ -423,7 +423,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     Session.commit()
                 except Exception as e:
                     log.error('Job failed at Cli: Failed to calculate metrics')
-                    # log.error("Job %s failed. Error: %s", job_id, str(e))
+                    log.error("Job %s failed. Error: %s", job_id, str(e))
                     Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
                     job.status = "fail"
                     job.finish_timestamp = date.today()

@@ -406,11 +406,18 @@ class DataQualityMetrics(object):
         self.logger.info('Data Quality metrcis calculated for dataset: %s.',
                          package_id)
         
-    def _get_metrics_record(self, ref_type, ref_id):
-        metrics = DataQualityMetricsModel.get(ref_type, ref_id)
-        return metrics
-    def _new_metrics_record(self, ref_type, ref_id):
-        return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
+    # def _get_metrics_record(self, ref_type, ref_id):
+    #     metrics = DataQualityMetricsModel.get(ref_type, ref_id)
+    #     return metrics
+    def _get_metrics_record(self, ref_type, ref_id, job_id=None):
+        q = Session.query(DataQualityMetricsModel).filter_by(type=ref_type, ref_id=ref_id)
+        if job_id:
+            q = q.filter(DataQualityMetricsModel.job_id == job_id)
+        return q.first()
+    # def _new_metrics_record(self, ref_type, ref_id):
+    #     return DataQualityMetricsModel(type=ref_type, ref_id=ref_id)
+    def _new_metrics_record(self, ref_type, ref_id, job_id=None):
+        return DataQualityMetricsModel(type=ref_type, ref_id=ref_id, job_id=job_id)
     def _delete_metrics_record(self, ref_type, ref_id):
         return DataQualityMetricsModel.remove(ref_type, ref_id)
     #-- check file size ---
@@ -773,7 +780,7 @@ class DataQualityMetrics(object):
             #     error_file_not_match = 'Invalid file format'
             if not is_datadict:                                                   
                 #----- connect model: check records----------------------
-                data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB   
+                data_quality = self._get_metrics_record('resource', resource['id'], job_id) #get data from DB   
                 cached_calculation = False
                 #-----ok version: but delete old version-----
                 # if data_quality:
@@ -783,7 +790,7 @@ class DataQualityMetrics(object):
                 #     data_quality.resource_last_modified = last_modified
                 #     self.logger.debug('First time data quality calculation.')
                 #-----------------------------------------
-                data_quality = self._new_metrics_record('resource', resource['id'])
+                data_quality = self._new_metrics_record('resource', resource['id'], job_id)
                 data_quality.resource_last_modified = last_modified
                 self.logger.debug('First time data quality calculation.')
                 #-----------------------------------------
@@ -1090,12 +1097,12 @@ class DataQualityMetrics(object):
             self.logger.debug('Connection Timed Out')
             #----- connect model: check records----------------------
             
-            data_quality = self._get_metrics_record('resource', resource['id']) #get data from DB
+            data_quality = self._get_metrics_record('resource', resource['id'], job_id) #get data from DB
             if data_quality:
                 self.logger.debug('Data Quality already calculated.')
                 self.logger.debug(resource['id'])
             else:
-                data_quality = self._new_metrics_record('resource', resource['id'])
+                data_quality = self._new_metrics_record('resource', resource['id'], job_id)
                  #--GET package_id and Org_name---------------------------
                 resource_id = resource['id']
                 query = (
@@ -1171,9 +1178,9 @@ class DataQualityMetrics(object):
         '''
         self.logger.debug('Cumulative data quality metrics for package: %s',
                           package_id)
-        data_quality = self._get_metrics_record('package', package_id)
+        data_quality = self._get_metrics_record('package', package_id, job_id)
         if not data_quality:
-            data_quality = self._new_metrics_record('package', package_id)
+            data_quality = self._new_metrics_record('package', package_id, job_id)
         # else:
         #     self.logger.debug('delete package record-->')
         #     self._delete_metrics_record('package', package_id)
@@ -1200,8 +1207,8 @@ class DataQualityMetrics(object):
                     metric_results
                 )
 
-        # if cumulative != dataset_results:
-        #     data_quality = self._new_metrics_record('package', package_id)
+        if cumulative != dataset_results:
+            data_quality = self._new_metrics_record('package', package_id, job_id)
         for metric, result in cumulative.items():
             if result.get('value') is not None:
                 setattr(data_quality, metric, result['value'])
