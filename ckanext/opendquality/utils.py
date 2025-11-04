@@ -20,7 +20,7 @@ def _clip(x):
         x = 0.0
     return max(0.0, min(100.0, x))
 
-def get_radar_aggregate_all(org_id=None):
+def get_radar_aggregate_all(org_id=None, version=None):
     # เลือก DQM แถวล่าสุดของแต่ละ package
     latest = (
         Session.query(
@@ -51,8 +51,12 @@ def get_radar_aggregate_all(org_id=None):
         .join(latest, latest.c.ref_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
     )
+    if version is not None:
+        q = q.filter(JobDQ.requested_timestamp == version)
+    else:
+        q = q.filter(JobDQ.active == True)
     if org_id is not None:
         q = q.filter(Group.id == org_id)
 
@@ -68,7 +72,7 @@ def get_radar_aggregate_all(org_id=None):
         "label": "All datasets (avg)"
     }
 
-def qa_counts(org_id=None):
+def qa_counts(org_id=None, version=None):
     # 1) เลือกชุดข้อมูลที่ "มีแถวใน DQM" (กันซ้ำด้วย DISTINCT)
     qa_pkg_ids = (
         Session.query(Package.id.label("package_id"))
@@ -76,8 +80,13 @@ def qa_counts(org_id=None):
         .join(Group, Group.id == Package.owner_org)       # ผูกกับหน่วยงาน
         .join(JobDQ, DQM.job_id == JobDQ.job_id)  # ผูกกับ JobDQ
         .filter(Package.state == "active")                # นับเฉพาะชุดข้อมูล active
-        .filter(DQM.type == "package", JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')                    # ถ้ามีคอลัมน์ type
+        .filter(DQM.type == "package", JobDQ.status == 'finish', JobDQ.run_type == 'organization')                    # ถ้ามีคอลัมน์ type
     )
+    if version is not None:
+        qa_pkg_ids = qa_pkg_ids.filter(JobDQ.requested_timestamp == version)
+    else:
+        qa_pkg_ids = qa_pkg_ids.filter(JobDQ.active == True)
+
     if org_id:
         qa_pkg_ids = qa_pkg_ids.filter(Group.id == org_id)
 
@@ -107,7 +116,7 @@ def qa_counts(org_id=None):
         "resources": resource_count or 0,
     }
 
-def qa_detail_blocks(org_id=None):
+def qa_detail_blocks(org_id=None, version=None):
     order_col = getattr(DQM, "created_at", DQM.id)
     latest = (
         Session.query(
@@ -135,8 +144,13 @@ def qa_detail_blocks(org_id=None):
         .join(latest, latest.c.package_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
     )
+    if version is not None:
+        base_q = base_q.filter(JobDQ.requested_timestamp == version)
+    else:
+        base_q = base_q.filter(JobDQ.active == True)
+
     if org_id:
         base_q = base_q.filter(Group.id == org_id)
 
@@ -182,7 +196,7 @@ def qa_detail_blocks(org_id=None):
                         "total": int(total or 0)},
     }
 
-def get_relevance_top(org_id=None, limit=5):
+def get_relevance_top(org_id=None, version=None, limit=5):
     order_col = getattr(DQM, "created_at", DQM.id)
     latest = (
         Session.query(
@@ -208,9 +222,15 @@ def get_relevance_top(org_id=None, limit=5):
         .join(latest, latest.c.package_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.rn == 1, latest.c.type == "package", JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+        .filter(latest.c.rn == 1, latest.c.type == "package", JobDQ.status == 'finish', JobDQ.run_type == 'organization')
         .filter(Package.state == "active")
     )
+
+    if version is not None:
+        q = q.filter(JobDQ.requested_timestamp == version)
+    else:
+        q = q.filter(JobDQ.active == True)
+
     if org_id:
         q = q.filter(Group.id == org_id)
 
@@ -233,13 +253,7 @@ def get_relevance_top(org_id=None, limit=5):
 
     return results
 
-def get_timeliness_summary(org_id=None):
-    # B1_NONE_UPDATE = case((DQM.acc_latency.is_(None), 1), else_=0)          # ไม่มีการอัพเดตหลังจัดเก็บ
-    # B2_ON_SCHEDULE = case((DQM.acc_latency <= 0, 1), else_=0)               # อัพเดตตามรอบ
-    # B3_NEEDS_ATTENTION = case((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1, else_=0)   # รบกวนปรับปรุง
-    # B4_SHOULD_IMPROVE = case((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1, else_=0)   # ควรปรับปรุง
-    # B5_MUST_IMPROVE = case((DQM.acc_latency > 30), 1, else_=0)                               # ต้องปรับปรุง
-    # OUTDATED_THRESHOLD = 30   # ปรับได้ตามนโยบายองค์กร (เช่น 30/60/90 วัน)
+def get_timeliness_summary(org_id=None, version=None):
     B1_NONE_UPDATE = case([(DQM.acc_latency.is_(None), 1)], else_=0)
     B2_ON_SCHEDULE = case([(DQM.acc_latency <= 0, 1)], else_=0)
     B3_NEEDS_ATTENTION = case(
@@ -263,11 +277,16 @@ def get_timeliness_summary(org_id=None):
     ).join(Package, Package.id == DQM.ref_id)\
      .join(Group, Group.id == Package.owner_org)\
      .join(JobDQ, DQM.job_id == JobDQ.job_id)\
-     .filter(DQM.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+     .filter(DQM.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
 
     cond = []
     if org_id:
         cond.append(Group.id == org_id)
+    
+    if version is not None:
+        cond.append(JobDQ.requested_timestamp == version)
+    else:
+        cond.append(JobDQ.active == True)
     # if package_id:
     #     cond.append(Package.id == package_id)
     # if date_from:
@@ -292,7 +311,7 @@ def get_timeliness_summary(org_id=None):
         "max_latency": int(r.max_latency or 0)
     }
 
-def get_openness_score(org_id=None):
+def get_openness_score(org_id=None, version=None):
     query = (
         Session.query(
             case(
@@ -302,15 +321,21 @@ def get_openness_score(org_id=None):
             func.count(DQM.id).label('count')
         )
         .join(JobDQ, DQM.job_id == JobDQ.job_id)
-        .filter(DQM.type == 'package', JobDQ.status == 'finish', JobDQ.active == True, JobDQ.run_type == 'organization')
+        .filter(DQM.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
         .group_by('openness_level')
     )
+
+    if version is not None:
+        query = query.filter(JobDQ.requested_timestamp == version)
+    else:
+        query = query.filter(JobDQ.active == True)
+
     if org_id:
         query = query.filter(JobDQ.org_id == org_id)
     
     return {row.openness_level: row.count for row in query.all()}
 
-def get_openness_counts(org_id=None):
+def get_openness_counts(org_id=None, version=None):
     data_type_expr = case(
         (DQM.openness.in_([0, 1]), 'unstructured'),
         else_='structured'
@@ -325,11 +350,15 @@ def get_openness_counts(org_id=None):
         .filter(
             DQM.type == 'resource',
             JobDQ.status == 'finish',
-            JobDQ.active.is_(True),
             JobDQ.run_type == 'organization',
             DQM.openness.isnot(None)
         )
     )
+
+    if version is not None:
+        query = query.filter(JobDQ.requested_timestamp == version)
+    else:
+        query = query.filter(JobDQ.active == True)
 
     if org_id:
         query = query.filter(JobDQ.org_id == org_id)
@@ -343,7 +372,7 @@ def get_openness_counts(org_id=None):
 
     return summary
 
-def get_validity_counts(org_id=None):
+def get_validity_counts(org_id=None, version=None):
     query = (
         Session.query(
             case(
@@ -357,10 +386,14 @@ def get_validity_counts(org_id=None):
         .filter(
             DQM.type == 'resource',
             JobDQ.status == 'finish',
-            JobDQ.active == True,
             JobDQ.run_type == 'organization'
         )
     )
+
+    if version is not None:
+        query = query.filter(JobDQ.requested_timestamp == version)
+    else:
+        query = query.filter(JobDQ.active == True)
 
     if org_id:
         query = query.filter(JobDQ.org_id == org_id)
@@ -377,7 +410,7 @@ def get_validity_counts(org_id=None):
 
     return summary
 
-def get_quality_counts(org_id=None):
+def get_quality_counts(org_id=None, version=None):
     subquery = (
         Session.query(
             DQM.ref_id.label('package_id'),
@@ -391,10 +424,14 @@ def get_quality_counts(org_id=None):
         .filter(
             DQM.type == 'package',
             JobDQ.status == 'finish',
-            JobDQ.active == True,
             JobDQ.run_type == 'organization'
         )
     )
+
+    if version is not None:
+        subquery = subquery.filter(JobDQ.requested_timestamp == version)
+    else:
+        subquery = subquery.filter(JobDQ.active == True)
 
     if org_id:
         subquery = subquery.filter(JobDQ.org_id == org_id)
@@ -434,7 +471,7 @@ def get_quality_counts(org_id=None):
 
     return summary
 
-def get_resource_format_counts(org_id=None):
+def get_resource_format_counts(org_id=None, version=None):
     fmt_norm = func.coalesce(
         func.nullif(func.upper(func.trim(DQM.format)), ''), 'UNKNOWN'
     ).label('format')
@@ -446,15 +483,19 @@ def get_resource_format_counts(org_id=None):
         )
         .join(JobDQ, DQM.job_id == JobDQ.job_id)
         .filter(
-            DQM.type == 'resource',           # ใช้เฉพาะ resource
-            JobDQ.status == 'finish',         # เงื่อนไขที่ทีมคุณใช้บ่อย
-            JobDQ.active.is_(True),
+            DQM.type == 'resource',
+            JobDQ.status == 'finish',
             JobDQ.run_type == 'organization',
             DQM.error != 'Connection timed out'
         )
         .group_by(fmt_norm)
         .order_by(func.count(DQM.id).desc())
     )
+
+    if version is not None:
+        q = q.filter(JobDQ.requested_timestamp == version)
+    else:
+        q = q.filter(JobDQ.active == True)
 
     if org_id:
         q = q.filter(JobDQ.org_id == org_id)

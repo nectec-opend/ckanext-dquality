@@ -3,6 +3,7 @@
 from flask import Blueprint, request, Response, jsonify
 import ckan.plugins.toolkit as toolkit, os
 from logging import getLogger
+from datetime import datetime
 # from ckan.common import config
 from ckan.model import package_table, Session, Package, Group, Resource
 from ckanext.opendquality.model import DataQualityMetrics as DQM , JobDQ
@@ -58,10 +59,10 @@ def build_hierachy_with_versions():
         Session.query(
             JobDQ.org_id,
             JobDQ.org_name,
-            JobDQ.started_timestamp.label('version'),
+            JobDQ.requested_timestamp.label('version'),
         )
         .filter(JobDQ.status == 'finish', JobDQ.run_type == 'organization')
-        .order_by(JobDQ.started_timestamp.desc())
+        .order_by(JobDQ.requested_timestamp.desc())
         .all()
     )
     versions = {}
@@ -75,6 +76,24 @@ def build_hierachy_with_versions():
         versions.setdefault(oid_s, []).append(item) 
 
     return versions
+
+def build_agency_orgs():
+    rows = (
+        Session.query(
+            JobDQ.org_id.label('id'),
+            JobDQ.org_name.label('name'),
+            Group.title.label('title'),
+            JobDQ.requested_timestamp
+        )
+        .join(Group, Group.id == JobDQ.org_id)
+        .join(DQM, DQM.job_id == JobDQ.job_id)
+        .filter(JobDQ.active == True, JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .distinct()
+        .order_by(JobDQ.requested_timestamp.desc())
+        .all()
+    )
+
+    return rows
 
 def build_hierachy_with_orgs():
     # 1) เลือกลำดับคอลัมน์ให้ถูก: ... org_id, org_name
@@ -326,25 +345,39 @@ def home():
 def admin_report(org_id=None):
     # if h.check_access('sysadmin') is False:
     #     return toolkit.redirect_to('opendquality.dashboard')
-    selected_main = request.args.get('org_main', None)
     selected_sub = request.args.get('org_sub', None)
+    selected_main = request.args.get('org_main', None)
+    package_id = request.args.get('package_id', None)
+    selected_version = request.args.get('ver_selected', None)
+    versions = build_hierachy_with_versions()
 
-    package_id = request.args.get('package_id')
-    
-
-    # parents = [o for o in orgss if not _get_extra(o, 'parent_org_id')]
-    parents ,children_by_parent = build_hierachy_with_orgs()
-    sub_options = children_by_parent.get(selected_main, []) if selected_main else []
+    if not as_agency:
+        parents ,children_by_parent = build_hierachy_with_orgs()
+        sub_options = children_by_parent.get(selected_main, []) if selected_main else []
+    else:
+        sub_options = build_agency_orgs()
+        parents = children_by_parent  = None
+    version_options = versions.get(selected_sub, []) if selected_sub else []
     org_id = org_id if org_id is not None else selected_sub
+
+    if selected_version:
+        try:
+            selected_version = datetime.strptime(selected_version, '%Y-%m-%d').date()
+        except ValueError:
+            selected_version = None
 
     export = request.args.get('export') == '1'
     export_all = request.args.get('export_all') == '1'
 
     base_filters = [
         JobDQ.status == 'finish',
-        JobDQ.active.is_(True),
         JobDQ.run_type == 'organization'
     ]
+
+    if selected_version is not None:
+        base_filters.append(JobDQ.requested_timestamp == selected_version)
+    else:
+        base_filters.append(JobDQ.active == True)
     # org_id = request.view_args.get('org_id') or request.args.get('org_id')
 
     if export_all:
@@ -546,6 +579,9 @@ def admin_report(org_id=None):
         'sub_options': sub_options,
         'selected_main': selected_main,
         'selected_sub': selected_sub,
+        'versions': versions,
+        'selected_version': selected_version,
+        'version_options': version_options,
         'main_orgs': _get_org_main(),
         'orgs': _get_org(),
         'org_id': org_id if org_id is not None else '',
@@ -565,20 +601,23 @@ def admin_report(org_id=None):
 
 def dashboard(org_id=None):
 
+    selected_sub = request.args.get('org_sub', None)
+    selected_main = request.args.get('org_main', None)
+    selected_version = request.args.get('ver_selected', None)
+    versions = build_hierachy_with_versions()
     if not as_agency:
-        selected_main = request.args.get('org_main', None)
-        selected_sub = request.args.get('org_sub', None)
-        selected_version = request.args.get('version', None)
-
-        versions = build_hierachy_with_versions()
-
-        # return versions
-        
-
-        # parents = [o for o in orgss if not _get_extra(o, 'parent_org_id')]
         parents ,children_by_parent = build_hierachy_with_orgs()
         sub_options = children_by_parent.get(selected_main, []) if selected_main else []
-        org_id = org_id if org_id is not None else selected_sub
+    else:
+        sub_options = build_agency_orgs()
+        parents = children_by_parent  = None
+    version_options = versions.get(selected_sub, []) if selected_sub else []
+    org_id = org_id if org_id is not None else selected_sub
+    if selected_version:
+        try:
+            selected_version = datetime.strptime(selected_version, '%Y-%m-%d').date()
+        except ValueError:
+            selected_version = None
 
     resource_format_count = get_resource_format_counts(org_id)
     priority = ["PDF", "XLSX", "CSV", "JSON", "XLS", "XML", "TXT"]
@@ -586,26 +625,30 @@ def dashboard(org_id=None):
     resource_format_labels = priority + others
     resource_format_data = [resource_format_count.get(lbl, 0) for lbl in resource_format_labels]
 
+
     extra_vars = {
         'parents': parents,
         'children_by_parent': children_by_parent,
         'sub_options': sub_options,
         'selected_main': selected_main,
         'selected_sub': selected_sub,
+        'versions': versions,
+        'selected_version': selected_version,
+        'version_options': version_options,
         'orgs': _get_org(),
         'org_id': org_id if org_id is not None else '',
         'title': toolkit._('ผลการตรวจคุณภาพชุดข้อมูลเปิด'),
         'dashboard': True,
-        'radar_data': get_radar_aggregate_all(org_id),
-        'timeliness_summary': get_timeliness_summary(org_id),
-        'counts': qa_counts(org_id),
-        'openness_score': get_openness_score(org_id),
-        'openness_count': get_openness_counts(org_id),
-        'validity_count': get_validity_counts(org_id),
-        'quality_count': get_quality_counts(org_id),
+        'radar_data': get_radar_aggregate_all(org_id, selected_version),
+        'timeliness_summary': get_timeliness_summary(org_id, selected_version),
+        'counts': qa_counts(org_id, selected_version),
+        'openness_score': get_openness_score(org_id, selected_version),
+        'openness_count': get_openness_counts(org_id, selected_version),
+        'validity_count': get_validity_counts(org_id, selected_version),
+        'quality_count': get_quality_counts(org_id, selected_version),
         'resource_format_count': {'labels': resource_format_labels, 'data': resource_format_data},
-        'top_relevance': get_relevance_top(org_id),
-        'metrics': qa_detail_blocks(org_id),
+        'top_relevance': get_relevance_top(org_id, selected_version),
+        'metrics': qa_detail_blocks(org_id, selected_version),
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
         'site_url': toolkit.request.host_url,

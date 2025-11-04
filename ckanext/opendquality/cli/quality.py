@@ -148,9 +148,10 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 job_table.requested_timestamp >= start_of_day,
                 job_table.requested_timestamp < end_of_day
             ).all()
-            log.debug('--today_jobs--')
+            log.debug('--check today_jobs--')
             log.debug(today_jobs)
             if today_jobs:
+                log.debug('--have today_jobs--')
                 for job in today_jobs:
                     # ลบ metrics ทั้งหมดที่ผูกกับ job_id นี้
                     Session.query(qa_table).filter(
@@ -218,9 +219,6 @@ def calculate(organization=None, dataset=None,dimension='all'):
             all_orgs = get_all_organizations()  # ต้องมีฟังก์ชันคืนชื่อหรือ id ของทุก org
             for org_name in all_orgs:
                 try:
-                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
-
                     parent_org_id, parent_org_name = get_parent_organization(org_name)
                     org_id = get_org_id_from_name(org_name)
 
@@ -228,6 +226,23 @@ def calculate(organization=None, dataset=None,dimension='all'):
                         log.error(f"Organization '{org_name}' not found in CKAN.")
                         continue
 
+                    # [NEW] ตรวจนับจำนวน dataset ของ org
+                    dataset_count = Session.query(package_table).filter(
+                        package_table.c.owner_org == org_id,
+                        package_table.c.type == 'dataset',
+                        package_table.c.private == False,
+                        package_table.c.state == 'active'
+                    ).count()
+
+                    log.info(f"Organization '{org_name}' has {dataset_count} active public datasets.")
+
+                    if dataset_count == 0:
+                        log.warning(f"Skip organization '{org_name}' — no active datasets found.")
+                        continue
+                    #--------- [Start] Processing organization -------------------
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
+                    
                     # 1. ปิด job เดิม
                     old_all_jobs = Session.query(job_table).filter(
                         job_table.org_id == org_id,
@@ -314,89 +329,105 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 log.error(f"Organization '{organization}' not found in CKAN.")
                 raise ValueError(f"Organization '{organization}' not found in CKAN.")
 
-            # 2. ปิด job เก่าทั้งหมดของ org (active=False)
-            old_all_jobs = Session.query(job_table).filter(
-                job_table.org_id == org_id,
-                job_table.active == True
-            ).all()
+            # ตรวจนับจำนวน dataset ของ org
+            dataset_count = Session.query(package_table).filter(
+                package_table.c.owner_org == org_id,
+                package_table.c.type == 'dataset',
+                package_table.c.private == False,
+                package_table.c.state == 'active'
+            ).count()
 
-            for old_job in old_all_jobs:
-                old_job.active = False
-            Session.commit()
-            if old_all_jobs:
-                log.info("Deactivated %s previous active job(s) for organization %s", len(old_all_jobs), organization)
+            log.info(f"Organization '{organization}' has {dataset_count} active public datasets.")
 
-            # 3. ตรวจสอบ job ของวันนี้ → ถ้ามี → ลบ metrics + job
-            today = date.today()
-            today_jobs = Session.query(job_table).filter(
-                job_table.org_id == org_id,
-                job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
-            ).all()
+            if dataset_count == 0:
+                log.debug(f"Skip organization '{organization}' — no active datasets found.")
+            else:   
+                # 2. ปิด job เก่าทั้งหมดของ org (active=False)
+                old_all_jobs = Session.query(job_table).filter(
+                    job_table.org_id == org_id,
+                    job_table.active == True
+                ).all()
 
-            if today_jobs:
-                for job in today_jobs:
-                    # ลบ metrics ของ job เก่า
-                    Session.query(qa_table).filter(
-                        qa_table.job_id == job.job_id
-                    ).delete(synchronize_session='fetch')
-
-                    # ลบ job เอง
-                    Session.delete(job)
-
+                for old_job in old_all_jobs:
+                    old_job.active = False
                 Session.commit()
-                log.info("Deleted %s old job(s) and metrics for organization %s today",
-                        len(today_jobs), organization)
-            
-            # 4. สร้าง job ใหม่
-            job_id = str(uuid.uuid4())
-            job = job_table(
-                job_id=job_id,
-                org_parent_id=parent_org_id,
-                org_parent_name=parent_org_name,
-                org_id=org_id,
-                org_name=organization,
-                status="pending",
-                requested_timestamp=date.today(),
-                run_type='organization',
-                active=True
-            )
-            Session.add(job)
-            Session.commit()
-            try:
-                # เปลี่ยนเป็น running
-                job.status = "running"
-                job.started_timestamp = date.today()
-                Session.commit()
-                def _process_batch(packages):
-                    for pkg in packages:
-                        try:
-                            metrics.calculate_metrics_for_dataset(pkg,job_id=job_id)
-                        except Exception as e:                     
-                            log.error('Job failed at Cli: Failed to calculate metrics')
-                            # log.error('Failed to calculate metrics for %s. Error: %s',
-                            #         pkg, str(e))
-                            Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
-                            job.status = "fail"
-                            job.finish_timestamp = date.today()
-                            Session.commit()        
+                if old_all_jobs:
+                    log.info("Deactivated %s previous active job(s) for organization %s", len(old_all_jobs), organization)
+
+                # 3. ตรวจสอบ job ของวันนี้ → ถ้ามี → ลบ metrics + job
+                today = date.today()
+                today_jobs = Session.query(job_table).filter(
+                    job_table.org_id == org_id,
+                    job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+                ).all()
+                log.debug('--check today_jobs--')
+                if today_jobs:
+                    log.debug('--have today_jobs--')
+                    log.debug(today_jobs)
+                    for job in today_jobs:
+                        # ลบ metrics ของ job เก่า
+                        Session.query(qa_table).filter(
+                            qa_table.job_id == job.job_id
+                        ).delete(synchronize_session='fetch')
+
+                        # ลบ job เอง
+                        Session.delete(job)
+
+                    Session.commit()
+                    log.info("Deleted %s old job(s) and metrics for organization %s today",
+                            len(today_jobs), organization)
                 
-                org_packages(_process_batch, organization,job)
-
-                # จบงาน → mark finish
-                job.status = "finish"
-                job.finish_timestamp = date.today()
-                job.activate = True
-
-                timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                log.info(f"Finished organization: {organization}: date_time_end[{timestamp_end}]")
+                log.debug('--not today_jobs: create new--')
+                # 4. สร้าง job ใหม่
+                job_id = str(uuid.uuid4())
+                job = job_table(
+                    job_id=job_id,
+                    org_parent_id=parent_org_id,
+                    org_parent_name=parent_org_name,
+                    org_id=org_id,
+                    org_name=organization,
+                    status="pending",
+                    requested_timestamp=date.today(),
+                    run_type='organization',
+                    active=True
+                )
+                Session.add(job)
                 Session.commit()
-            except Exception as e:
-                log.error('Job failed at Cli: Failed to calculate metrics')
-                # log.error("Job %s failed. Error: %s", job_id, str(e))
-                Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
-                job.status = "fail"
-                job.finish_timestamp = date.today()
-                Session.commit()
+                try:
+                    # เปลี่ยนเป็น running
+                    job.status = "running"
+                    job.started_timestamp = date.today()
+                    Session.commit()
+                    def _process_batch(packages):
+                        for pkg in packages:
+                            log.debug('-----package-----')
+                            log.debug(pkg)
+                            log.debug(job_id)
+                            try:
+                                metrics.calculate_metrics_for_dataset(pkg,job_id=job_id)
+                            except Exception as e:                     
+                                log.error('Job failed at Cli: Failed to calculate metrics')
+                                Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
+                                job.status = "fail"
+                                job.finish_timestamp = date.today()
+                                Session.commit()        
+                    
+                    org_packages(_process_batch, organization,job)
+                    # จบงาน → mark finish
+                    job.status = "finish"
+                    job.finish_timestamp = date.today()
+                    job.activate = True
+
+                    timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    log.info(f"Finished organization: {organization}: date_time_end[{timestamp_end}]")
+                    Session.commit()
+                except Exception as e:
+                    log.error('Job failed at Cli: Failed to calculate metrics')
+                    # log.error("Job %s failed. Error: %s", job_id, str(e))
+                    Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
+                    job.status = "fail"
+                    job.finish_timestamp = date.today()
+                    Session.commit()
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one
     from paste.registry import Registry

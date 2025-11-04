@@ -682,32 +682,32 @@ class DataQualityMetrics(object):
                 result = None  # ถ้าอย่างใดอย่างหนึ่งไม่มีค่า
 
         return result
-    def _handle_existing_record(self, data_quality, last_modified, resource):
-        """Handle logic when a previous metric record exists."""
-        self.logger.debug("Found previous metric record.")
+    # def _handle_existing_record(self, data_quality, last_modified, resource):
+    #     """Handle logic when a previous metric record exists."""
+    #     self.logger.debug("Found previous metric record.")
 
-        if data_quality.resource_last_modified < last_modified:
-            self.logger.debug("Resource has been updated. Recalculating metrics.")
-            self._delete_metrics_record('resource', resource['id'])
-            updated = self._new_metrics_record('resource', resource['id'])
-            updated.resource_last_modified = last_modified
-            return False  # recalculate
+    #     if data_quality.resource_last_modified < last_modified:
+    #         self.logger.debug("Resource has been updated. Recalculating metrics.")
+    #         self._delete_metrics_record('resource', resource['id'])
+    #         updated = self._new_metrics_record('resource', resource['id'])
+    #         updated.resource_last_modified = last_modified
+    #         return False  # recalculate
 
-        if data_quality.resource_last_modified == last_modified:
-            all_calculated = all(
-                data_quality.metrics.get(m.name) is not None for m in self.metrics
-            )
-            if all_calculated:
-                self.logger.debug("All metrics already calculated. Using cache.")
-                return True
-            else:
-                self.logger.debug("Partial metrics found. Will recalculate missing.")
-                return True
+    #     if data_quality.resource_last_modified == last_modified:
+    #         all_calculated = all(
+    #             data_quality.metrics.get(m.name) is not None for m in self.metrics
+    #         )
+    #         if all_calculated:
+    #             self.logger.debug("All metrics already calculated. Using cache.")
+    #             return True
+    #         else:
+    #             self.logger.debug("Partial metrics found. Will recalculate missing.")
+    #             return True
 
-        self.logger.debug("No valid condition met. Creating new record.")
-        data_quality = self._new_metrics_record('resource', resource['id'])
-        data_quality.resource_last_modified = last_modified
-        return False
+    #     self.logger.debug("No valid condition met. Creating new record.")
+    #     data_quality = self._new_metrics_record('resource', resource['id'])
+    #     data_quality.resource_last_modified = last_modified
+    #     return False
 
     def calculate_metrics_for_resource(self, resource, job_id=None):
         log.debug('calculate_metrics_for_resource')
@@ -1174,10 +1174,10 @@ class DataQualityMetrics(object):
         data_quality = self._get_metrics_record('package', package_id)
         if not data_quality:
             data_quality = self._new_metrics_record('package', package_id)
-        else:
-            self.logger.debug('delete package record-->')
-            self._delete_metrics_record('package', package_id)
-            data_quality = self._new_metrics_record('package', package_id)
+        # else:
+        #     self.logger.debug('delete package record-->')
+        #     self._delete_metrics_record('package', package_id)
+        #     data_quality = self._new_metrics_record('package', package_id)
         cumulative = {}
         dataset_results = data_quality.metrics or {}
         for metric in self.metrics:
@@ -1200,8 +1200,8 @@ class DataQualityMetrics(object):
                     metric_results
                 )
 
-        if cumulative != dataset_results:
-            data_quality = self._new_metrics_record('package', package_id)
+        # if cumulative != dataset_results:
+        #     data_quality = self._new_metrics_record('package', package_id)
         for metric, result in cumulative.items():
             if result.get('value') is not None:
                 setattr(data_quality, metric, result['value'])
@@ -1613,8 +1613,8 @@ class ResourceFetchData2(object):
             suffix=ext,                  # เช่น .csv, .xlsx
             delete=False
         )
-        log.debug("-----temp file---")
-        log.debug(tmp_file.name)
+        # log.debug("-----temp file---")
+        # log.debug(tmp_file.name)
         try:
             length = 0
             m = hashlib.md5()
@@ -1635,7 +1635,7 @@ class ResourceFetchData2(object):
             # --- Detect encoding ---
             result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
             encoding = result['encoding'] or 'utf-8'
-            log.debug(f"Detected encoding: {encoding}")
+            # log.debug(f"Detected encoding: {encoding}")
 
             # ใช้ priority: mimetype ก่อน → format ทีหลัง
             if not mimetype and resource_format:
@@ -1678,20 +1678,15 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
                 data = []
                 try:
-                    log.debug('--Reading JSON data--')
+                    log.debug('--Reading JSON from temp file--')
 
-                    # ตรวจว่าเป็น URL หรือไฟล์
-                    if filepath.startswith('http'):
-                        response = requests.get(filepath)
-                        response.encoding = 'utf-8'
-                        json_text = response.text
-                    else:
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            json_text = f.read()
+                    # ครอบไฟล์ binary เป็น text file ด้วย encoding
+                    with io.TextIOWrapper(tmp_file, encoding=encoding) as f:
+                        json_text = f.read()
 
-                    # แปลง JSON ดิบโดยเก็บคู่ key-value ตามลำดับ
+                    # ฟังก์ชันเก็บ key-value ที่อาจซ้ำกันไว้เป็นลำดับ
                     def parse_object_pairs(pairs):
-                        return pairs  # คืน list ของ (key, value) ตามลำดับ ไม่ merge key ซ้ำ
+                        return pairs  # คืน list ของ (key, value) ไม่ใช้ dict
 
                     try:
                         json_obj = json.loads(json_text, object_pairs_hook=parse_object_pairs)
@@ -1699,12 +1694,13 @@ class ResourceFetchData2(object):
                         log.debug("JSON Decode Error: %s", e)
                         raise ValueError("Invalid JSON format")
 
-                    # --- แปลงเป็น list ของ list ---
+                    # ตรวจโครงสร้างเป็น list ของ list [(key, val), ...]
                     if isinstance(json_obj, list) and all(isinstance(x, list) for x in json_obj):
-                        # หัว column จาก first row
+                        # ดึง header จากแถวแรก
                         headers = [k for k, v in json_obj[0]]
                         data.append(headers)
 
+                        # ดึงค่าในแต่ละแถว
                         for item in json_obj:
                             row = [v for k, v in item]
                             data.append(row)
@@ -1713,12 +1709,53 @@ class ResourceFetchData2(object):
                         log.debug("Unsupported JSON structure")
                         data = []
 
-                    log.debug('--Data successfully read as JSON with duplicate keys preserved--')
-                    # log.debug(data)
-
                 except Exception as e:
                     log.debug("Unexpected error occurred while reading JSON: %s", e)
                     data = []
+                # #-----------ok Version-------
+                # try:
+                #     log.debug('--Reading JSON data--')
+
+                #     # ตรวจว่าเป็น URL หรือไฟล์
+                #     if filepath.startswith('http'):
+                #         response = requests.get(filepath)
+                #         response.encoding = 'utf-8'
+                #         json_text = response.text
+                #     else:
+                #         with open(filepath, 'r', encoding='utf-8') as f:
+                #             json_text = f.read()
+
+                #     # แปลง JSON ดิบโดยเก็บคู่ key-value ตามลำดับ
+                #     def parse_object_pairs(pairs):
+                #         return pairs  # คืน list ของ (key, value) ตามลำดับ ไม่ merge key ซ้ำ
+
+                #     try:
+                #         json_obj = json.loads(json_text, object_pairs_hook=parse_object_pairs)
+                #     except json.JSONDecodeError as e:
+                #         log.debug("JSON Decode Error: %s", e)
+                #         raise ValueError("Invalid JSON format")
+
+                #     # --- แปลงเป็น list ของ list ---
+                #     if isinstance(json_obj, list) and all(isinstance(x, list) for x in json_obj):
+                #         # หัว column จาก first row
+                #         headers = [k for k, v in json_obj[0]]
+                #         data.append(headers)
+
+                #         for item in json_obj:
+                #             row = [v for k, v in item]
+                #             data.append(row)
+
+                #     else:
+                #         log.debug("Unsupported JSON structure")
+                #         data = []
+
+                #     log.debug('--Data successfully read as JSON with duplicate keys preserved--')
+                #     # log.debug(data)
+
+                # except Exception as e:
+                #     log.debug("Unexpected error occurred while reading JSON: %s", e)
+                #     data = []
+                #-----------olddd-------
                 # data = []
                 # try:
                 #     log.debug('--Reading JSON data--')
@@ -5983,7 +6020,7 @@ def validate_resource_data(resource,data):
 
     #  แปลงเป็น list of dict
     records = [dict(zip(headers, row)) for row in rows]
-    log.debug(raw_data)
+    # log.debug(raw_data)
     #[old]check extra values ------------------
     # extra_result = detect_columns_and_validate(records)
     # extra_rows = extra_result.get("extra_rows", [])
@@ -6002,7 +6039,7 @@ def validate_resource_data(resource,data):
     header_conf = header_info.get('confidence', 0)
 
     # 4) คำนวณ sampling expected cols
-    mode_cols, sampling_conf = sample_expected_columns(raw_data, header_index=header_idx, sample_size=sample_size)
+    # mode_cols, sampling_conf = sample_expected_columns(raw_data, header_index=header_idx, sample_size=sample_size)
 
     # 5) ตัดสินใจเลือก expected cols
     while header_row and (header_row[-1] is None or str(header_row[-1]).strip() == ''):
@@ -6100,7 +6137,7 @@ def validate_resource_data(resource,data):
             'message': f'Extra values found in rows: {[r["row_number"] for r in extra_rows]}',
             'message-data': {
                 'header_confidence': round(header_conf, 3),
-                'sampling_confidence': round(sampling_conf, 3),
+                # 'sampling_confidence': round(sampling_conf, 3),
                 'expected_columns': expected_cols,
                 'extra_rows': extra_rows
             }

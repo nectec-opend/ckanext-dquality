@@ -22,40 +22,7 @@
 <h1>{{ title }}</h1>
 <div class="row table-responsive">
   <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('opendquality.dashboard') }}">
-    {{ h.csrf_input() }}
-    {%- set options=[] -%}
-    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%}
-    {%- for p in parents -%}
-    {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
-    {%- endfor -%}
-    {{ form.select(
-    'org_main',
-    label=_('หน่วยงานหลัก'),
-    selected=selected_main,
-    options=options,
-    classes=[],
-    id='org_main',
-    attrs={'data-module': 'autocomplete'},
-    error={}
-    )}}
-
-    {%- set options=[] -%}
-    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานย่อย --')}) -%}
-    {% if sub_options %}
-    {%- for c in sub_options -%}
-    {%- do options.append({'value': c.id|string, 'text': c.title}) -%}
-    {%- endfor -%}
-    {% endif %}
-    {{ form.select(
-    'org_sub',
-    label=_('หน่วยงานย่อย'),
-    selected=selected_sub,
-    options=options,
-    classes=[],
-    id='org_sub',
-    attrs={'data-module': 'autocomplete'},
-    error={}
-    )}}
+    {% include "ckanext/opendquality/qa_filter_form.html" %}
     <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
   </form>
 </div>
@@ -194,10 +161,10 @@
               {% for rev in top_relevance %}
               <tr>
                 <td><a
-                    href="{{ h.url_for('opendquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}">
+                    href="{{ h.url_for('opendquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}">
                     {{ rev.org.title }}</a></td>
                 <td><a
-                    href="{{ h.url_for('opendquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id) }}"
+                    href="{{ h.url_for('opendquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}"
                     target="qa-link">{{ rev.title }}</a></td>
                 <td>
                   <div class="progress">
@@ -321,8 +288,10 @@
 {{ super() }}
 {% asset "opendquality/opendquality-js" %}
 <script>
+  {% if parents is not none %}
   window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};
-  window.SUB_DEFAULT_LABEL = {{ _('-- เลือกหน่วยงานย่อย --') | tojson }};
+  {% endif %}
+  window.SUB_DEFAULT_LABEL = {{ _('-- เลือกหน่วยงาน --') | tojson }};
   window.SUB_SELECTED = "{{ selected_sub }}";
 </script>
 <script>
@@ -342,7 +311,7 @@
   var M = {{ metrics| tojson | safe}};
   var T = {{ timeliness_summary | tojson | safe}};
   const { labels, data } = {{ resource_format_count | tojson | safe }};
-
-  console.log({{ resource_format_count | tojson | safe }});
+  const versions = {{ versions | tojson | safe }};
+  var selected_version = "{{ selected_version }}";
 </script>
 {%endblock %}

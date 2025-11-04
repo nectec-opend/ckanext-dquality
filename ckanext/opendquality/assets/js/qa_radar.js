@@ -127,7 +127,6 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
 
   function renderTimeliness() {
     let data;
-    console.log(T)
     try { data = T } 
     catch (e) { console.error('Timeliness API error', e); return; }
 
