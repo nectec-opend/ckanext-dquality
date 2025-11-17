@@ -1548,14 +1548,19 @@ class ResourceFetchData2(object):
         }
         return requests.get(url, **kwargs)
 
+    # def get_response(self, url, headers):
+    #     response = self.get_url(url, headers)
+    #     if response.status_code == 202:
+    #         wait = 1
+    #         while wait < 120 and response.status_code == 202:
+    #             time.sleep(wait)
+    #             response = self.get_url(url,headers)  # แก้ให้ส่ง url
+    #             wait *= 3
+    #     response.raise_for_status()
+    #     return response
     def get_response(self, url, headers):
+        # เรียกครั้งเดียว ไม่วนรอ
         response = self.get_url(url, headers)
-        if response.status_code == 202:
-            wait = 1
-            while wait < 120 and response.status_code == 202:
-                time.sleep(wait)
-                response = self.get_url(url,headers)  # แก้ให้ส่ง url
-                wait *= 3
         response.raise_for_status()
         return response
     def _download_resource_from_url(self, url, resource_format, headers=None):
@@ -1699,7 +1704,7 @@ class ResourceFetchData2(object):
                         json_obj = json.loads(json_text, object_pairs_hook=parse_object_pairs)
                     except json.JSONDecodeError as e:
                         log.debug("JSON Decode Error: %s", e)
-                        raise ValueError("Invalid JSON format")
+                        data = []
 
                     # ตรวจโครงสร้างเป็น list ของ list [(key, val), ...]
                     if isinstance(json_obj, list) and all(isinstance(x, list) for x in json_obj):
@@ -1819,7 +1824,7 @@ class ResourceFetchData2(object):
                         if records_read >= n_rows:
                             break 
                 except Exception as e:
-                    log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
+                    log.debug("Unexpected error occurred while reading XLSX: %s", e)
                     data = []
                     # data = self._fetch_data_datastore_defined_row(self.resource)
             elif(mimetype == 'application/vnd.ms-excel'):
@@ -1833,7 +1838,8 @@ class ResourceFetchData2(object):
                     # sheet = book.sheet_by_index(0)
                     data = [sheet.row_values(i) for i in range(sheet.nrows)]
                 except Exception as e:
-                    log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
+                    log.debug("Unexpected error occurred while reading XLS: %s", e)
+                    data = []
                     # data = self._fetch_data_datastore_defined_row(self.resource)
             else:
                 data = []

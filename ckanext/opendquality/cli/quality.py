@@ -28,7 +28,7 @@ import uuid
 from datetime import datetime, date, timedelta
 import requests
 from ckan.plugins.toolkit import config
-
+import time
 
 log = getLogger(__name__)
 
@@ -217,8 +217,11 @@ def calculate(organization=None, dataset=None,dimension='all'):
             # all_packages(_process_batch)
             #---------------------------------------------
             all_orgs = get_all_organizations()  # ต้องมีฟังก์ชันคืนชื่อหรือ id ของทุก org
+            requested_timestamp = date.today()
             for org_name in all_orgs:
                 try:
+                    execute_time = 0
+                    start_time = time.time()
                     parent_org_id, parent_org_name = get_parent_organization(org_name)
                     org_id = get_org_id_from_name(org_name)
 
@@ -276,7 +279,8 @@ def calculate(organization=None, dataset=None,dimension='all'):
                         org_id=org_id,
                         org_name=org_name,
                         status="pending",
-                        requested_timestamp=date.today(),
+                        # requested_timestamp=date.today(),
+                        requested_timestamp=requested_timestamp,
                         run_type='organization',
                         active=True
                     )
@@ -305,7 +309,10 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     job.status = "finish"
                     job.finish_timestamp = date.today()
                     job.active = True
-
+                    end_time = time.time()   
+                    # Calculate the time taken
+                    execute_time = end_time - start_time
+                    job.execute_time = round(execute_time,3)
                     timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     log.info(f"Finished organization: {org_name}: date_time_end[{timestamp_end}]")
                     Session.commit()
@@ -315,10 +322,13 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     Session.rollback()
                     if 'job' in locals():
                         job.status = "fail"
+                        job.execute_time = 0
                         job.finish_timestamp = date.today()
                         Session.commit()
 
         else:
+            execute_time = 0
+            start_time = time.time()
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             log.info(f"Processing organization: {organization}: date_time_start[{timestamp}]")
 
@@ -417,8 +427,11 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     job.status = "finish"
                     job.finish_timestamp = date.today()
                     job.activate = True
-
+                    end_time = time.time() 
+                    execute_time = end_time - start_time
+                    job.execute_time = round(execute_time,3)
                     timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    
                     log.info(f"Finished organization: {organization}: date_time_end[{timestamp_end}]")
                     Session.commit()
                 except Exception as e:

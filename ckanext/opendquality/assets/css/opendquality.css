@@ -109,9 +109,10 @@
 /* ให้แต่ละบรรทัดสูงเท่ากัน */
 .qa-stats-list{
   display:flex;
-  flex-direction:column;
+  /* flex-direction:column; */
   gap:12px;
-  min-height: 300px;            /* ปรับให้พอดีกับความสูงกราฟ */
+  min-height: 120px;
+  margin-bottom: 30px;
 }
 .qa-stat{
   flex:1 1 0;                    /* แบ่งความสูงเท่าๆ กัน */
@@ -179,7 +180,7 @@
 }
 
 .openness-table {
-  border: 2px solid #0c2230;
+  /* border: 2px solid #0c2230; */
   font-size: 16px;
   background-color: #fff;
   border-radius: 8px;

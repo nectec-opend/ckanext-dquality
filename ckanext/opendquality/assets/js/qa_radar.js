@@ -90,7 +90,7 @@ function donut(canvasId, centerId, yes, no) {
   document.getElementById(centerId).textContent = yes;
   return new Chart(document.getElementById(canvasId), {
     type: 'doughnut',
-    data: { datasets: [{ data: [yes, no] }] },
+    data: { datasets: [{ data: [yes, no], backgroundColor: ['#32C8C8', '#FFC850']}] },
     options: { cutout: '70%', plugins: { legend: { display: false } } }
   });
 }
@@ -139,14 +139,24 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     if (fctx) {
       destroyIfExist('freshness');
       const grad = fctx.createLinearGradient(0, 0, fctx.canvas.width, 0);
-      grad.addColorStop(1, '#2e7d32');
-      grad.addColorStop(0, '#a5d6a7');
+      grad.addColorStop(0, '#2e7d32');
+      grad.addColorStop(1, '#a5d6a7');
 
       dqCharts.freshness = new Chart(fctx, {
         type: 'bar',
         data: {
           labels: [''],
-          datasets: [{ data: [freshnessPct], backgroundColor: grad }]
+          datasets: [
+            { 
+              data: [freshnessPct],
+              backgroundColor: (ctx) => {
+                const v = ctx.raw;
+                if (v < 35) return 'rgba(255, 99, 132, 0.7)';
+                else if (v < 60) return 'rgba(144, 238, 144, 0.7)';
+                else if (v < 85) return 'rgba(60, 179, 113, 0.8)';
+                else return 'rgba(0, 100, 0, 0.9)';
+              },
+          }]
         },
         options: {
           indexAxis: 'y',
@@ -155,7 +165,8 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
           plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}%` } } },
           scales: {
             x: {
-              min: 0, max: 100,
+              beginAtZero: true, max: 100,
+              reverse: true,
               ticks: { callback: (v) => `${v}%` },
               grid: { display: true }
             },
@@ -211,18 +222,9 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
       });
     }
   }
-
-  // window._dqRefreshTimeliness = renderTimeliness;
   renderTimeliness();
-  // document.addEventListener('DOMContentLoaded', () => {
-  //   renderTimeliness();
-  //   document.getElementById('btn-apply')?.addEventListener('click', renderTimeliness);
-  // });
 })();
 (async () => {
-  // // ถ้าจะกรองตาม org ให้ใส่ ?org_id=<id>
-  // const res = await fetch('/api/dqm/resource-format-summary{{ "?org_id=" + org_id if org_id else "" }}');
-  // const { labels, data } = await res.json();
 
   const ctx = document.getElementById('dqmFormatBar').getContext('2d');
   new Chart(ctx, {
@@ -232,8 +234,9 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
       datasets: [{
         label: 'จำนวนไฟล์',
         data,
-        borderWidth: 0,
-        backgroundColor: '#7bd489' // โทนเขียวคล้ายตัวอย่าง
+        borderWidth: 2,
+        borderRadius: 10,
+        // backgroundColor: '#7bd489' // โทนเขียวคล้ายตัวอย่าง
       }]
     },
     options: {

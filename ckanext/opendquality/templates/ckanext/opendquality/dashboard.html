@@ -27,43 +27,71 @@
   </form>
 </div>
 <hr>
-<!-- <div class="row">
-  <div class="primary col-md-6 col-xs-12">
-    <canvas id="radar_chart"></canvas>
+<div class="row" style="z-index: 2;">
+  <div class="panel panel-default qa-stats">
+    <div class="panel-body">
+      <div class="qa-stats-list">
+        <div class="qa-stat qa-stat--org">
+          <span class="qa-stat-label">หน่วยงาน</span>
+          <span class="qa-stat-value">{{ counts.organizations }}</span>
+        </div>
+        <div class="qa-stat qa-stat--ds">
+          <span class="qa-stat-label">ชุดข้อมูล</span>
+          <span class="qa-stat-value">{{ counts.datasets }}</span>
+        </div>
+        <div class="qa-stat qa-stat--res">
+          <span class="qa-stat-label">ทรัพยากร</span>
+          <span class="qa-stat-value">{{ counts.resources }}</span>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="primary col-md-3 col-xs-12">
-    <div class="col-md-12">$$$#####</div>
-    <div class="col-md-12">444@@@@@</div>
-    <div class="col-md-12">erRRREERRE</div>
-  </div>
-</div> -->
-<div class="row qa-radar-row" style="z-index: 2;">
-  <div class="primary col-md-8 col-xs-12">
-    <canvas id="radar_chart" data-module="opendquality-radar-chart"></canvas>
-  </div>
+</div>
 
-  <div class="primary col-md-3 col-xs-12">
-    <div class="panel panel-default qa-stats">
-      <div class="panel-heading">สรุปภาพรวม</div>
-      <div class="panel-body">
-        <div class="qa-stats-list">
-          <div class="qa-stat qa-stat--org">
-            <span class="qa-stat-label">หน่วยงาน</span>
-            <span class="qa-stat-value">{{ counts.organizations }}</span>
+<div class="row qa-radar-row" style="z-index: 2;">
+  <div class="col col-lg-8">
+    <div>
+      
+      <h3 class="section-title mb-3">
+        <span class="me-2">🧩</span> โครงสร้างของข้อมูล (ทรัพยากร)
+      </h3>
+      <div class="row g-3 mb-4">
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Structured Data</div>
+            <div class="metric-value value-green">{{ openness_count.structured}}</div>
           </div>
-          <div class="qa-stat qa-stat--ds">
-            <span class="qa-stat-label">ชุดข้อมูล</span>
-            <span class="qa-stat-value">{{ counts.datasets }}</span>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Unstructured Data</div>
+            <div class="metric-value value-red">{{ openness_count.unstructured}}</div>
           </div>
-          <div class="qa-stat qa-stat--res">
-            <span class="qa-stat-label">ทรัพยากร</span>
-            <span class="qa-stat-value">{{ counts.resources }}</span>
+        </div>
+      </div>
+
+      <h3 class="section-title mb-3">
+        <span class="me-2">🤖</span> ความสามารถในการอ่านด้วยเครื่อง (ทรัพยากร)
+      </h3>
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Machine-Readable</div>
+            <div class="metric-value value-green">{{ validity_count.validity }}</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="metric-tile">
+            <div class="metric-label">Not Machine-Readable</div>
+            <div class="metric-value value-red">{{ validity_count.un_validity }}</div>
           </div>
         </div>
       </div>
     </div>
-    <div class="panel panel-default" style="margin-top: 100px;">
-      <div class="panel-heading h4 fw-bold">มิติด้าน Openness (ชุดข้อมูล)</div>
+  </div>
+  <div class="primary col-md-4 col-xs-12">
+    <div class="panel panel-default">
+      <h3 class="section-title mb-3">มิติด้าน Openness (ชุดข้อมูล)</h3>
       <div class="panel-body">
         <div class="openness-card">
           <table class="table table-borderless table-striped openness-table mb-0">
@@ -95,6 +123,23 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
+  <div class="col col-lg-6 col-xs-12">
+    <canvas id="radar_chart" data-module="opendquality-radar-chart"></canvas>
+  </div>
+  
+  <div class="col col-lg-6">
+    <div class="card">
+      <div class="card-header fw-semibold bg-light">
+        <h4 class="mb-0">จำนวนไฟล์แบ่งตามประเภท (ทรัพยากร)</h4>
+      </div>
+      <div class="card-body" style="height:260px">
+        <canvas id="dqmFormatBar"></canvas>
       </div>
     </div>
   </div>
@@ -206,80 +251,6 @@
   </div>
 
 </div>
-
-<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
-  <div class="col col-lg-6">
-    <div>
-      <!-- หมวด 1: ความถูกต้องของข้อมูล -->
-      <h3 class="section-title mb-3">
-        <span class="me-2">📊</span> ความถูกต้องของข้อมูล (ชุดข้อมูล)
-      </h3>
-      <div class="row g-3 mb-4">
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">ชุดข้อมูลคุณภาพดี</div>
-            <div class="metric-value value-blue">{{ quality_count.good_quality}}</div>
-          </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">ชุดข้อมูลที่ควรปรับปรุง</div>
-            <div class="metric-value value-orange">{{ quality_count.need_improvement}}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- หมวด 2: โครงสร้างของข้อมูล -->
-      <h3 class="section-title mb-3">
-        <span class="me-2">🧩</span> โครงสร้างของข้อมูล (ทรัพยากร)
-      </h3>
-      <div class="row g-3 mb-4">
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Structured Data</div>
-            <div class="metric-value value-green">{{ openness_count.structured}}</div>
-          </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Unstructured Data</div>
-            <div class="metric-value value-red">{{ openness_count.unstructured}}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- หมวด 3: ความสามารถในการอ่านด้วยเครื่อง -->
-      <h3 class="section-title mb-3">
-        <span class="me-2">🤖</span> ความสามารถในการอ่านด้วยเครื่อง (ทรัพยากร)
-      </h3>
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Machine-Readable</div>
-            <div class="metric-value value-green">{{ validity_count.validity }}</div>
-          </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Not Machine-Readable</div>
-            <div class="metric-value value-red">{{ validity_count.un_validity }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col col-lg-6">
-    <div class="card">
-      <div class="card-header fw-semibold bg-light">
-        <h4 class="mb-0">จำนวนไฟล์แบ่งตามประเภท (ทรัพยากร)</h4>
-      </div>
-      <div class="card-body" style="height:260px">
-        <canvas id="dqmFormatBar"></canvas>
-      </div>
-    </div>
-  </div>
-</div>
-
 
 {% endblock %}
 
