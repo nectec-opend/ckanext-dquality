@@ -3,7 +3,7 @@ from ckan.model import package_table, Session, Package, Group, Resource
 from ckanext.opendquality.model import DataQualityMetrics as DQM, JobDQ
 from sqlalchemy.dialects import postgresql
 
-# ใช้ created_at ถ้ามี; ไม่งั้นใช้ id แทน
+
 order_col = getattr(DQM, "created_at", DQM.id)
 
 LABELS = [
@@ -21,7 +21,6 @@ def _clip(x):
     return max(0.0, min(100.0, x))
 
 def get_radar_aggregate_all(org_id=None, version=None):
-    # เลือก DQM แถวล่าสุดของแต่ละ package
     latest = (
         Session.query(
             DQM.ref_id.label("ref_id"),
@@ -36,8 +35,7 @@ def get_radar_aggregate_all(org_id=None, version=None):
         )
         # .filter(DQM.type == "package")  # ใส่ถ้าแยกชนิดไว้
     ).subquery("latest")
-
-    # รวมเป็นค่าเฉลี่ยหนึ่งชุด
+    
     q = (
         Session.query(
             func.avg(latest.c.validity),
@@ -63,23 +61,19 @@ def get_radar_aggregate_all(org_id=None, version=None):
     v_valid, v_comp, v_cons, v_fresh, v_rel, v_avail = q.one()
 
     values = [_clip(v) for v in (v_valid, v_comp, v_cons, v_fresh, v_rel, v_avail)]
-
-    # รูปแบบพร้อมวาดเรดาร์ชาร์ต (เช่น Chart.js/ECharts)
     return {
         "labels": LABELS,
-        "data": values,          # ชุดเดียวรวมทุก package
-        # ถ้าต้องการแสดงชื่อชุดบนกราฟ:
+        "data": values,
         "label": "All datasets (avg)"
     }
 
 def qa_counts(org_id=None, version=None):
-    # 1) เลือกชุดข้อมูลที่ "มีแถวใน DQM" (กันซ้ำด้วย DISTINCT)
     qa_pkg_ids = (
         Session.query(Package.id.label("package_id"))
-        .join(DQM, DQM.ref_id == Package.id)              # ผูก DQM กับ dataset
-        .join(Group, Group.id == Package.owner_org)       # ผูกกับหน่วยงาน
-        .join(JobDQ, DQM.job_id == JobDQ.job_id)  # ผูกกับ JobDQ
-        .filter(Package.state == "active")                # นับเฉพาะชุดข้อมูล active
+        .join(DQM, DQM.ref_id == Package.id)
+        .join(Group, Group.id == Package.owner_org)
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(Package.state == "active")
         .filter(DQM.type == "package", JobDQ.status == 'finish', JobDQ.run_type == 'organization')                    # ถ้ามีคอลัมน์ type
     )
     if version is not None:
@@ -90,19 +84,16 @@ def qa_counts(org_id=None, version=None):
     if org_id:
         qa_pkg_ids = qa_pkg_ids.filter(Group.id == org_id)
 
-    qa_pkg_ids = qa_pkg_ids.distinct().subquery()         # <-- รายการ dataset ที่เข้าเกณฑ์
-
-    # 2) นับ datasets (จำนวน row ใน subquery)
+    qa_pkg_ids = qa_pkg_ids.distinct().subquery()
+    
     dataset_count = Session.query(func.count()).select_from(qa_pkg_ids).scalar()
 
-    # 3) นับ organizations ที่มี dataset ในรายการนี้
     org_count = (
         Session.query(func.count(func.distinct(Package.owner_org)))
         .join(qa_pkg_ids, qa_pkg_ids.c.package_id == Package.id)
         .scalar()
     )
-
-    # 4) นับ resources ใต้ datasets เหล่านี้ (เฉพาะ active)
+    
     resource_count = (
         Session.query(func.count(Resource.id))
         .join(qa_pkg_ids, qa_pkg_ids.c.package_id == Resource.package_id)
@@ -155,16 +146,14 @@ def qa_detail_blocks(org_id=None, version=None):
         base_q = base_q.filter(Group.id == org_id)
 
     base = base_q.subquery("base")
-
-    # ---- JSON helpers (metrics->>'key') ----
+    
     METRICS = base.c.metrics
     if not isinstance(METRICS.type, (postgresql.JSONB, postgresql.JSON)):
         METRICS = cast(METRICS, postgresql.JSONB)
 
     def jsum_int(key):
         return func.coalesce(func.sum(cast(METRICS.op('->>')(key), Integer)), 0)
-
-    # ---- numeric truthiness (คอลัมน์เป็น float 0/1) ----
+        
     dl_true  = (func.coalesce(cast(base.c.downloadable, Float), 0) > 0)
     api_true = (func.coalesce(cast(base.c.access_api,  Float), 0) > 0)
 
@@ -175,12 +164,12 @@ def qa_detail_blocks(org_id=None, version=None):
         jsum_int('downloads'),
         jsum_int('views'),
 
-        func.sum(case((dl_true,  1), else_=0)),   # dl_yes
-        func.sum(case((dl_true,  0), else_=1)),   # dl_no
-        func.sum(case((api_true, 1), else_=0)),   # api_yes
-        func.sum(case((api_true, 0), else_=1)),   # api_no
+        func.sum(case((dl_true,  1), else_=0)),
+        func.sum(case((dl_true,  0), else_=1)),
+        func.sum(case((api_true, 1), else_=0)),
+        func.sum(case((api_true, 0), else_=1)),
 
-        func.count(base.c.pid)                    # total datasets considered
+        func.count(base.c.pid)
     )
 
     (blank, dup, extra, dw, vw,
@@ -262,8 +251,8 @@ def get_timeliness_summary(org_id=None, version=None):
     B4_SHOULD_IMPROVE = case(
         [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
     )
-    B5_MUST_IMPROVE = case([(DQM.acc_latency > 30, 1)], else_=0)                        # ต้องปรับปรุง
-    OUTDATED_THRESHOLD = 30   # ปรับได้ตามนโยบายองค์กร (เช่น 30/60/90 วัน)
+    B5_MUST_IMPROVE = case([(DQM.acc_latency > 30, 1)], else_=0)
+    OUTDATED_THRESHOLD = 30
 
     q = Session.query(
         func.avg(DQM.freshness).label('avg_freshness'),
@@ -401,8 +390,7 @@ def get_validity_counts(org_id=None, version=None):
     # group by
     query = query.group_by('validity_type')
     result = query.all()
-
-    # ค่า default ถ้าไม่มีผลลัพธ์
+    
     summary = {'validity': 0, 'un_validity': 0}
     for row in result:
         if row.validity_type in summary:
@@ -437,8 +425,7 @@ def get_quality_counts(org_id=None, version=None):
         subquery = subquery.filter(JobDQ.org_id == org_id)
 
     subquery = subquery.group_by(DQM.ref_id).subquery()
-
-    # แบ่งกลุ่ม good / need improvement
+    
     query = (
         Session.query(
             case(
@@ -502,7 +489,6 @@ def get_resource_format_counts(org_id=None, version=None):
 
     rows = q.all()
     counts = {r.format: r.count for r in rows}
-
     # ตั้งค่า default ให้ format สำคัญ ๆ (ถ้ายังไม่มีให้เป็น 0)
     base = ["PDF", "XLSX", "CSV", "JSON", "XLS", "XML", "TXT"]
     for k in base:

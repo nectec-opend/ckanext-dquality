@@ -151,9 +151,9 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
               data: [freshnessPct],
               backgroundColor: (ctx) => {
                 const v = ctx.raw;
-                if (v < 35) return 'rgba(255, 99, 132, 0.7)';
-                else if (v < 60) return 'rgba(144, 238, 144, 0.7)';
-                else if (v < 85) return 'rgba(60, 179, 113, 0.8)';
+                if (v < 25) return 'rgba(197, 245, 186, 0.7)';
+                else if (v < 50) return 'rgba(142, 240, 142, 0.7)';
+                else if (v < 75) return 'rgba(60, 179, 113, 0.8)';
                 else return 'rgba(0, 100, 0, 0.9)';
               },
           }]
