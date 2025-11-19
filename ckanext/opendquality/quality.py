@@ -743,7 +743,7 @@ class DataQualityMetrics(object):
             resource_name = resource['name']
             resource_name = resource_name.lower()            
             # initializing test list
-            datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary','คำอธิบายชุดข้อมูล']
+            datadict_list = ['datadict', 'data dict','data_dictionary','data dictionary','คำอธิบายชุดข้อมูล','metadata']
             # checking if string contains list element
             res_datadict = [ele for ele in datadict_list if(ele in resource_name)]
             is_datadict = bool(res_datadict)
@@ -1322,7 +1322,8 @@ class ResourceFetchData(object):
         })
 
     def _download_resource_from_url(self, url, headers=None):
-        resp = requests.get(url, headers=headers)
+        timeout = 5
+        resp = requests.get(url, headers=headers, timeout=timeout)
         resp.raise_for_status()  # Raise an error if request to file failed.
         data = []
         with TemporaryFile(mode='w+b') as tmpf:
@@ -2095,7 +2096,7 @@ class ResourceFetchData2(object):
     #         data = []
     #     return data
 
-    def is_url_file(self,url,timeout):
+    def is_url_file(self,url,timeout=5):
         try:
             # Send a HEAD request to get headers
             response = requests.head(url, timeout=timeout)
@@ -2845,7 +2846,7 @@ class AccessAPI():#DimensionMetric
     def check_api(self, url):
         log.debug("--check_api--")
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=5)
             log.debug(response.status_code)
             
             if response.ok:

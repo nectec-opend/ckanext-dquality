@@ -51,7 +51,7 @@ def get_radar_aggregate_all(org_id=None, version=None):
         .join(latest, latest.c.ref_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .filter(latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
     )
     if version is not None:
         q = q.filter(JobDQ.requested_timestamp == version)
@@ -144,7 +144,7 @@ def qa_detail_blocks(org_id=None, version=None):
         .join(latest, latest.c.package_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.rn == 1, latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .filter(latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
     )
     if version is not None:
         base_q = base_q.filter(JobDQ.requested_timestamp == version)
@@ -222,7 +222,7 @@ def get_relevance_top(org_id=None, version=None, limit=5):
         .join(latest, latest.c.package_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.rn == 1, latest.c.type == "package", JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .filter(latest.c.type == "package", JobDQ.status == 'finish', JobDQ.run_type == 'organization')
         .filter(Package.state == "active")
     )
 
