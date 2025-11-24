@@ -2435,24 +2435,30 @@ class ResourceFetchData2(object):
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
         # log.debug('----call fetch_page at ResourceFetchData2-------')
-        # log.debug(self.download_resource)
+        # ถ้าโหลด resource แล้ว ก็ใช้ cache ได้เลย
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
                 # log.debug('2Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
-        try:
-            #------ Pang Edit ------------------       
+        # -------------------------
+        # ยังไม่เคยโหลด -> พยายามโหลดครั้งแรก
+        # -------------------------
+        try:      
             self.download_resource = True
             # log.debug('Will try to download the data directly.')
             return self.fetch_page2(page, limit)
         except Exception as e:
             log.warning('2 Failed to load resource data from URL. '
                         'Error: %s', str(e))
-            # log.exception(e)
-            self.download_resource = True
-            log.debug('Will try to download the data directly.')
-            return self.fetch_page2(page, limit)
+            # self.download_resource = True
+            return {
+                "total": 0,
+                "records": [],
+                "fields": [],
+                "error": 'Failed to load resource data from URL'
+            }
+            # return self.fetch_page2(page, limit)
 class Openness():#DimensionMetric
     '''Calculates the openness Data Qualtiy dimension.
 
