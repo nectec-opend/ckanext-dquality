@@ -705,7 +705,9 @@ def get_all_organizations():
     """ดึงรายชื่อ organization จาก CKAN config ถ้ามี; ถ้าไม่มีให้ query จริง"""
 
     # อ่านค่าจาก ckan.ini
-    config_orgs = toolkit.config.get('ckanext.opendquality.orgs', "").strip()
+    # config_orgs = toolkit.config.get('ckanext.opendquality.orgs', "").strip()
+    config_orgs = (os.environ.get('CKANEXT__OPENDQUALITY__ORGS')
+    or (toolkit.config.get('ckanext.opendquality.orgs') or '').strip())
 
     if config_orgs:
         # แปลงเป็น list
