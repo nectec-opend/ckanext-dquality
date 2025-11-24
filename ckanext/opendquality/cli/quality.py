@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import click, six
 
-import ckan.plugins.toolkit as toolkit
+import ckan.plugins.toolkit as toolkit, os
 from ckan.model import package_table, resource_table, Session
 import ckanext.opendquality.quality as quality_lib
 from logging import getLogger
@@ -702,14 +702,21 @@ def del_metrict(organization=None, dataset=None, job_id=None):
 #     return [org.name for org in orgs]
 
 def get_all_organizations():
-    """ดึงรายชื่อ organization จาก ENV ถ้ามี; ถ้าไม่มีให้ query จริง"""
+    """ดึงรายชื่อ organization จาก CKAN config ถ้ามี; ถ้าไม่มีให้ query จริง"""
 
-    env_orgs = os.getenv("TEST_ORGS")
+    # อ่านค่าจาก ckan.ini
+    config_orgs = toolkit.config.get('ckanext.opendquality.orgs', "").strip()
 
-    if env_orgs:
-        org_list = [o.strip() for o in env_orgs.split(",") if o.strip()]
-        # log.debug(f"[TEST MODE] Using organizations from ENV: {org_list}")
+    if config_orgs:
+        # แปลงเป็น list
+        org_list = [o.strip() for o in config_orgs.split(",") if o.strip()]
+        log.debug(f"[CONFIG MODE] Using organizations from ckan.ini: {org_list}")
         return org_list
+
+    # Fallback: query จาก database จริง
+    # log.debug("[NORMAL MODE] Querying all organizations from CKAN")
+    orgs = model.Session.query(model.Group).filter(model.Group.type == 'organization').all()
+    return [org.name for org in orgs]
 
     # ถ้าไม่มี ENV ให้ดึงจริงจาก DB
     orgs = model.Session.query(model.Group).filter(model.Group.type == 'organization').all()
