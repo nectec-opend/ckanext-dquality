@@ -695,8 +695,23 @@ def del_metrict(organization=None, dataset=None, job_id=None):
 #             log.info("Deleted data quality metrics for organization %s", organization)
 #     else:
 #         log.error("Please provide either --dataset or --organization")
+#---- ok version -----------------
+# def get_all_organizations():
+#     """ดึงรายชื่อ organization ทั้งหมดจากฐานข้อมูล CKAN"""
+#     orgs = model.Session.query(model.Group).filter(model.Group.type == 'organization').all()
+#     return [org.name for org in orgs]
+
 def get_all_organizations():
-    """ดึงรายชื่อ organization ทั้งหมดจากฐานข้อมูล CKAN"""
+    """ดึงรายชื่อ organization จาก ENV ถ้ามี; ถ้าไม่มีให้ query จริง"""
+
+    env_orgs = os.getenv("TEST_ORGS")
+
+    if env_orgs:
+        org_list = [o.strip() for o in env_orgs.split(",") if o.strip()]
+        # log.debug(f"[TEST MODE] Using organizations from ENV: {org_list}")
+        return org_list
+
+    # ถ้าไม่มี ENV ให้ดึงจริงจาก DB
     orgs = model.Session.query(model.Group).filter(model.Group.type == 'organization').all()
     return [org.name for org in orgs]
     
