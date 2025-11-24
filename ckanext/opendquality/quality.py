@@ -58,10 +58,9 @@ log = getLogger(__name__)
 #     )
 
 DATE_FORMAT = '%Y-%m-%d'
-MAX_CONTENT_LENGTH = int(1e9)
-MAX_EXCERPT_LINES = int(0)
-CHUNK_SIZE = 16 * 1024  # 16kb
-DOWNLOAD_TIMEOUT = 180
+MAX_CONTENT_LENGTH = 15 * 1024 * 1024   # 30 MB
+CHUNK_SIZE = 256 * 1024    # 256 KB
+DOWNLOAD_TIMEOUT = 60      # 60 seconds
 SSL_VERIFY = True
 
 class LazyStreamingList(object):
