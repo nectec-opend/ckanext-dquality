@@ -1846,7 +1846,15 @@ class ResourceFetchData2(object):
                 # log.debug('--Reading XLS data--')
                 try:
                     file_bytes = tmp_file.read()
+
+                    # detect OLE2 มั่ว/ไม่ครบ
+                    if len(file_bytes) % 512 != 0:
+                        raise ValueError("Corrupted XLS: OLE2 sector size mismatch")
+
                     book = xlrd.open_workbook(file_contents=file_bytes)
+                    # ถ้าไม่มี sheet ถือว่าผิดปกติ
+                    if book.nsheets == 0:
+                        raise ValueError("Invalid XLS: file contains no sheets")
                     # เลือก sheet สุดท้าย
                     last_sheet_index = book.nsheets - 1
                     sheet = book.sheet_by_index(last_sheet_index)

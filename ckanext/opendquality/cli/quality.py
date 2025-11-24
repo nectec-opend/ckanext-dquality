@@ -717,7 +717,14 @@ def get_all_organizations():
 
     # Fallback: query จาก database จริง
     # log.debug("[NORMAL MODE] Querying all organizations from CKAN")
-    orgs = model.Session.query(model.Group).filter(model.Group.type == 'organization').all()
+    orgs = (
+        model.Session.query(model.Group)
+        .filter(
+            model.Group.type == 'organization',
+            model.Group.state == 'active'
+        )
+        .all()
+    )
     return [org.name for org in orgs]
 
     # ถ้าไม่มี ENV ให้ดึงจริงจาก DB
