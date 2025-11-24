@@ -25,12 +25,14 @@ import ckan.model as model
 from ckanext.opendquality.model import DataQualityMetrics as qa_table
 from ckanext.opendquality.model import JobDQ as job_table
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timezone, timedelta
 import requests
 from ckan.plugins.toolkit import config
 import time
 
 log = getLogger(__name__)
+# Asia/Bangkok
+tz = timezone(timedelta(hours=7))
 
 @click.group('quality')
 def quality():
@@ -148,10 +150,10 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 job_table.requested_timestamp >= start_of_day,
                 job_table.requested_timestamp < end_of_day
             ).all()
-            log.debug('--check today_jobs--')
-            log.debug(today_jobs)
+            # log.debug('--check today_jobs--')
+            # log.debug(today_jobs)
             if today_jobs:
-                log.debug('--have today_jobs--')
+                # log.debug('--have today_jobs--')
                 for job in today_jobs:
                     # ลบ metrics ทั้งหมดที่ผูกกับ job_id นี้
                     Session.query(qa_table).filter(
@@ -181,7 +183,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
             try:
                 # เปลี่ยนเป็น running
                 job.status = "running"
-                job.started_timestamp = date.today()
+                job.started_timestamp = datetime.now(tz) #date.today()
                 Session.commit()
 
                 # run metric calculation
@@ -189,7 +191,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
 
                 # mark finish
                 job.status = "finish"
-                job.finish_timestamp = date.today()
+                job.finish_timestamp = datetime.now(tz) #date.today()
                 job.active = True
                 Session.commit()
 
@@ -197,13 +199,13 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 log.error("Job %s for dataset %s failed. Error: %s", job_id, dataset_name, str(e))
                 log.exception(e)
                 job.status = "fail"
-                job.finish_timestamp = date.today()
+                job.finish_timestamp =  datetime.now(tz) #date.today()
                 Session.commit()
 
     #------------------------------
     if organization:  
-        log.debug('-------organization--------')  
-        log.debug(organization)     
+        # log.debug('-------organization--------')  
+        # log.debug(organization)     
         if organization == 'all':
             # def _process_batch(packages):
             #     for pkg in packages:
@@ -289,7 +291,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
 
                     # 4. รัน metrics
                     job.status = "running"
-                    job.started_timestamp = date.today()
+                    job.started_timestamp = datetime.now(tz) #date.today()
                     Session.commit()
 
                     def _process_batch(packages):
@@ -300,14 +302,14 @@ def calculate(organization=None, dataset=None,dimension='all'):
                                 log.error(f'Job failed for {org_name}: {str(e)}')
                                 Session.rollback()
                                 job.status = "fail"
-                                job.finish_timestamp = date.today()
+                                job.finish_timestamp = datetime.now(tz)#date.today()
                                 Session.commit()
 
                     org_packages(_process_batch, org_name, job)
 
                     # 5. ปิดงาน
                     job.status = "finish"
-                    job.finish_timestamp = date.today()
+                    job.finish_timestamp = datetime.now(tz) #date.today()
                     job.active = True
                     end_time = time.time()   
                     # Calculate the time taken
@@ -323,7 +325,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     if 'job' in locals():
                         job.status = "fail"
                         job.execute_time = 0
-                        job.finish_timestamp = date.today()
+                        job.finish_timestamp = datetime.now(tz)#date.today()
                         Session.commit()
 
         else:
@@ -370,10 +372,10 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     job_table.org_id == org_id,
                     job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
                 ).all()
-                log.debug('--check today_jobs--')
+                # log.debug('--check today_jobs--')
                 if today_jobs:
-                    log.debug('--have today_jobs--')
-                    log.debug(today_jobs)
+                    # log.debug('--have today_jobs--')
+                    # log.debug(today_jobs)
                     for job in today_jobs:
                         # ลบ metrics ของ job เก่า
                         Session.query(qa_table).filter(
@@ -387,7 +389,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     log.info("Deleted %s old job(s) and metrics for organization %s today",
                             len(today_jobs), organization)
                 
-                log.debug('--not today_jobs: create new--')
+                # log.debug('--not today_jobs: create new--')
                 # 4. สร้าง job ใหม่
                 job_id = str(uuid.uuid4())
                 job = job_table(
@@ -406,26 +408,26 @@ def calculate(organization=None, dataset=None,dimension='all'):
                 try:
                     # เปลี่ยนเป็น running
                     job.status = "running"
-                    job.started_timestamp = date.today()
+                    job.started_timestamp = datetime.now(tz) #date.today()
                     Session.commit()
                     def _process_batch(packages):
                         for pkg in packages:
-                            log.debug('-----package-----')
-                            log.debug(pkg)
-                            log.debug(job_id)
+                            # log.debug('-----package-----')
+                            # log.debug(pkg)
+                            # log.debug(job_id)
                             try:
                                 metrics.calculate_metrics_for_dataset(pkg,job_id=job_id)
                             except Exception as e:                     
                                 log.error('Job failed at Cli: Failed to calculate metrics')
                                 Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
                                 job.status = "fail"
-                                job.finish_timestamp = date.today()
+                                job.finish_timestamp = datetime.now(tz)#date.today()
                                 Session.commit()        
                     
                     org_packages(_process_batch, organization,job)
                     # จบงาน → mark finish
                     job.status = "finish"
-                    job.finish_timestamp = date.today()
+                    job.finish_timestamp = datetime.now(tz)#date.today()
                     job.activate = True
                     end_time = time.time() 
                     execute_time = end_time - start_time
@@ -439,7 +441,7 @@ def calculate(organization=None, dataset=None,dimension='all'):
                     log.error("Job %s failed. Error: %s", job_id, str(e))
                     Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
                     job.status = "fail"
-                    job.finish_timestamp = date.today()
+                    job.finish_timestamp = datetime.now(tz) #date.today()
                     Session.commit()
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one
@@ -455,7 +457,7 @@ def all_packages(handler):
     offset = 0
     limit = 64
     while True:
-        log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
+        # log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
         query = Session.query(package_table.c.id).filter(package_table.c.type == 'dataset', package_table.c.private == False, package_table.c.state == 'active')
         query = query.offset(offset).limit(limit)
 
@@ -466,13 +468,13 @@ def all_packages(handler):
             count += 1
 
         if not count:
-            log.debug('No more packages to process.')
+            # log.debug('No more packages to process.')
             break
 
         offset += limit
 
         try:
-            log.debug('Processing %d packages in current batch.', count)
+            # log.debug('Processing %d packages in current batch.', count)
             handler(packages)
         except Exception as e:
             log.error('Failed to process package batch. Error: %s', str(e))
@@ -482,7 +484,7 @@ def org_packages(handler,org_name,job):
     offset = 0
     limit = 64
     while True:
-        log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
+        # log.debug('Fetching dataset batch %d to %d', offset, offset+limit)
         group = model.Group.get(org_name)
         query = Session.query(package_table.c.id).filter(package_table.c.owner_org == group.id, package_table.c.type == 'dataset', package_table.c.private == False, package_table.c.state == 'active')
         query = query.offset(offset).limit(limit)
@@ -493,17 +495,17 @@ def org_packages(handler,org_name,job):
             count += 1
 
         if not count:
-            log.debug('No more packages to process.')
+            # log.debug('No more packages to process.')
             break
 
         offset += limit
 
         try:
-            log.debug('Processing %d packages in current batch.', count)
+            # log.debug('Processing %d packages in current batch.', count)
             handler(packages)
         except Exception as e:
             job.status = "fail"
-            job.finish_timestamp = date.today(),
+            job.finish_timestamp = datetime.now(tz) #date.today(),
             Session.commit()
             log.error('Job failed at Cli-org package')
             log.error('Failed to process package batch. Error: %s', str(e))
@@ -703,8 +705,8 @@ def get_parent_organization(org_id):
     # url = f"https://ckan-dev.opend.cloud/api/3/action/group_tree_section?type=organization&id={org_id}"
     base_url = config.get("ckan.site_url")
     url = f"{base_url}/api/3/action/group_tree_section?type=organization&id={org_id}"
-    log.debug('base_url')
-    log.debug(url)
+    # log.debug('base_url')
+    # log.debug(url)
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()

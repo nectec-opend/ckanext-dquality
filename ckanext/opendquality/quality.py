@@ -181,7 +181,7 @@ class ResourceCSVData(object):
         self.total = 0
         if len(csv_data):
             self.total = len(csv_data) - 1
-        log.debug('-------------ResourceCSVData----------')
+        # log.debug('-------------ResourceCSVData----------')
         # log.debug('%s, Resource CSV data. Total: %d, columns=%s, fields=%s',
         #           str(self), self.total, self.column_names, self.fields)
 
@@ -377,8 +377,7 @@ class DataQualityMetrics(object):
         :param package_id: `str`, the ID of the dataset (package) for which to
             calculate Data Quality metrics.
         '''
-        log.debug('Calculating data quality for dataset: %s',
-                          package_id)
+        # log.debug('Calculating data quality for dataset: %s', package_id)
         dataset = self._fetch_dataset(package_id)
 
         results = []
@@ -471,7 +470,7 @@ class DataQualityMetrics(object):
                 return size
 
             # ---- fallback ถ้าไม่มี Content-Length ----
-            log.debug("No Content-Length header, fallback to partial download")
+            # log.debug("No Content-Length header, fallback to partial download")
 
             length = 0
             with requests.get(url, stream=True, timeout=timeout, allow_redirects=True) as r:
@@ -481,17 +480,17 @@ class DataQualityMetrics(object):
                         break
                     length += len(chunk)
                     if length > MAX_SIZE:
-                        log.debug(f"File exceeded {MAX_SIZE} bytes, stopping early")
+                        # log.debug(f"File exceeded {MAX_SIZE} bytes, stopping early")
                         return length  # return ขนาดที่โหลดมาแล้ว (เกิน limit)
 
             return length  # กรณีโหลดจบแล้วไม่เกิน limit
 
         except Exception as e:
-            log.debug("Error while checking file size: %s", e)
+            # log.debug("Error while checking file size: %s", e)
             return None
 
     def check_connection_url(self, url, timeout=5):
-        log.debug('---check_connection_url--')
+        # log.debug('---check_connection_url--')
         try:
             #  ใช้ HEAD ก่อน
             response = requests.head(url, timeout=timeout, allow_redirects=True)
@@ -504,7 +503,7 @@ class DataQualityMetrics(object):
         except requests.exceptions.Timeout:
             return False
         except Exception as e:
-            log.debug("Error: %s", e)
+            # log.debug("Error: %s", e)
             return False
     def is_tabular(self,resource,mimetype):
         machine_readable_formats = ['CSV', 'XLSX', 'XLS', 'JSON']
@@ -518,8 +517,8 @@ class DataQualityMetrics(object):
 
         #  ถ้ายังไม่มี format ลองดูจาก resource['format']
         if not data_format:
-            log.debug('format')
-            log.debug(resource.get('format'))
+            # log.debug('format')
+            # log.debug(resource.get('format'))
             data_format = (resource.get('format') or '').strip().upper()
        
         # หาจาก URL ถ้า format ยังว่าง
@@ -533,7 +532,7 @@ class DataQualityMetrics(object):
         # ลบจุดและเช็คว่าคือ tabular หรือไม่
         data_format = data_format.replace('.', '').upper()
         is_file_tabular = data_format in machine_readable_formats
-        log.debug(data_format)
+        # log.debug(data_format)
         return is_file_tabular
     def is_openness_5_star_format(self, data_format): #special format 
         OPENNESS_5_STAR_FORMATS = ['RDF', 'TTL', 'N3', 'GEOJSON',  'GML', 'KML', 'SHP','WMS', 'ESRI REST']
@@ -605,8 +604,8 @@ class DataQualityMetrics(object):
         # 3. ถ้าไม่มี mapping เลย ให้ใช้ resource_format ที่ส่งมา
         result = mimetype_format or file_format
 
-        log.debug('--mimetype_format ---')
-        log.debug(result)
+        # log.debug('--mimetype_format ---')
+        # log.debug(result)
         # if not mimetype_format:
         #     result = file_format  # ถ้าอย่างใดอย่างหนึ่งไม่มีค่า
         return result
@@ -673,11 +672,11 @@ class DataQualityMetrics(object):
         mimetype_format = mimetype_map.get(mimetype, None)
 
         # 4. เปรียบเทียบ (normalize ทั้งสองข้างก่อนเทียบ)
-        log.debug('--inspect file ---')
-        log.debug(file_format)
-        log.debug('--mimetype_format ---')
-        log.debug(mimetype_format)
-        log.debug(result)
+        # log.debug('--inspect file ---')
+        # log.debug(file_format)
+        # log.debug('--mimetype_format ---')
+        # log.debug(mimetype_format)
+        # log.debug(result)
         if file_format in ['XLS','XLSX','CSV','JSON','GEOJSON','PDF','DOC','PPT','PPTX',
                            'JPEG','PNG','GIF','TIFF','SVG','TXT','XML','RDF']:
             if file_format and mimetype_format:
@@ -717,7 +716,7 @@ class DataQualityMetrics(object):
     #     return False
 
     def calculate_metrics_for_resource(self, resource, job_id=None):
-        log.debug('calculate_metrics_for_resource')
+        # log.debug('calculate_metrics_for_resource')
         if resource.get('last_modified') is not None:
             last_modified = dateutil.parser.parse(resource.get('last_modified') or resource.get('created'))
         else:
@@ -738,7 +737,7 @@ class DataQualityMetrics(object):
                 resource_url = resource_url.replace("209.15.113.87", "data.go.th")
                 resource['url'] = resource_url   # set ค่าใหม่เข้า resource object เลย
         
-        log.debug(resource_url)
+        # log.debug(resource_url)
         try:
             resource_name = resource['name']
             resource_name = resource_name.lower()            
@@ -766,7 +765,7 @@ class DataQualityMetrics(object):
         # Check if the request was successful
         if self.check_connection_url(resource_url, timeout):     
             start_time = time.time()
-            log.debug(start_time)
+            # log.debug(start_time)
             connection_url = True
             file_size = self.get_file_size(resource_id,resource_url)
             #----Check mimetype-----------------------
@@ -775,7 +774,7 @@ class DataQualityMetrics(object):
             detected_format = self.convert_mimetype_to_format(mimetype,resource['format'],resource_url)
             if file_size is not None:
                 file_size_mb = file_size/1024**2
-                log.debug("File size (MB): %s", file_size_mb)
+                # log.debug("File size (MB): %s", file_size_mb)
             # if file_info == False:
             #     error_file_not_match = 'Invalid file format'
             if not is_datadict:                                                   
@@ -850,7 +849,7 @@ class DataQualityMetrics(object):
                 )
                 res_result = query.first()
                 if res_result:
-                    log.debug(f"Package: {res_result.package_id}, Org: {res_result.org_name}")
+                    # log.debug(f"Package: {res_result.package_id}, Org: {res_result.org_name}")
                     data_quality.package_id = res_result.package_id
                     data_quality.org_name   = res_result.org_name
                         
@@ -916,28 +915,28 @@ class DataQualityMetrics(object):
                             # log.debug(data_stream2)
                             if data_stream2.get('error'):
                                 error_fetching_resource = data_stream2.get('error')
-                            log.debug('------ End call Data Stream2-----')
-                            log.debug('------ mimetype -----')               
+                            # log.debug('------ End call Data Stream2-----')
+                            # log.debug('------ mimetype -----')               
                             # #-------------------------------------------------------------
-                            log.debug('------ check all metrics-----')
+                            # log.debug('------ check all metrics-----')
                             if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
-                                log.debug('------ check metric-----')
-                                log.debug(metric.name)
+                                # log.debug('------ check metric-----')
+                                # log.debug(metric.name)
                                 results[metric.name] = metric.calculate_metric(resource)
                             
                             elif metric.name == 'timeliness':     
-                                log.debug('----timeliness------')                                         
+                                # log.debug('----timeliness------')                                         
                                 results[metric.name] = metric.calculate_metric(resource)
                                 timeliness_val = results[metric.name] 
 
                             elif metric.name in ['acc_latency', 'freshness']:   
                                 if timeliness_val:
-                                    log.debug('----acc_latency------')                                         
+                                    # log.debug('----acc_latency------')                                         
                                     results[metric.name] = metric.calculate_metric(resource, timeliness_val)
                                 else:
                                     continue
                             elif( metric.name == 'relevance'):
-                                log.debug('------relevance-----')
+                                # log.debug('------relevance-----')
                                 #ถ้าตรวจแบบ organization
                                 level_name = 'nectec'
                                 execute_type = 'organization'
@@ -947,32 +946,32 @@ class DataQualityMetrics(object):
                             #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
                             tabular_format = self.is_tabular(resource,detected_format)
                             openness_5_star_format = self.is_openness_5_star_format(resource['format'])
-                            log.debug(f"[check tabular_format] => {tabular_format}")
+                            # log.debug(f"[check tabular_format] => {tabular_format}")
                             if(tabular_format):
                                 if(metric.name == 'consistency'):
-                                    log.debug('------Call consistency -----')                           
+                                    # log.debug('------Call consistency -----')                           
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)
                                     consistency_val = results[metric.name].get('value')
-                                    log.debug(consistency_val)
+                                    # log.debug(consistency_val)
                                 elif(metric.name == 'validity'):
-                                    log.debug('----check validity------')
+                                    # log.debug('----check validity------')
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
                                     validity_report = results[metric.name].get('report')
                                 elif(metric.name == 'completeness'):                           
-                                    log.debug('----check completeness------')
-                                    log.debug(data_stream2['total'])
+                                    # log.debug('----check completeness------')
+                                    # log.debug(data_stream2['total'])
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                     completeness_report = results[metric.name].get('report')
-                                    log.debug('-----after calculate completeness--')
+                                    # log.debug('-----after calculate completeness--')
                                     # log.debug("---dir tempfile----")
                                     # log.debug(os.listdir(tempfile.gettempdir()))
                                 elif(metric.name == 'uniqueness'):                           
-                                    log.debug('----check uniqueness------')
-                                    log.debug(data_stream2['total'])
+                                    # log.debug('----check uniqueness------')
+                                    # log.debug(data_stream2['total'])
                                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
                                     uniqueness_report = results[metric.name].get('report')
                                 elif(metric.name == 'utf8'):
-                                    log.debug('----utf8_val------')       
+                                    # log.debug('----utf8_val------')       
                                     results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
                             elif (openness_5_star_format):
                                 results['consistency'] = { 'value': 100 }
@@ -1000,14 +999,14 @@ class DataQualityMetrics(object):
                             #     log.debug('----utf8_val------')       
                             #     results[metric.name] = metric.calculate_metric_utf8(resource,{})
                             elif (metric.name == 'timeliness'):     
-                                log.debug('----timeliness------')                                         
+                                # log.debug('----timeliness------')                                         
                                 results[metric.name] = metric.calculate_metric(resource)
                                 timeliness_val = results[metric.name]
                             elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
-                                log.debug('----acc_latency------')                                         
+                                # log.debug('----acc_latency------')                                         
                                 results[metric.name] = metric.calculate_metric(resource,timeliness_val)
                             elif( metric.name == 'relevance'):
-                                log.debug('------relevance-----')
+                                # log.debug('------relevance-----')
                                 #ถ้าตรวจแบบ organization
                                 org_name = 'nectec'
                                 execute_type = 'organization'
@@ -1029,9 +1028,9 @@ class DataQualityMetrics(object):
                                 results['connection_url'] = { 'error': True}
                         
                     except Exception as e:
-                        self.logger.error('Failed to calculate: %s. Error: %s',
-                                        metric, str(e))
-                        self.logger.exception(e)
+                        # self.logger.error('Failed to calculate: %s. Error: %s',
+                        #                 metric, str(e))
+                        # self.logger.exception(e)
                         results['error'] = "Failed to calculate:"+metric.name
                         results[metric.name] = {
                             'failed': True,
@@ -1060,8 +1059,8 @@ class DataQualityMetrics(object):
                 end_time = time.time()   
                 # Calculate the time taken
                 execute_time = end_time - start_time
-                log.debug("----execute_time----")
-                log.debug(execute_time)    
+                # log.debug("----execute_time----")
+                # log.debug(execute_time)    
                 # if 'error' in results and results['error']:
                 #     data_quality.error = results['error'].get('error')
                 # else:
@@ -1114,14 +1113,14 @@ class DataQualityMetrics(object):
                 )
                 res_result = query.first()
                 if res_result:
-                    log.debug(f"Package: {res_result.package_id}, Org: {res_result.org_name}")
+                    # log.debug(f"Package: {res_result.package_id}, Org: {res_result.org_name}")
                     data_quality.package_id = res_result.package_id
                     data_quality.org_name   = res_result.org_name
                         
                 data_quality.ref_id = resource_id                   
                 data_quality.resource_last_modified = last_modified
             #----------------------------------------------------------
-                self.logger.debug('First data quality calculation.')
+                # self.logger.debug('First data quality calculation.')
                 #----------------Calculate Metrics--------------------
                 # data_quality.ref_id = resource['id']
                 # data_quality.resource_last_modified = last_modified
@@ -1312,7 +1311,7 @@ class ResourceFetchData(object):
             }
 
     def _fetch_data_datastore(self, page, limit):
-        log.debug('Fetch page from datastore: page %d, limit %d', page, limit)
+        # log.debug('Fetch page from datastore: page %d, limit %d', page, limit)
         return toolkit.get_action('datastore_search')({
             'ignore_auth': True,
         }, {
@@ -1355,10 +1354,10 @@ class ResourceFetchData(object):
                 if 'url' not in resource:
                     raise Exception('Cannot access the resource because the '
                                     'resource URL is not set.')
-                log.debug('Resource data is not in this file system '
-                          '(File %s does not exist).'
-                          'Fetching data from CKAN download url directly.',
-                          filepath)
+                # log.debug('Resource data is not in this file system '
+                #           '(File %s does not exist).'
+                #           'Fetching data from CKAN download url directly.',
+                #           filepath)
                 headers = None
                 sysadmin_api_key = _get_sysadmin_user_key()
                 if sysadmin_api_key:
@@ -1376,10 +1375,10 @@ class ResourceFetchData(object):
 
     def _fetch_data_directly(self):
         if self.resource.get('url_type') == 'upload':
-            log.debug('Getting data from CKAN...')
+            # log.debug('Getting data from CKAN...')
             return self._download_resource_from_ckan(self.resource)
         if self.resource.get('url'):
-            log.debug('Getting data from remote URL...')
+            # log.debug('Getting data from remote URL...')
             return self._download_resource_from_url(self.resource['url'], self.resource['format'])
         raise Exception('Resource {} is not available '
                         'for download.'.format(self.resource.get('id')))
@@ -1414,19 +1413,19 @@ class ResourceFetchData(object):
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
-                log.debug('Resource data downloaded directly.')
+                # log.debug('Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
         try:
             page = self._fetch_data_datastore(page, limit)
-            log.debug('Data is available in DataStore. '
-                      'Using datastore for data retrieval.')
+            # log.debug('Data is available in DataStore. '
+                    #   'Using datastore for data retrieval.')
             return page
         except Exception as e:
-            log.warning('Failed to load resource data from DataStore. '
-                        'Error: %s', str(e))
-            log.exception(e)
+            # log.warning('Failed to load resource data from DataStore. '
+            #             'Error: %s', str(e))
+            # log.exception(e)
             self.download_resource = True
-            log.debug('Will try to download the data directly.')
+            # log.debug('Will try to download the data directly.')
             return self.fetch_page(page, limit)
 class ResourceFetchData2(object):
     '''A callable wrapper for fetching the resource data.
@@ -1493,7 +1492,7 @@ class ResourceFetchData2(object):
             }
 
     def _fetch_data_datastore(self, page, limit):
-        log.debug('Fetch page from datastore: page %d, limit %d', page, limit)
+        # log.debug('Fetch page from datastore: page %d, limit %d', page, limit)
         return toolkit.get_action('datastore_search')({
             'ignore_auth': True,
         }, {
@@ -1502,20 +1501,20 @@ class ResourceFetchData2(object):
             'limit': limit,
         })
     def _fetch_data_datastore_defined_row(self, resource):
-        log.debug('--data store--')
+        # log.debug('--data store--')
         page = 0
         limit = 5001
-        log.debug("resource_id")
-        log.debug(resource.get('id'))
+        # log.debug("resource_id")
+        # log.debug(resource.get('id'))
         data = []
         try:
             # ตรวจว่ามี datastore จริงหรือไม่ก่อน
             context = {'ignore_auth': True}
             data_dict = {'id': resource.get('id')}
-            log.debug("check datastore1")
-            log.debug(f"data_dict: {data_dict}")
+            # log.debug("check datastore1")
+            # log.debug(f"data_dict: {data_dict}")
             ds_metadata = toolkit.get_action('datastore_info')(context, data_dict)
-            log.debug("check datastore2")
+            # log.debug("check datastore2")
             # log.debug(ds_metadata)
             
             if resource['datastore_active'] == True:
@@ -1533,7 +1532,7 @@ class ResourceFetchData2(object):
             else:
                 log.warning("Resource ไม่มีข้อมูลใน datastore")
         except Exception as e:
-            log.debug(f"cannot read from datastore: {e}")
+            # log.debug(f"cannot read from datastore: {e}")
             return {
                 'source': 'none',
                 'data': []
@@ -1543,11 +1542,26 @@ class ResourceFetchData2(object):
     def get_url(self, url,headers):
         kwargs = {
             'headers': headers,
-            'timeout': DOWNLOAD_TIMEOUT,
+            # 'timeout': DOWNLOAD_TIMEOUT,
+            'timeout': (5, DOWNLOAD_TIMEOUT), 
             'verify': SSL_VERIFY,
             'stream': True
         }
-        return requests.get(url, **kwargs)
+        # return requests.get(url, **kwargs)
+        try:
+            return requests.get(url, **kwargs)
+        except requests.exceptions.ConnectTimeout:
+            log.error(f"Connect timeout: {url}")
+            raise
+        except requests.exceptions.ReadTimeout:
+            log.error(f"Read timeout: {url}")
+            raise
+        except requests.exceptions.SSLError as e:
+            log.error(f"SSL error: {e} - {url}")
+            raise
+        except requests.exceptions.RequestException as e:
+            log.error(f"Request failed: {e} - {url}")
+            raise
 
     # def get_response(self, url, headers):
     #     response = self.get_url(url, headers)
@@ -1569,12 +1583,12 @@ class ResourceFetchData2(object):
         #---------------------------------------
         data = []
         n_rows = 5001
-        log.debug('----resource format-----')
+        # log.debug('----resource format-----')
         filepath = url
         format_url = filepath.split(".")[-1]
         mimetype = ResourceFetchData2.detect_mimetype(filepath)
         if mimetype == "text/html":
-            log.debug(f"Skip HTML file by mimetype: {filepath}")
+            # log.debug(f"Skip HTML file by mimetype: {filepath}")
             return []
         log.debug(f"Downloading {filepath}, detected mimetype: {mimetype}")
 
@@ -1583,7 +1597,7 @@ class ResourceFetchData2(object):
             # --- เช็ค Content-Type ---
             content_type = response.headers.get("Content-Type", "").lower()
             if "text/html" in content_type:
-                log.debug(f"Skip HTML resource: {url}")
+                # log.debug(f"Skip HTML resource: {url}")
                 response.close()
                 return []   # หรือ return None ตามที่ระบบหลักคุณรองรับ
         except requests.exceptions.RequestException as e:
@@ -1637,7 +1651,8 @@ class ResourceFetchData2(object):
                 length += len(chunk)
                 if length > MAX_CONTENT_LENGTH:
                     response.close()
-                    raise DataTooBigError("File too large")
+                    continue
+                    # raise DataTooBigError("File too large")
                 tmp_file.write(chunk)
                 raw_data += chunk
                 m.update(chunk)
@@ -1663,11 +1678,11 @@ class ResourceFetchData2(object):
 
 
             if(mimetype == 'text/csv'): #(resource_format =='CSV'):
-                log.debug('----csv----')     
+                # log.debug('----csv----')     
                 # log.debug(filepath)
                 #-----------------------------------      
                 try:
-                    log.debug('--Reading CSV from temp--')
+                    # log.debug('--Reading CSV from temp--')
                     reader = csv.reader(io.TextIOWrapper(tmp_file, encoding=encoding, newline='')) #'utf-8'
                     records_read = 0
                     for row in reader:
@@ -1691,7 +1706,7 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
                 data = []
                 try:
-                    log.debug('--Reading JSON from temp file--')
+                    # log.debug('--Reading JSON from temp file--')
 
                     # ครอบไฟล์ binary เป็น text file ด้วย encoding
                     with io.TextIOWrapper(tmp_file, encoding=encoding) as f:
@@ -1811,7 +1826,7 @@ class ResourceFetchData2(object):
                 #     log.debug("Unexpected error occurred")
                 #     data = []
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
-                log.debug('--Reading XLSX data--')
+                # log.debug('--Reading XLSX data--')
                 try:
                     wb = load_workbook(tmp_file.name) #filename=tmp_file
                     # Get the last worksheet instead of the active one
@@ -1829,7 +1844,7 @@ class ResourceFetchData2(object):
                     data = []
                     # data = self._fetch_data_datastore_defined_row(self.resource)
             elif(mimetype == 'application/vnd.ms-excel'):
-                log.debug('--Reading XLS data--')
+                # log.debug('--Reading XLS data--')
                 try:
                     file_bytes = tmp_file.read()
                     book = xlrd.open_workbook(file_contents=file_bytes)
@@ -1845,7 +1860,7 @@ class ResourceFetchData2(object):
             else:
                 data = []
                 log.debug('mimetype ไม่ตรง ไม่มีเครื่องมืออ่าน')
-            log.debug('----check data----')
+            # log.debug('----check data----')
             # log.debug(data)
         finally:
             # ลบไฟล์ด้วยตัวเอง
@@ -2105,24 +2120,24 @@ class ResourceFetchData2(object):
             if content_type:
                 # Check if it's 'application/octet-stream'
                 if content_type == 'application/octet-stream':
-                    log.debug("Content-Type, application/octet-stream...")
+                    # log.debug("Content-Type, application/octet-stream...")
                     # Use the URL extension to guess the MIME type
                     mime_type, _ = mimetypes.guess_type(url)
                     if mime_type:
-                        log.debug("Guessed MIME type from URL:", mime_type)
+                        # log.debug("Guessed MIME type from URL:", mime_type)
                         return True  # It's a file based on the guessed MIME type
                     else:
-                        log.debug("Cannot detect mimetype")
+                        # log.debug("Cannot detect mimetype")
                         return True
                 else:
                     log.debug("Content-Type: %s", content_type)
                     return True  # It's a valid file based on Content-Type
             else:
                 # If there's no Content-Type, guess based on URL or file content
-                log.debug("No Content-Type, guessing from URL...")
+                # log.debug("No Content-Type, guessing from URL...")
                 mime_type, _ = mimetypes.guess_type(url)
                 if mime_type:
-                    log.debug("Guessed MIME type:" , mime_type)
+                    # log.debug("Guessed MIME type:" , mime_type)
                     return True
                 else:
                     # As a fallback, attempt a GET request to analyze the content
@@ -2130,9 +2145,9 @@ class ResourceFetchData2(object):
                     response.raise_for_status()
                     content_disposition = response.headers.get('Content-Disposition')
                     if content_disposition:
-                        log.debug("Guessed from Content-Disposition: ",content_disposition)
+                        # log.debug("Guessed from Content-Disposition: ",content_disposition)
                         return True
-                    log.debug("Content-Type could not be determined.")
+                    # log.debug("Content-Type could not be determined.")
                     return False
         except Exception as e:
             log.debug("An error occurred:", e)
@@ -2145,7 +2160,7 @@ class ResourceFetchData2(object):
     @staticmethod
     def detect_mimetype(url):
         try:
-            log.debug("identify mimetype based on content-type")
+            # log.debug("identify mimetype based on content-type")
             response = requests.head(url, timeout=5)
             content_type = response.headers.get('Content-Type', None)
             content_disposition = response.headers.get('Content-Disposition', None)
@@ -2165,17 +2180,17 @@ class ResourceFetchData2(object):
 
             # --- Parse Content-Disposition header for filename ---
             if content_disposition:
-                log.debug(f"Content-Disposition: {content_disposition}")
+                # log.debug(f"Content-Disposition: {content_disposition}")
                 if 'filename=' in content_disposition:
                     filename = content_disposition.split('filename=')[-1].strip().strip('"')
                 elif 'filename*=' in content_disposition:
                     filename = content_disposition.split("filename*=")[-1].split("''")[-1]
-                log.debug(f"Downloaded filename: {filename}")
+                # log.debug(f"Downloaded filename: {filename}")
 
             # --- Try to get filename from URL if not available ---
             parsed_url = urlparse(url)
             filename_from_url = os.path.basename(parsed_url.path)
-            log.debug(f"Filename from URL path: {filename_from_url}")
+            # log.debug(f"Filename from URL path: {filename_from_url}")
 
             # --- Select most reliable filename ---
             if filename and os.path.splitext(filename)[1]:
@@ -2258,11 +2273,10 @@ class ResourceFetchData2(object):
             # else:
             #     mimetype = 'application/octet-stream'  # fallback
 
-            log.debug(f"Determined mimetype from extension '{ext}': {mimetype}")
+            # log.debug(f"Determined mimetype from extension '{ext}': {mimetype}")
 
         except Exception as e:
             log.debug("Error fetching header:")
-            log.debug(e)
             mimetype = None
 
         return mimetype
@@ -2277,7 +2291,7 @@ class ResourceFetchData2(object):
                 result = chardet.detect(sample)
                 return result['encoding']
             else:
-                log.debug(f"Failed to download the file. Status code: {response.status_code}")
+                # log.debug(f"Failed to download the file. Status code: {response.status_code}")
                 return None
         except Exception as e:
             log.debug(f"Error: {e}")
@@ -2364,10 +2378,10 @@ class ResourceFetchData2(object):
                 if 'url' not in resource:
                     raise Exception('Cannot access the resource because the '
                                     'resource URL is not set.')
-                log.debug('Resource data is not in this file system '
-                          '(File %s does not exist).'
-                          'Fetching data from CKAN download url directly.',
-                          filepath)
+                # log.debug('Resource data is not in this file system '
+                #           '(File %s does not exist).'
+                #           'Fetching data from CKAN download url directly.',
+                #           filepath)
                 headers = None
                 # sysadmin_api_key = _get_sysadmin_user_key()
                 # if sysadmin_api_key:
@@ -2385,11 +2399,11 @@ class ResourceFetchData2(object):
 
     def _fetch_data_directly(self):
         if self.resource.get('url_type') == 'upload':
-            log.debug('2 Getting data from CKAN...')
+            # log.debug('2 Getting data from CKAN...')
             # return self._download_resource_from_ckan(self.resource)
             return self._download_resource_from_url(self.resource['url'], self.resource['format'])
         if self.resource.get('url'):
-            log.debug('2 Getting data from remote URL...')
+            # log.debug('2 Getting data from remote URL...')
             return self._download_resource_from_url(self.resource['url'], self.resource['format'])
         raise Exception('Resource {} is not available '
                         'for download.'.format(self.resource.get('id')))
@@ -2420,22 +2434,22 @@ class ResourceFetchData2(object):
                     * `id` - `str`, the name of the column
                     * `type` - `str`, the column type (ex. `numeric`, `text`)
         '''
-        log.debug('----call fetch_page at ResourceFetchData2-------')
+        # log.debug('----call fetch_page at ResourceFetchData2-------')
         # log.debug(self.download_resource)
         if self.download_resource:
             if not self.resource_csv:
                 self.resource_csv = ResourceCSVData(self._fetch_data_directly)
-                log.debug('2Resource data downloaded directly.')
+                # log.debug('2Resource data downloaded directly.')
             return self.resource_csv.fetch_page(page, limit)
         try:
             #------ Pang Edit ------------------       
             self.download_resource = True
-            log.debug('Will try to download the data directly.')
+            # log.debug('Will try to download the data directly.')
             return self.fetch_page2(page, limit)
         except Exception as e:
             log.warning('2 Failed to load resource data from URL. '
                         'Error: %s', str(e))
-            log.exception(e)
+            # log.exception(e)
             self.download_resource = True
             log.debug('Will try to download the data directly.')
             return self.fetch_page2(page, limit)
@@ -2844,15 +2858,15 @@ class AccessAPI():#DimensionMetric
     def __init__(self):
         self.name = 'access_api'
     def check_api(self, url):
-        log.debug("--check_api--")
+        # log.debug("--check_api--")
         try:
             response = requests.get(url, timeout=5)
-            log.debug(response.status_code)
+            # log.debug(response.status_code)
             
             if response.ok:
                 try:
                     data = response.json()
-                    log.debug("Valid JSON Response:")
+                    # log.debug("Valid JSON Response:")
                     # log.debug(data)
                     return True
                 except ValueError:
@@ -2864,7 +2878,7 @@ class AccessAPI():#DimensionMetric
                 return False
         except requests.exceptions.RequestException as e:
             log.debug("Request Exception: ")
-            log.debug(e)
+            # log.debug(e)
             return False
     def calculate_metric(self, resource):
         '''Calculates the API Accesssibility dimension metric for the given resource
@@ -2883,9 +2897,9 @@ class AccessAPI():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug ('-----Access API-----')
+        # log.debug ('-----Access API-----')
         access_api_score = 0 
-        log.debug (resource['format'])
+        # log.debug (resource['format'])
         if(resource['datastore_active'] == True):
             access_api_score = 1
         elif(resource['datastore_active'] == False): 
@@ -2895,10 +2909,10 @@ class AccessAPI():#DimensionMetric
             # is_valid_api = self.check_api(resource['format'])
             if is_valid_api:
                 access_api_score = 1 #2
-                log.debug ("The URL is a valid API endpoint.")
+                # log.debug ("The URL is a valid API endpoint.")
             else:
                 access_api_score = 0
-                log.debug ("The URL is not a valid API endpoint.")
+                # log.debug ("The URL is not a valid API endpoint.")
         return {
             'datastore': resource['datastore_active'],
             'format': resource['format'],
@@ -3024,7 +3038,7 @@ class Availability():
         #---------- Access Api -----------------------
         
         access_api_score = 1 
-        log.debug (resource['format'])
+        # log.debug (resource['format'])
         if(resource['datastore_active'] == True):
             access_api_score = 1
         elif(resource['datastore_active'] == False): 
@@ -3033,10 +3047,10 @@ class Availability():
             is_valid_api = access.check_api(resource['url'])
             if is_valid_api:
                 access_api_score = 1 
-                log.debug ("The URL is a valid API endpoint.")
+                # log.debug ("The URL is a valid API endpoint.")
             else:
                 access_api_score = 0
-                log.debug ("The URL is not a valid API endpoint.")
+                # log.debug ("The URL is not a valid API endpoint.")
         else:
             access_api_score = 0
 
@@ -3164,13 +3178,13 @@ class EncodingUTF8():
         
         if data_format in machine_readable_format:
             encoding = validity_report.get('encoding')     
-            log.debug('-----tabular_format------')
+            # log.debug('-----tabular_format------')
             file_type = 'tabular'
             if encoding and "utf-8" in encoding.lower():
                 encoding_utf8 = 1
             else:
                 encoding_utf8 = 0
-            log.debug(encoding_utf8) 
+            # log.debug(encoding_utf8) 
         elif data_format in openness_5_star_format:
             file_type = 'spacial types'
         elif data_format in document_format:
@@ -3262,9 +3276,9 @@ class Preview():
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug ('-----Preview-----')
+        # log.debug ('-----Preview-----')
         preview_score = 0
-        log.debug (resource['format'])
+        # log.debug (resource['format'])
         if(resource['datastore_active'] == True):
             preview_score = 1
         elif(resource['datastore_active'] == False): 
@@ -3546,9 +3560,9 @@ class Completeness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
-        log.debug('---completeness start----')
-        log.debug(data['fields'])
-        log.debug(data['total'])
+        # log.debug('---completeness start----')
+        # log.debug(data['fields'])
+        # log.debug(data['total'])
         # #-----ok version---------------------------------------
         # rows_count = data['total']
         # # df = pd.DataFrame(data['records'])
@@ -3667,9 +3681,9 @@ class Completeness():#DimensionMetric
             # คำนวณ completeness score
             result = (total_complete_values / total_values_count * 100.0) if total_values_count else 0
 
-            log.debug('---Rows: %d, Columns: %d, Total Values: %d', rows_count, columns_count, total_values_count)
-            log.debug('Complete (non-empty) values: %d', total_complete_values)
-            log.debug('Completeness score: %f%%', result)
+            # log.debug('---Rows: %d, Columns: %d, Total Values: %d', rows_count, columns_count, total_values_count)
+            # log.debug('Complete (non-empty) values: %d', total_complete_values)
+            # log.debug('Completeness score: %f%%', result)
 
             return {
                 'value': round(result, 2),
@@ -4188,7 +4202,7 @@ class Validity():#DimensionMetric
         relevant_errors = 0
         filepath = resource['url']
         dict_error = {}
-        log.debug("---validity---")
+        # log.debug("---validity---")
         #ตรวจสอบการอ่านข้อมูล ถ้า Failed to Fetch Data จะไม่ตรวจ Validity
         if data.get('error'):  # ตรวจว่า 'error' มีค่าและไม่ใช่ค่าว่าง
             dict_error['encoding'] = None
@@ -4238,15 +4252,15 @@ class Validity():#DimensionMetric
                         continue
                 encoding = table.get('encoding')
                 valid = table.get('valid')
-                log.debug("---encoding---")
-                log.debug(encoding)
+                # log.debug("---encoding---")
+                # log.debug(encoding)
                 # log.debug(table.get('errors'))
                 dict_error['encoding'] = encoding
                 dict_error['valid']    = valid
                 dict_error['error'] = error_message
             #โหลดและตรวจสอบไฟล์ได้แล้ว แต่ไม่มีข้อมูลในไฟล์นั้นเลย เช่น ไม่มีข้อมูลในไฟล์เลย หรือมี header แต่ไม่มี row จริง
             if total_rows == 0:
-                log.debug('--total_rows=0--')
+                # log.debug('--total_rows=0--')
                 default_error_message = 'Data is empty/Invalid file format or structure'
                 if dict_error.get('source-error', 0) > 0 :
                     default_error_message = "Source-error"
@@ -4755,7 +4769,7 @@ class Consistency():#DimensionMetric
             * `report`, `dict`, detailed, per column, report for the
                 consistency of the data.
         '''
-        log.debug('-----consistency start-------')
+        # log.debug('-----consistency start-------')
         # log.debug(data['fields'])
         validators = self.get_consistency_validators()
         # fields = {f['id']: f for f in data['fields']}
@@ -4791,8 +4805,8 @@ class Consistency():#DimensionMetric
         report = {f['id']: {'count': 0, 'formats': {}} for f in data['fields']}
         #--------------------------------
         count_row=0
-        log.debug('-----consistency record--------') # version แรกใช้ data record
-        log.debug(field_names)
+        # log.debug('-----consistency record--------') # version แรกใช้ data record
+        # log.debug(field_names)
         # field_names = [f['id'] for f in data['fields']]
         # field_names = data['raw_data'][0] #old
         # ข้าม header แถวแรกของ raw_data
@@ -4801,7 +4815,7 @@ class Consistency():#DimensionMetric
             # for field, value in row.items():
             count_row += 1
             row_dict = dict(zip(field_names, row))  # แปลง list -> dict
-            log.debug(row_dict)
+            # log.debug(row_dict)
             for field, value in row_dict.items():
                 # ข้ามค่าว่าง
                 if value is None or (isinstance(value, str) and str(value).strip() == ""):
@@ -4823,9 +4837,9 @@ class Consistency():#DimensionMetric
             numeric_count = 0
             timestamp_count = 0
             format_dict = field_report['formats'] 
-            log.debug('--format_dict before--')
-            log.debug(field) 
-            log.debug(format_dict) 
+            # log.debug('--format_dict before--')
+            # log.debug(field) 
+            # log.debug(format_dict) 
             for key, value in format_dict.items():
                 if key in {'int', 'float', 'unknown',
                         '^\\d+$', '^[+-]\\d+$',
@@ -5165,20 +5179,20 @@ class Timeliness():#DimensionMetric
             #freshness = ข้อมูลใหม่แค่ไหน, 100% = เพิ่งอัปเดต, 0% ถึงรอบพอดี, ติดลบข้อมูลล่าช้า
             freshness = (update_cycle_days - elapsed_days) / update_cycle_days * 100
 
-            log.debug('resource.id')
-            log.debug(resource.get('id'))
-            log.debug('created.date()')
-            log.debug(created.date())
-            log.debug(created_date_str)
-            log.debug('elapsed_days')
-            log.debug(elapsed_days)
-            log.debug('overdue_day')
-            log.debug(overdue_day)
-            log.debug('safe_overdue')
-            log.debug(safe_overdue)
-            log.debug('update_cycle_days')
-            log.debug(update_cycle_days)
-            log.debug(update_frequency_unit.value)
+            # log.debug('resource.id')
+            # log.debug(resource.get('id'))
+            # log.debug('created.date()')
+            # log.debug(created.date())
+            # log.debug(created_date_str)
+            # log.debug('elapsed_days')
+            # log.debug(elapsed_days)
+            # log.debug('overdue_day')
+            # log.debug(overdue_day)
+            # log.debug('safe_overdue')
+            # log.debug(safe_overdue)
+            # log.debug('update_cycle_days')
+            # log.debug(update_cycle_days)
+            # log.debug(update_frequency_unit.value)
         else:
             acceptable_latency = -1  # ไม่ได้กำหนดค่า หรือกำหนดเป็นค่าอื่นๆ
             freshness = -1
@@ -5275,8 +5289,8 @@ class AcceptableLatency():
 
     def calculate_metric(self, resource,timeliness_val): 
    
-        log.debug('resource.id')
-        log.debug(resource.get('id'))
+        # log.debug('resource.id')
+        # log.debug(resource.get('id'))
        
         acc_latency = timeliness_val.get('acceptable_latency')
         return {                   
@@ -5370,8 +5384,8 @@ class Freshness():
 
     def calculate_metric(self, resource,timeliness_val): 
    
-        log.debug('resource.id')
-        log.debug(resource.get('id'))
+        # log.debug('resource.id')
+        # log.debug(resource.get('id'))
        
         freshness = timeliness_val.get('freshness')
         return {                   
@@ -5498,7 +5512,7 @@ def detect_date_format(datestr):
     '''
     try:
         datestr = str(datestr)
-        log.debug(datestr)
+        # log.debug(datestr)
         if re.match(r'$\d^', datestr):
             return 'unix-timestamp'
         if re.match(r'$\d+\.\d+', datestr):
@@ -5535,7 +5549,7 @@ def detect_numeric_format(numstr):
         for num_format in _all_numeric_formats:
             m = re.match(num_format, str(numstr))
             if m:
-                log.debug(num_format)
+                # log.debug(num_format)
                 return num_format
         
     except Exception as e:
@@ -5966,7 +5980,7 @@ def validate_resource_data(resource,data):
 
     :returns: `dict`, a validation report for the resource data.
     '''
-    log.debug(u'Validating resource {}'.format(resource['id']))
+    # log.debug(u'Validating resource {}'.format(resource['id']))
 
     options = toolkit.config.get(
         u'ckanext.validation.default_validation_options')
@@ -6025,7 +6039,7 @@ def validate_resource_data(resource,data):
     # if (mimetype == 'application/json'):
     #     report = _validate_table(source, _format=_format, schema=schema, **options)
     # else:
-    log.debug('------raw_data------')
+    # log.debug('------raw_data------')
     raw_data = data['raw_data']
     headers = raw_data[0]
     rows = raw_data[1:]
@@ -6061,7 +6075,7 @@ def validate_resource_data(resource,data):
             
     extra_by_column = []
     empty_col_idx = detect_empty_columns(raw_data, header_index=header_idx)
-    log.debug(f'empty_col_idx: {empty_col_idx}')
+    # log.debug(f'empty_col_idx: {empty_col_idx}')
 
     if empty_col_idx:
         # กำหนด expected_cols = column ก่อน column ว่างแรก
@@ -6123,15 +6137,15 @@ def validate_resource_data(resource,data):
 
     # # 6) ตรวจ extra rows
     # extra_rows = detect_extra_rows(rows_for_extra, expected_cols, trim_trailing_empty=trim_trailing)
-    log.debug(header_info)
-    log.debug(chosen_from)
-    log.debug(extra_rows)
+    # log.debug(header_info)
+    # log.debug(chosen_from)
+    # log.debug(extra_rows)
     #---------------------------------------
     report = validate_from_records(records)
 
     #--- เพิ่ม error เข้า report ถ้าพบคอลัมน์ซ้ำ
     if duplicates:
-        log.debug("duplicate header: %s", duplicates)
+        # log.debug("duplicate header: %s", duplicates)
         table = report['tables'][0]  # สมมุติว่าเรามีแค่ table เดียว
         table['valid'] = False
         table.setdefault('errors', []).append({
@@ -6139,11 +6153,11 @@ def validate_resource_data(resource,data):
             'message': f'Duplicate headers found: {duplicates}',
             'message-data': {'duplicates': duplicates},
         })
-    else:
-        log.debug("no duplicate header")
+    # else:
+    #     log.debug("no duplicate header")
     # --- ตรวจสอบ extra values
     if extra_rows:
-        log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
+        # log.debug("--พบ extra value ที่ rows--: %s", [r['row_number'] for r in extra_rows])
         table = report['tables'][0]  # สมมุติว่า table เดียว
         table['valid'] = False
         table.setdefault('errors', []).append({
@@ -6159,8 +6173,8 @@ def validate_resource_data(resource,data):
     else:
         log.debug("--no extra value--")
     #----------------------------
-    # report = _validate_table(source, _format=_format, schema=schema, **options)
-    log.debug(report)
+    ## report = _validate_table(source, _format=_format, schema=schema, **options)
+    # log.debug(report)
     # Hide uploaded files
     for table in report.get('tables', []):
         if table['source'].startswith('/'):
