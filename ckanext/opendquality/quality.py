@@ -1650,8 +1650,7 @@ class ResourceFetchData2(object):
                 length += len(chunk)
                 if length > MAX_CONTENT_LENGTH:
                     response.close()
-                    continue
-                    # raise DataTooBigError("File too large")
+                    raise DataTooBigError("File too large")
                 tmp_file.write(chunk)
                 raw_data += chunk
                 m.update(chunk)
@@ -1671,9 +1670,9 @@ class ResourceFetchData2(object):
                 elif resource_format == "JSON":
                     mimetype = "application/json"
                 elif resource_format == "XLSX":
-                    mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 elif resource_format == "XLS":
-                    mime_type = "application/vnd.ms-excel"
+                    mimetype = "application/vnd.ms-excel"
 
 
             if(mimetype == 'text/csv'): #(resource_format =='CSV'):
