@@ -1681,6 +1681,7 @@ class ResourceFetchData2(object):
                 #-----------------------------------      
                 try:
                     # log.debug('--Reading CSV from temp--')
+                    tmp_file.seek(0)
                     reader = csv.reader(io.TextIOWrapper(tmp_file, encoding=encoding, newline='')) #'utf-8'
                     records_read = 0
                     for row in reader:
@@ -1707,6 +1708,7 @@ class ResourceFetchData2(object):
                     # log.debug('--Reading JSON from temp file--')
 
                     # ครอบไฟล์ binary เป็น text file ด้วย encoding
+                    tmp_file.seek(0)
                     with io.TextIOWrapper(tmp_file, encoding=encoding) as f:
                         json_text = f.read()
 
@@ -1826,6 +1828,7 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 # log.debug('--Reading XLSX data--')
                 try:
+                    tmp_file.seek(0)
                     wb = load_workbook(tmp_file.name) #filename=tmp_file
                     # Get the last worksheet instead of the active one
                     last_sheet_name = wb.sheetnames[-1]
@@ -1844,6 +1847,7 @@ class ResourceFetchData2(object):
             elif(mimetype == 'application/vnd.ms-excel'):
                 # log.debug('--Reading XLS data--')
                 try:
+                    tmp_file.seek(0)
                     file_bytes = tmp_file.read()
 
                     # detect OLE2 มั่ว/ไม่ครบ
