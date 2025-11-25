@@ -21,11 +21,21 @@ qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
 # metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
 as_agency = toolkit.asbool(os.environ.get('CKANEXT__OPENDQUALITY__AGENT', toolkit.config.get('ckanext.opendquality.agent', True)))
-EXEMPT_ENDPOINTS = {
-    # 'opendquality.index',
-    'opendquality.admin_report',
-    'opendquality.dashboard',
-}
+enpoint_public = os.environ.get('CKANEXT__OPENDQUALITY__PUBLIC_ENDPOINTS', toolkit.config.get('ckanext.opendquality.public_endpoints', ''))
+# EXEMPT_ENDPOINTS = {
+#     # 'opendquality.index',
+#     'opendquality.admin_report',
+#     'opendquality.dashboard',
+# }
+EXEMPT_ENDPOINTS = set(enpoint_public.split(' ') if enpoint_public else [])
+
+@qa.before_request
+def request_before():
+    if request.endpoint in EXEMPT_ENDPOINTS:
+        return
+    user = getattr(toolkit.c, 'userobj', None)
+    if not user or not getattr(user, 'sysadmin', False):
+        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
 
 @qa.teardown_request
 def shutdown_session(exception=None):
@@ -209,14 +219,6 @@ def make_group_query_main():
             .filter(JobDQ.active == True, JobDQ.status == 'finish')
             .distinct())
 
-@qa.before_request
-def request_before():
-    if request.endpoint in EXEMPT_ENDPOINTS:
-        return
-    user = getattr(toolkit.c, 'userobj', None)
-    if not user or not getattr(user, 'sysadmin', False):
-        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
-
 #---------------------Call calculate---------------------------------
 #--------------------------------------------------------------------
 def calculate(dataset, dimension):
@@ -327,8 +329,8 @@ def all_packages(handler):
             log.exception(e)
 #-----------------------------------------------------
 def home():
-    if h.check_access('sysadmin') is False:
-        return toolkit.redirect_to('opendquality.dashboard')
+    # if h.check_access('sysadmin') is False:
+    #     return toolkit.redirect_to('opendquality.dashboard')
     extra_vars = {
         'title': toolkit._('วัดผลคุณภาพชุดข้อมูล'),
         'home': True,
@@ -338,6 +340,7 @@ def home():
         'site_title': toolkit.config.get('ckan.site_title'),
         'ckan_version': toolkit.config.get('ckan.version'),
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        'enpoint_public': EXEMPT_ENDPOINTS,
         # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/index.html', extra_vars)
@@ -595,6 +598,7 @@ def admin_report(org_id=None):
         'site_title': toolkit.config.get('ckan.site_title'),
         'ckan_version': toolkit.config.get('ckan.version'),
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        'enpoint_public': EXEMPT_ENDPOINTS,
         # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/admin_reports.html', extra_vars)
@@ -655,6 +659,7 @@ def dashboard(org_id=None):
         'site_title': toolkit.config.get('ckan.site_title'),
         'ckan_version': toolkit.config.get('ckan.version'),
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        'enpoint_public': EXEMPT_ENDPOINTS,
         # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/dashboard.html', extra_vars)
