@@ -220,113 +220,118 @@ def calculate(organization=None, dataset=None,dimension='all'):
             #---------------------------------------------
             all_orgs = get_all_organizations()  # ต้องมีฟังก์ชันคืนชื่อหรือ id ของทุก org
             requested_timestamp = date.today()
+
+            count = 1
             for org_name in all_orgs:
-                try:
-                    execute_time = 0
-                    start_time = time.time()
-                    parent_org_id, parent_org_name = get_parent_organization(org_name)
-                    org_id = get_org_id_from_name(org_name)
+                log.debug(f"{count}. {org_name}")
+                count += 1
+            # for org_name in all_orgs:
+            #     try:
+            #         execute_time = 0
+            #         start_time = time.time()
+            #         parent_org_id, parent_org_name = get_parent_organization(org_name)
+            #         org_id = get_org_id_from_name(org_name)
 
-                    if not org_id:
-                        log.error(f"Organization '{org_name}' not found in CKAN.")
-                        continue
+            #         if not org_id:
+            #             log.error(f"Organization '{org_name}' not found in CKAN.")
+            #             continue
 
-                    # [NEW] ตรวจนับจำนวน dataset ของ org
-                    dataset_count = Session.query(package_table).filter(
-                        package_table.c.owner_org == org_id,
-                        package_table.c.type == 'dataset',
-                        package_table.c.private == False,
-                        package_table.c.state == 'active'
-                    ).count()
+            #         # [NEW] ตรวจนับจำนวน dataset ของ org
+            #         dataset_count = Session.query(package_table).filter(
+            #             package_table.c.owner_org == org_id,
+            #             package_table.c.type == 'dataset',
+            #             package_table.c.private == False,
+            #             package_table.c.state == 'active'
+            #         ).count()
 
-                    log.info(f"Organization '{org_name}' has {dataset_count} active public datasets.")
+            #         log.info(f"Organization '{org_name}' has {dataset_count} active public datasets.")
 
-                    if dataset_count == 0:
-                        log.warning(f"Skip organization '{org_name}' — no active datasets found.")
-                        continue
-                    #--------- [Start] Processing organization -------------------
-                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
+            #         if dataset_count == 0:
+            #             log.warning(f"Skip organization '{org_name}' — no active datasets found.")
+            #             continue
+            #         #--------- [Start] Processing organization -------------------
+            #         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            #         log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
                     
-                    # 1. ปิด job เดิม
-                    old_all_jobs = Session.query(job_table).filter(
-                        job_table.org_id == org_id,
-                        job_table.active == True
-                    ).all()
-                    for old_job in old_all_jobs:
-                        old_job.active = False
-                    Session.commit()
+            #         # 1. ปิด job เดิม
+            #         old_all_jobs = Session.query(job_table).filter(
+            #             job_table.org_id == org_id,
+            #             job_table.active == True
+            #         ).all()
+            #         for old_job in old_all_jobs:
+            #             old_job.active = False
+            #         Session.commit()
 
-                    # 2. ลบ job เดิมของวันนี้
-                    today = date.today()
-                    today_jobs = Session.query(job_table).filter(
-                        job_table.org_id == org_id,
-                        job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
-                    ).all()
+            #         # 2. ลบ job เดิมของวันนี้
+            #         today = date.today()
+            #         today_jobs = Session.query(job_table).filter(
+            #             job_table.org_id == org_id,
+            #             job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+            #         ).all()
 
-                    if today_jobs:
-                        for job in today_jobs:
-                            Session.query(qa_table).filter(
-                                qa_table.job_id == job.job_id
-                            ).delete(synchronize_session='fetch')
-                            Session.delete(job)
-                        Session.commit()
+            #         if today_jobs:
+            #             for job in today_jobs:
+            #                 Session.query(qa_table).filter(
+            #                     qa_table.job_id == job.job_id
+            #                 ).delete(synchronize_session='fetch')
+            #                 Session.delete(job)
+            #             Session.commit()
 
-                    # 3. สร้าง job ใหม่
-                    job_id = str(uuid.uuid4())
-                    job = job_table(
-                        job_id=job_id,
-                        org_parent_id=parent_org_id,
-                        org_parent_name=parent_org_name,
-                        org_id=org_id,
-                        org_name=org_name,
-                        status="pending",
-                        # requested_timestamp=date.today(),
-                        requested_timestamp=requested_timestamp,
-                        run_type='organization',
-                        active=True
-                    )
-                    Session.add(job)
-                    Session.commit()
+            #         # 3. สร้าง job ใหม่
+            #         job_id = str(uuid.uuid4())
+            #         job = job_table(
+            #             job_id=job_id,
+            #             org_parent_id=parent_org_id,
+            #             org_parent_name=parent_org_name,
+            #             org_id=org_id,
+            #             org_name=org_name,
+            #             status="pending",
+            #             # requested_timestamp=date.today(),
+            #             requested_timestamp=requested_timestamp,
+            #             run_type='organization',
+            #             active=True
+            #         )
+            #         Session.add(job)
+            #         Session.commit()
 
-                    # 4. รัน metrics
-                    job.status = "running"
-                    job.started_timestamp = datetime.now(tz) #date.today()
-                    Session.commit()
+            #         # 4. รัน metrics
+            #         job.status = "running"
+            #         job.started_timestamp = datetime.now(tz) #date.today()
+            #         Session.commit()
 
-                    def _process_batch(packages):
-                        for pkg in packages:
-                            try:
-                                metrics.calculate_metrics_for_dataset(pkg, job_id=job_id)
-                            except Exception as e:
-                                log.error(f'Job failed for {org_name}: {str(e)}')
-                                Session.rollback()
-                                job.status = "fail"
-                                job.finish_timestamp = datetime.now(tz)#date.today()
-                                Session.commit()
+            #         def _process_batch(packages):
+            #             for pkg in packages:
+            #                 try:
+            #                     metrics.calculate_metrics_for_dataset(pkg, job_id=job_id)
+            #                 except Exception as e:
+            #                     log.error(f'Job failed for {org_name}: {str(e)}')
+            #                     Session.rollback()
+            #                     job.status = "fail"
+            #                     job.finish_timestamp = datetime.now(tz)#date.today()
+            #                     Session.commit()
 
-                    org_packages(_process_batch, org_name, job)
+            #         org_packages(_process_batch, org_name, job)
 
-                    # 5. ปิดงาน
-                    job.status = "finish"
-                    job.finish_timestamp = datetime.now(tz) #date.today()
-                    job.active = True
-                    end_time = time.time()   
-                    # Calculate the time taken
-                    execute_time = end_time - start_time
-                    job.execute_time = round(execute_time,3)
-                    timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    log.info(f"Finished organization: {org_name}: date_time_end[{timestamp_end}]")
-                    Session.commit()
+            #         # 5. ปิดงาน
+            #         job.status = "finish"
+            #         job.finish_timestamp = datetime.now(tz) #date.today()
+            #         job.active = True
+            #         end_time = time.time()   
+            #         # Calculate the time taken
+            #         execute_time = end_time - start_time
+            #         job.execute_time = round(execute_time,3)
+            #         timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            #         log.info(f"Finished organization: {org_name}: date_time_end[{timestamp_end}]")
+            #         Session.commit()
 
-                except Exception as e:
-                    log.error(f"Job failed for {org_name}. Error: {e}")
-                    Session.rollback()
-                    if 'job' in locals():
-                        job.status = "fail"
-                        job.execute_time = 0
-                        job.finish_timestamp = datetime.now(tz)#date.today()
-                        Session.commit()
+            #     except Exception as e:
+            #         log.error(f"Job failed for {org_name}. Error: {e}")
+            #         Session.rollback()
+            #         if 'job' in locals():
+            #             job.status = "fail"
+            #             job.execute_time = 0
+            #             job.finish_timestamp = datetime.now(tz)#date.today()
+            #             Session.commit()
 
         else:
             execute_time = 0
