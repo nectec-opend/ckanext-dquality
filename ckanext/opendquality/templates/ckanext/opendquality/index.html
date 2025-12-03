@@ -1,4 +1,5 @@
 {% extends "my_page.html" %}
+{% import 'macros/form.html' as form %}
 
 {% block subtitle %}{{ _("Data Quality") }}{% endblock %}
 
@@ -13,10 +14,88 @@
 
 {% block page_header %}
 {% endblock %}
-{% block primary_content_inner %}
-<h1>{{ title }}</h1>
-{% endblock %}
 
 {% block secondary_content %}
-  {% include "ckanext/opendquality/left_side.html" %}
+{% include "ckanext/opendquality/left_side.html" %}
+{% endblock %}
+
+{% block primary_content_inner %}
+<h1>{{ title }}</h1>
+<div>
+  <ul class="nav nav-tabs">
+    <li class="nav-item active">
+      <a class="nav-link active" href="#qa-cal" data-bs-toggle="tab" data-bs-target="#qa-cal">ตรวจสอบคุณภาพชุดข้อมูล</a></li>
+    <li class="nav-item">
+      <a class="nav-link" href="#qa-del" data-bs-toggle="tab" data-bs-target="#qa-del">ลบข้อมูล</a>
+    </li>
+  </ul>
+  <section class="module-content" style="z-index: 2;">
+    <div class="tab-content active" id="qa-cal">
+      <div class="row">
+        <form id="frm-orgs-cal" method="POST" action="{{ h.url_for('opendquality.index') }}" class="form-inline">
+          {{ h.csrf_input() }}
+          {% if calc_orgs is not none %}
+            {%- set options=[] -%}
+            {#%- do options.append({'value': 'all', 'text': _('เลือกทุกหน่วยงาน')}) -%#}
+            {%- for o in calc_orgs -%}
+            {%- do options.append({'value': o.org_name|string, 'text': o.org_title}) -%}
+            {%- endfor -%}
+            {{ form.select(
+              'orgs_calc',
+              label=_('เลือกหน่วยงานที่ต้องการตรวจคุณภาพชุดข้อมูล'),
+              options=options,
+              classes=["col-3"],
+              id='orgs_calc',
+              attrs={'data-module': 'autocomplete'},
+              error={}
+              )
+            }}
+          {% endif %}
+          <button type="submit" name="btn-qa-cal" class="btn btn-primary">{{ _('เริ่มตรวจคุณภาพ') }}</button>
+        </form>
+      </div>
+      <hr>
+      <div class="row" style="z-index: 2;">
+        <div id="orgs-cal-result"><h2>ผลการตรวจสอบคุณภาพชุดข้อมูล</h2></div>
+        <div class="row table-responsive" style="position: relative; z-index: 2;">
+          <table id="tb-qa-cal-result" class="table table-bordered table-striped" data-module="qa-datatables">
+            <thead>
+              <tr>
+                <th>ลำดับ</th>
+                <th>หน่วยงาน</th>
+                <th>วันที่รันตรวจสอบ</th>
+                <th>วันที่รันตรวจสอบสำเร็จ</th>
+                <th>สถานะ</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in qa_jobs %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ job.org_title }}</td>
+                <td>{{ job.started_timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                <td>
+                  {% if job.finish_timestamp is not none %}
+                    {{ job.finish_timestamp.strftime('%d/%m/%Y %H:%M:%S') }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>{{ job.status }}</td>
+                <td></td>
+              </tr>
+              {% endfor %}
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="tab-content" id="qa-del">delete quality</div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% asset "opendquality/datatables-js" %}
 {% endblock %}

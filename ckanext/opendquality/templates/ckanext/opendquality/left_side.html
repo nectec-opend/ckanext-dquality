@@ -2,7 +2,7 @@
   <h2 class="module-heading"><i class="fa fa-info-circle"></i> {{ _("คุณภาพชุดข้อมูล") }}</h2>
   <nav aria-label="{{ _(" คุณภาพชุดข้อมูล") }}">
     <ul class="list-unstyled nav nav-simple nav-facet">
-      {% if 'opendquality.index' in enpoint_public or h.check_access('sysadmin') %}
+      {% if h.check_access('sysadmin') %}
       <li class="nav-item{% if home %} active{% endif %}"><a href="{{ h.url_for('opendquality.index') }}">
           <span class="item-label">{{ _("วัดผลคุณภาพชุดข้อมูล") }}</span>
         </a></li>

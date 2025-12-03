@@ -18,6 +18,7 @@ file.
 {# The content block allows you to replace the content of the page if needed #}
 {%- block content %}
 {% block maintag %}<div class="main">{% endblock %}
+  <style>.container { min-width: 95% !important }</style>
   <div id="content" class="container">
     {% block main_content %}
     {% block flash %}

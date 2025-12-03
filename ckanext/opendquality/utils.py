@@ -94,11 +94,23 @@ def qa_counts(org_id=None, version=None):
         .scalar()
     )
     
+    # resource_count = (
+    #     Session.query(func.count(Resource.id))
+    #     .join(qa_pkg_ids, qa_pkg_ids.c.package_id == Resource.package_id)
+    #     .join(DQM,)
+    #     .filter(Resource.state == "active")
+    #     .scalar()
+    # )
+
     resource_count = (
-        Session.query(func.count(Resource.id))
+        Session.query(func.count(DQM.id))
+        .join(Resource, Resource.id == DQM.ref_id)
         .join(qa_pkg_ids, qa_pkg_ids.c.package_id == Resource.package_id)
-        .filter(Resource.state == "active")
-        .scalar()
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == "resource",
+            Resource.state == "active"
+        ).scalar()
     )
 
     return {

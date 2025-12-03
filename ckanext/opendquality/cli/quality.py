@@ -29,6 +29,7 @@ from datetime import datetime, date, timezone, timedelta
 import requests
 from ckan.plugins.toolkit import config
 import time
+import ckan.lib.jobs as jobs
 
 log = getLogger(__name__)
 # Asia/Bangkok
@@ -48,6 +49,12 @@ def quality():
               help='Which metric to calculate.')
 # def calculate(dataset, dimension):
 def calculate(organization=None, dataset=None,dimension='all'):
+    # _calculate(organization=organization, dataset=dataset,dimension=dimension)
+    jobs.enqueue(_calculate, None, kwargs={'organization': organization, 'dataset': dataset, 'dimension':dimension})
+
+
+def _calculate(organization=None, dataset=None,dimension='all'):
+    log.debug('Starting data quality metrics calculation')
     if six.PY2:
         _register_mock_translator()
     # dimensions =  ['completeness','uniqueness','validity','consistency','openness','downloadable','access_api','machine_readable','timeliness']

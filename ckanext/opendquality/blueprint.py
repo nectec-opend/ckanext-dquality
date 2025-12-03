@@ -2,6 +2,7 @@
 
 from flask import Blueprint, request, Response, jsonify
 import ckan.plugins.toolkit as toolkit, os
+import ckan.lib.jobs as jobs
 from logging import getLogger
 from datetime import datetime
 # from ckan.common import config
@@ -11,6 +12,7 @@ import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
 from sqlalchemy import and_, literal, case, func, Date, cast
 from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top, get_openness_score, get_openness_counts, get_validity_counts, get_quality_counts, get_resource_format_counts
+from ckanext.opendquality.cli.quality import calculate as quality_cli
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
@@ -331,6 +333,45 @@ def all_packages(handler):
 def home():
     # if h.check_access('sysadmin') is False:
     #     return toolkit.redirect_to('opendquality.dashboard')
+
+    if request.method == 'POST':
+        selected_org_cal = request.form.get('orgs_calc')
+
+        # log.debug(type(selected_org_cal))
+
+        # return {'msg': 'Start QA Job',
+        #         'data': selected_org_cal}
+        if selected_org_cal != None or selected_org_cal != '':
+            jobs.enqueue('ckanext.opendquality.cli.quality._calculate', None, kwargs={'organization': selected_org_cal, 'dataset': None, 'dimension':'all'})
+
+        # return {'msg': 'Start QA Job',
+        #         'data': request.form.get('orgs_calc')}
+
+
+    qa_jobs = Session.query(
+        JobDQ.job_id,
+        JobDQ.org_id,
+        JobDQ.org_name,
+        Group.title.label('org_title'),
+        JobDQ.requested_timestamp,
+        JobDQ.started_timestamp,
+        JobDQ.finish_timestamp,
+        JobDQ.execute_time,
+        JobDQ.status,
+    ).join(
+        Group, Group.id == JobDQ.org_id
+    ).order_by(JobDQ.started_timestamp.desc()).all()
+
+    orgs_cal = Session.query(
+        Package.owner_org.label('org_id'),
+        Group.title.label('org_title'),
+        Group.name.label('org_name')
+    ).join(
+        Package, Package.owner_org == Group.id
+    ).filter(
+        Package.state == 'active'
+    ).distinct().all()
+
     extra_vars = {
         'title': toolkit._('วัดผลคุณภาพชุดข้อมูล'),
         'home': True,
@@ -341,6 +382,8 @@ def home():
         'ckan_version': toolkit.config.get('ckan.version'),
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
         'enpoint_public': EXEMPT_ENDPOINTS,
+        'calc_orgs': orgs_cal,
+        'qa_jobs': qa_jobs,
         # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/index.html', extra_vars)
@@ -681,8 +724,8 @@ def quality_reports():
 #         u'opendstats_page': 'top_package_owners'
 #     }
 
-qa.add_url_rule('/', endpoint="index", view_func=home)
-qa.add_url_rule('/calculate', endpoint="index", view_func=home)
+qa.add_url_rule('/', endpoint="index", view_func=home, methods=['GET', 'POST'])
+qa.add_url_rule('/calculate', endpoint="index", view_func=home, methods=['GET', 'POST'])
 # qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
 # qa.add_url_rule('/reports', endpoint="reports", view_func=quality_reports)
 qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report)
