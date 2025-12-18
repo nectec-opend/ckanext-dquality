@@ -330,9 +330,45 @@ def all_packages(handler):
             log.error('Failed to process package batch. Error: %s', str(e))
             log.exception(e)
 #-----------------------------------------------------
+def cancel_job():
+    if h.check_access('sysadmin') is False:
+        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
+    # job = Session.query(JobDQ).filter(JobDQ.job_id == job_id).first()
+    # if job and job.status in ['queued', 'running']:
+    #     job.status = 'cancelled'
+    #     Session.commit()
+    #     return True
+    # return False
+    # request.form.get('job_id')
+    return toolkit.redirect_to('opendquality.index')
+    # return {'msg': 'Cancel Job', 'data': request.form.get('job_id')}
+
+def delete_job():
+    if h.check_access('sysadmin') is False:
+        # return toolkit.redirect_to('opendquality.dashboard')
+        toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
+    # job = Session.query(JobDQ).filter(JobDQ.job_id == job_id).first()
+    # if job:
+    #     # delete associated DQM records
+    #     Session.query(DQM).filter(DQM.job_id == job_id).delete()
+    #     Session.delete(job)
+    #     Session.commit()
+    #     return True
+    # return False
+    if request.method == 'POST':
+        if request.form.get('job_id') is not None:
+            from ckanext.opendquality.cli.quality import _del_metrict as del_metric
+            del_metric(organization=None, dataset=None, job_id=request.form.get('job_id'))
+            return toolkit.redirect_to('opendquality.index')
+    
+        return toolkit.redirect_to('opendquality.index')
+    return toolkit.redirect_to('opendquality.index')
+    # return {'msg': 'Delete Job', 'data': request.form.get('job_id')}
+
+
 def home():
-    # if h.check_access('sysadmin') is False:
-    #     return toolkit.redirect_to('opendquality.dashboard')
+    if h.check_access('sysadmin') is False:
+        return toolkit.redirect_to('opendquality.dashboard')
 
     if request.method == 'POST':
         selected_org_cal = request.form.get('orgs_calc')
@@ -343,6 +379,7 @@ def home():
         #         'data': selected_org_cal}
         if selected_org_cal != None or selected_org_cal != '':
             jobs.enqueue('ckanext.opendquality.cli.quality._calculate', None, kwargs={'organization': selected_org_cal, 'dataset': None, 'dimension':'all'})
+            # quality_cli(selected_org_cal)
 
         # return {'msg': 'Start QA Job',
         #         'data': request.form.get('orgs_calc')}
@@ -732,3 +769,5 @@ qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report
 qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)
 qa.add_url_rule('/dashboard/<org_id>', endpoint="dashboard", view_func=dashboard)
+qa.add_url_rule('/cancel_job', endpoint="cancel_job", view_func=cancel_job, methods=['POST'])
+qa.add_url_rule('/delete_job', endpoint="delete_job", view_func=delete_job, methods=['POST'])

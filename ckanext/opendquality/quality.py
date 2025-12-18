@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import ckan.plugins.toolkit as toolkit, dateutil
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from logging import getLogger
 import ckan.lib.uploader as uploader
 # from ckan.common import config
@@ -40,14 +40,18 @@ from urllib.parse import urlparse
 from ckanext.opendquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
+from ckanext.opendquality.model import JobDQ as job_table
 from ckan.plugins.toolkit import config
 from ckan.model import Session, Package, Group
 import ckan.logic as logic
 from ckan import model
 from typing import List, Dict, Any, Tuple
+from ckanext.opendquality.cli.quality import JobCancelledException
+from ckanext.opendquality.cli.quality import restore_previous_active_job
 # from frictionless import Schema
 
 log = getLogger(__name__)
+tz = timezone(timedelta(hours=7))
 # cache_enabled = p.toolkit.asbool(
 #     config.get('ckanext.stats.cache_enabled', False)
 # )
@@ -378,26 +382,72 @@ class DataQualityMetrics(object):
         '''
         # log.debug('Calculating data quality for dataset: %s', package_id)
         dataset = self._fetch_dataset(package_id)
-
         results = []
         for resource in dataset['resources']:
             self.logger.debug ('Calculating data quality for resource: %s',
                               resource['id'])
-            # self.logger.debug ('Calculating data quality for resource: %s',
-            #                   resource)
+            job = Session.query(job_table).filter_by(job_id=job_id).first()
+            Session.refresh(job)
+            if job.status == "cancel_requested":
+                job.status = "cancel"
+                job.finish_timestamp = datetime.now(tz)
+                Session.commit()
+                log.info(f"[CANCEL] Job {job_id} cancelled during processing.")
+                raise JobCancelledException(f"Job {job_id} cancelled during resource processing")
+        
             resource['data_quality_settings'] = self._data_quality_settings(
                 resource)
        
-            result = self.calculate_metrics_for_resource(resource, job_id=job_id)
-            if result is None:
-                result = {}
-            # self.logger.debug('Result: %s', result)
-            results.append(result)
+            # result = self.calculate_metrics_for_resource(resource, job_id=job_id)
+            # if result is None:
+            #     result = {}
+            # # self.logger.debug('Result: %s', result)
+            # results.append(result)
+            #  Wrap การประมวลผล resource
+            try:
+                result = self.calculate_metrics_for_resource(resource, job_id=job_id)
+                if result is None:
+                    result = {}
+                results.append(result)
+            except JobCancelledException:
+                # ถ้าเป็น cancel ให้ throw ต่อไป
+                raise
+            except Exception as e:
+                # ถ้าเป็น error ของ resource
+                self.logger.error(f"[ERROR] Resource {resource['id']} failed: {e}")
+                #  ตรวจสอบว่ามี cancel request มาระหว่างนี้หรือไม่
+                job = Session.query(job_table).filter_by(job_id=job_id).first()
+                Session.refresh(job)
+                
+                if job.status == "cancel_requested":
+                    # ให้ความสำคัญกับ cancel มากกว่า fail
+                    self.logger.info(f"[CANCEL] Job was cancelled (detected after resource error)")
+                    job.status = "cancel"
+                    job.active = False
+                    job.finish_timestamp = datetime.now(tz)
+                    Session.commit()
+                    raise JobCancelledException(f"Job {job_id} cancelled")
+                else:
+                    self.logger.warning(f"[SKIP] Resource {resource['id']} failed, continuing")
+                    results.append({})
 
-        # calculate cumulative
-        self.logger.debug('Calculating cumulative data quality metrics for %s',
-                          package_id)
-        self.calculate_cumulative_metrics(package_id,
+        # calculate cumulative - ตรวจสอบอีกครั้งก่อนคำนวณสะสม
+        if results:
+            job = Session.query(job_table).filter_by(job_id=job_id).first()
+            Session.refresh(job)
+            
+            if job.status == "cancel_requested":
+                self.logger.info(f"[CANCEL] Job {job_id} cancelled before cumulative calculation")
+                job.status = "cancel"
+                job.active = False
+                job.finish_timestamp = datetime.now(tz)
+                Session.commit()
+                restore_previous_active_job(job_id)  
+                raise JobCancelledException(f"Job {job_id} cancelled before cumulative metrics")
+        
+            self.logger.debug('Calculating cumulative data quality metrics for %s',
+                            package_id)
+            self.calculate_cumulative_metrics(package_id,
                                           dataset['resources'],
                                           results,
                                           job_id=job_id)

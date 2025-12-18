@@ -9,6 +9,130 @@ ckan.module("opendquality-radar-chart", function ($) {
   };
 });
 
+ckan.module('opendquality-cancel', function ($) {
+  return {
+    initialize: function () {
+      $.proxyAll(this, /_on/);
+      this.$el = $(this.el);
+
+      this.$el.on('click', this._onClick);
+    },
+
+    _onClick: function (e) {
+      e.preventDefault();
+
+      const jobId = this.options.jobId || this.options['job-id'] || this.options.job_id;
+      const url   = this.options.url;
+
+      if (!jobId || !url) {
+        console.warn('Missing jobId or url', this.options);
+        return;
+      }
+
+      // (optional) confirm
+      if (!window.confirm('ยืนยันยกเลิกงานนี้?')) return;
+
+      this._post(url, { job_id: jobId });
+    },
+
+    _post: function (url, data) {
+      const $form = $('<form>', { method: 'POST', action: url, style: 'display:none' });
+
+      // ใส่ payload
+      Object.keys(data).forEach((k) => {
+        $form.append($('<input>', { type: 'hidden', name: k, value: data[k] }));
+      });
+
+      // ถ้า CKAN เปิด CSRF (ส่วนใหญ่เปิด) มักมี token ใน window.ckan.csrf_token
+      if (window.ckan && ckan.csrf_token) {
+        $form.append($('<input>', { type: 'hidden', name: 'csrf_token', value: ckan.csrf_token }));
+      }
+
+      $('body').append($form);
+      $form.trigger('submit'); // หรือ $form[0].submit()
+    }
+  };
+});
+
+ckan.module('opendquality-deleted', function ($) {
+  return {
+    initialize: function () {
+      $.proxyAll(this, /_on/);
+      this.$el = $(this.el);
+
+      this.$el.on('click', this._onClick);
+    },
+
+    _onClick: function (e) {
+      e.preventDefault();
+
+      const jobId = this.options.jobId || this.options['job-id'] || this.options.job_id;
+      const url   = this.options.url;
+
+      if (!jobId || !url) {
+        console.warn('Missing jobId or url', this.options);
+        return;
+      }
+
+      if (!window.confirm('ยืนยันลบรายการนี้?')) return;
+
+      this._post(url, { job_id: jobId });
+    },
+
+    _post: function (url, data) {
+      const $form = $('<form>', { method: 'POST', action: url, style: 'display:none' });
+
+      Object.keys(data).forEach((k) => {
+        $form.append($('<input>', { type: 'hidden', name: k, value: data[k] }));
+      });
+
+      if (window.ckan && ckan.csrf_token) {
+        $form.append($('<input>', { type: 'hidden', name: 'csrf_token', value: ckan.csrf_token }));
+      }
+
+      $('body').append($form);
+      $form.trigger('submit');
+    }
+  };
+});
+
+
+// ckan.module("opendquality-cancel", function ($) {
+//   return {
+//     initialize: function () {
+//       const el = this.el;
+//       el.on('click', this._onClick);
+//     },
+//     _onClick: function (e) {
+//       e.preventDefault();
+//       console.log(this);
+//       // console.log(this.options.job_id);
+//       console.log(this.dataset.moduleJob_id);
+//       // console.log(this.el.data('module-job_id'));
+
+//       // console.log(this.options.job_id);
+//     }
+//   }
+// });
+
+// ckan.module("opendquality-deleted", function ($) {
+//   return {
+//     initialize: function () {
+//       const el = this.el;
+//       el.on('click', this._onClick);
+//     },
+//     _onClick: function (e) {
+//       e.preventDefault();
+//       console.log(this);
+//       // console.log(this.options.job_id);
+//       console.log(this.dataset.moduleJob_id);
+//       // console.log(this.el.data('module-job_id'));
+
+//       // console.log(this.options.job_id);
+//     }
+//   }
+// });
+
 ckan.module("qa-datatables", function ($) {
   return {
     initialize: function () {

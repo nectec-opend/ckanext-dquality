@@ -31,7 +31,7 @@
   </ul>
   <section class="module-content" style="z-index: 2;">
     <div class="tab-content active" id="qa-cal">
-      <div class="row">
+      <div class="row" style="z-index: 2;">
         <form id="frm-orgs-cal" method="POST" action="{{ h.url_for('opendquality.index') }}" class="form-inline">
           {{ h.csrf_input() }}
           {% if calc_orgs is not none %}
@@ -82,8 +82,18 @@
                     -
                   {% endif %}
                 </td>
-                <td>{{ job.status }}</td>
-                <td></td>
+                <td>{{ _(job.status) }}</td>
+                <td>
+                  {% if job.status == 'running' %}
+                    <button class="btn btn-sm btn-warning" data-module="opendquality-cancel" 
+                    data-module-job-id="{{ job.job_id }}" 
+                    data-module-url="{{ h.url_for('opendquality.cancel_job')}}"><i class="fa fa-times"></i>ยกเลิก</button>
+                  {% else %}
+                    <button class="btn btn-sm btn-danger" data-module="opendquality-deleted" 
+                    data-module-job-id="{{ job.job_id }}" 
+                    data-module-url="{{ h.url_for('opendquality.delete_job')}}"><i class="fa fa-trash"></i>ลบ</button>
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
           </table>
