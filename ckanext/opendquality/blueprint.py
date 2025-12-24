@@ -2,17 +2,17 @@
 
 from flask import Blueprint, request, Response, jsonify
 import ckan.plugins.toolkit as toolkit, os
-import ckan.lib.jobs as jobs
+import ckan.lib.jobs as jobs, uuid, time
 from logging import getLogger
-from datetime import datetime
+from datetime import datetime, date
 # from ckan.common import config
 from ckan.model import package_table, Session, Package, Group, Resource
 from ckanext.opendquality.model import DataQualityMetrics as DQM , JobDQ
 import ckanext.opendquality.quality as quality_lib
 import ckan.lib.helpers as h
-from sqlalchemy import and_, literal, case, func, Date, cast
+from sqlalchemy import and_, literal, case, func, Date, cast, desc
 from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top, get_openness_score, get_openness_counts, get_validity_counts, get_quality_counts, get_resource_format_counts
-from ckanext.opendquality.cli.quality import calculate as quality_cli
+from ckanext.opendquality.cli.quality import calculate as quality_cli, get_parent_organization, get_org_id_from_name
 # from ckanext.myorg import helpers as myh
 # from ckanext.opendquality.quality import (
 #     Completeness,
@@ -333,6 +333,14 @@ def all_packages(handler):
 def cancel_job():
     if h.check_access('sysadmin') is False:
         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
+
+    if request.method == 'POST':
+        if request.form.get('job_id') is not None:
+            from ckanext.opendquality.cli.quality import _stop_job as stop_job
+            stop_job(request.form.get('job_id'))
+            return toolkit.redirect_to('opendquality.index')
+    
+        return toolkit.redirect_to('opendquality.index')
     # job = Session.query(JobDQ).filter(JobDQ.job_id == job_id).first()
     # if job and job.status in ['queued', 'running']:
     #     job.status = 'cancelled'
@@ -358,7 +366,7 @@ def delete_job():
     if request.method == 'POST':
         if request.form.get('job_id') is not None:
             from ckanext.opendquality.cli.quality import _del_metrict as del_metric
-            del_metric(organization=None, dataset=None, job_id=request.form.get('job_id'))
+            del_metric(request.form.get('job_id'))
             return toolkit.redirect_to('opendquality.index')
     
         return toolkit.redirect_to('opendquality.index')
@@ -372,17 +380,94 @@ def home():
 
     if request.method == 'POST':
         selected_org_cal = request.form.get('orgs_calc')
+        
+        if selected_org_cal != None and selected_org_cal != '':
+            org_id = Session.query(Group.id).filter(Group.name == selected_org_cal).first()
 
-        # log.debug(type(selected_org_cal))
+            # execute_time = 0
+            # start_time = time.time()
+            # timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # log.info(f"Processing organization: {selected_org_cal}: date_time_start[{timestamp}]")
 
-        # return {'msg': 'Start QA Job',
-        #         'data': selected_org_cal}
-        if selected_org_cal != None or selected_org_cal != '':
-            jobs.enqueue('ckanext.opendquality.cli.quality._calculate', None, kwargs={'organization': selected_org_cal, 'dataset': None, 'dimension':'all'})
-            # quality_cli(selected_org_cal)
+            # parent_org_id, parent_org_name = get_parent_organization(selected_org_cal)
+            # org_id = get_org_id_from_name(selected_org_cal)  
+            # #------------------------------    
+            # # 1. ตรวจสอบ org_id
+            # #------------------------------
+            # if not org_id:
+            #     log.error(f"Organization '{selected_org_cal}' not found in CKAN.")
+            #     raise ValueError(f"Organization '{selected_org_cal}' not found in CKAN.")
 
-        # return {'msg': 'Start QA Job',
-        #         'data': request.form.get('orgs_calc')}
+            # # นับจำนวน dataset ของ org
+            # dataset_count = Session.query(package_table).filter(
+            #     package_table.c.owner_org == org_id,
+            #     package_table.c.type == 'dataset',
+            #     package_table.c.private == False,
+            #     package_table.c.state == 'active'
+            # ).count()
+
+            # log.info(f"Organization '{selected_org_cal}' has {dataset_count} active public datasets.")
+
+            # if dataset_count == 0:
+            #     log.debug(f"Skip organization '{selected_org_cal}' — no active datasets found.")
+            # else:   
+
+            #     #=========================================================
+            #     # 3. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
+            #     #=========================================================
+            #     today = date.today()
+            #     today_jobs = Session.query(JobDQ).filter(
+            #         JobDQ.org_id == org_id,
+            #         JobDQ.run_type == 'organization',
+            #         JobDQ.requested_timestamp >= datetime(today.year, today.month, today.day)
+            #     ).all()
+
+            #     for old_job in today_jobs:
+            #         Session.query(DQM).filter(
+            #             DQM.job_id == old_job.job_id
+            #         ).delete(synchronize_session=False)
+
+            #         Session.delete(old_job)
+
+            #     if today_jobs:
+            #         log.info(
+            #             "Deleted %s existing job(s) today for org %s",
+            #             len(today_jobs), selected_org_cal
+            #         )
+
+            #     # =========================================================
+            #     # 4. ปิด active job เก่า (ของ org นี้เท่านั้น)
+            #     # =========================================================
+            #     Session.query(JobDQ).filter(
+            #         JobDQ.org_id == org_id,
+            #         JobDQ.active == True
+            #     ).update(
+            #         {"active": False},
+            #         synchronize_session=False
+            #     )
+
+            #     Session.commit()
+            job_id = str(uuid.uuid4())
+            job = JobDQ(
+                job_id=job_id, #job_id,
+                org_id=org_id[0],
+                org_name=selected_org_cal,
+                status="pending",
+                requested_timestamp=date.today(),
+                active=True
+            )
+            Session.add(job)
+            Session.commit()
+
+            #jobs.enqueue('ckanext.opendquality.cli.quality.process_org_metrics', args=[org_id, selected_org_cal, parent_org_id, parent_org_name, job_id])
+
+            jobs.enqueue('ckanext.opendquality.cli.quality.gui_calculate', None, kwargs={'job_id': job.job_id, 'organization': selected_org_cal, 'dimension':'all'})
+
+            # return toolkit.redirect_to('opendquality.index')
+            return toolkit.redirect_to(
+                'opendquality.index',
+                pending=1
+            )
 
 
     qa_jobs = Session.query(
@@ -397,7 +482,9 @@ def home():
         JobDQ.status,
     ).join(
         Group, Group.id == JobDQ.org_id
-    ).order_by(JobDQ.started_timestamp.desc()).all()
+    ).order_by(
+        JobDQ.started_timestamp.desc()
+    ).all()
 
     orgs_cal = Session.query(
         Package.owner_org.label('org_id'),
@@ -406,11 +493,12 @@ def home():
     ).join(
         Package, Package.owner_org == Group.id
     ).filter(
-        Package.state == 'active'
+        Package.state == 'active',
+        Package.type == 'dataset'
     ).distinct().all()
 
     extra_vars = {
-        'title': toolkit._('วัดผลคุณภาพชุดข้อมูล'),
+        'title': toolkit._('ตรวจสอบคุณภาพชุดข้อมูล'),
         'home': True,
         'user': toolkit.c.user,
         'userobj': toolkit.c.userobj,
@@ -769,5 +857,5 @@ qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report
 qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)
 qa.add_url_rule('/dashboard/<org_id>', endpoint="dashboard", view_func=dashboard)
-qa.add_url_rule('/cancel_job', endpoint="cancel_job", view_func=cancel_job, methods=['POST'])
+qa.add_url_rule('/cancel_job', endpoint="cancel_job", view_func=cancel_job, methods=['POST', 'GET'])
 qa.add_url_rule('/delete_job', endpoint="delete_job", view_func=delete_job, methods=['POST'])

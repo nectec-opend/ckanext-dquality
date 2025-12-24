@@ -362,6 +362,15 @@ class DataQualityMetrics(object):
             'records': LazyStreamingList(_fetch_page),
             'fields': result['fields'],  # metadata
         }
+    def make_json_safe(self, obj):
+        #Convert datetime in nested structures to ISO string.
+        if isinstance(obj, dict):
+            return {k: self.make_json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self.make_json_safe(v) for v in obj]
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return obj
     def calculate_metrics_for_dataset(self, package_id, job_id=None):
         '''Calculates the Data Qualtity for the given dataset identified with
         `package_id`.
@@ -389,10 +398,10 @@ class DataQualityMetrics(object):
             job = Session.query(job_table).filter_by(job_id=job_id).first()
             Session.refresh(job)
             if job.status == "cancel_requested":
-                job.status = "cancel"
-                job.finish_timestamp = datetime.now(tz)
-                Session.commit()
-                log.info(f"[CANCEL] Job {job_id} cancelled during processing.")
+                # job.status = "cancel"
+                # job.finish_timestamp = datetime.now(tz)
+                # Session.commit()
+                # log.info(f"[CANCEL] Job {job_id} cancelled during processing.")
                 raise JobCancelledException(f"Job {job_id} cancelled during resource processing")
         
             resource['data_quality_settings'] = self._data_quality_settings(
@@ -408,28 +417,33 @@ class DataQualityMetrics(object):
                 result = self.calculate_metrics_for_resource(resource, job_id=job_id)
                 if result is None:
                     result = {}
+
+                result = self.make_json_safe(result)
                 results.append(result)
             except JobCancelledException:
-                # ถ้าเป็น cancel ให้ throw ต่อไป
+                # ถ้าเป็น cancel ให้ throw ต่อไป ส่งต่อขึ้นไปให้ worker
                 raise
             except Exception as e:
-                # ถ้าเป็น error ของ resource
+                # resource พัง = skip
                 self.logger.error(f"[ERROR] Resource {resource['id']} failed: {e}")
-                #  ตรวจสอบว่ามี cancel request มาระหว่างนี้หรือไม่
-                job = Session.query(job_table).filter_by(job_id=job_id).first()
-                Session.refresh(job)
+                Session.rollback()
+                results.append({})
+                # #  ตรวจสอบว่ามี cancel request มาระหว่างนี้หรือไม่
+                # job = Session.query(job_table).filter_by(job_id=job_id).first()
+                # Session.refresh(job)
                 
-                if job.status == "cancel_requested":
-                    # ให้ความสำคัญกับ cancel มากกว่า fail
-                    self.logger.info(f"[CANCEL] Job was cancelled (detected after resource error)")
-                    job.status = "cancel"
-                    job.active = False
-                    job.finish_timestamp = datetime.now(tz)
-                    Session.commit()
-                    raise JobCancelledException(f"Job {job_id} cancelled")
-                else:
-                    self.logger.warning(f"[SKIP] Resource {resource['id']} failed, continuing")
-                    results.append({})
+                # if job.status == "cancel_requested":
+                #     # ให้ความสำคัญกับ cancel มากกว่า fail
+                #     self.logger.info(f"[CANCEL] Job was cancelled (detected after resource error)")
+                #     Session.rollback()
+                #     job.status = "cancel"
+                #     job.active = False
+                #     job.finish_timestamp = datetime.now(tz)
+                #     Session.commit()
+                #     raise JobCancelledException(f"Job {job_id} cancelled")
+                # else:
+                #     self.logger.warning(f"[SKIP] Resource {resource['id']} failed, continuing")
+                #     results.append({})
 
         # calculate cumulative - ตรวจสอบอีกครั้งก่อนคำนวณสะสม
         if results:
@@ -437,12 +451,12 @@ class DataQualityMetrics(object):
             Session.refresh(job)
             
             if job.status == "cancel_requested":
-                self.logger.info(f"[CANCEL] Job {job_id} cancelled before cumulative calculation")
-                job.status = "cancel"
-                job.active = False
-                job.finish_timestamp = datetime.now(tz)
-                Session.commit()
-                restore_previous_active_job(job_id)  
+                # self.logger.info(f"[CANCEL] Job {job_id} cancelled before cumulative calculation")
+                # job.status = "cancel"
+                # job.active = False
+                # job.finish_timestamp = datetime.now(tz)
+                # Session.commit()
+                # restore_previous_active_job(job_id)  
                 raise JobCancelledException(f"Job {job_id} cancelled before cumulative metrics")
         
             self.logger.debug('Calculating cumulative data quality metrics for %s',

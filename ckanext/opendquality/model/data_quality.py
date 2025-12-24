@@ -118,8 +118,7 @@ job_dq_table = Table(
     Column('finish_timestamp', types.DateTime),
     Column('run_type', types.String),
     Column('execute_time', types.Float),
-    Column('active', types.Boolean, nullable=True),
-    Column('error_log', types.String)
+    Column('active', types.Boolean, nullable=True)
 )
 
 

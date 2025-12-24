@@ -5,6 +5,7 @@
 
 .main .wrapper:before {
   border-right: 0;
+  z-index: -1;
 }
 
 .wrapper td a {

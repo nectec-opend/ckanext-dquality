@@ -35,50 +35,6 @@ from ckan.plugins.toolkit import get_action
 log = getLogger(__name__)
 # Asia/Bangkok
 tz = timezone(timedelta(hours=7))
-# def calculate(dataset, dimension):
-# def calculate(organization=None, dataset=None,dimension='all'):
-#     # _calculate(organization=organization, dataset=dataset,dimension=dimension)
-#     jobs.enqueue(_calculate, None, kwargs={'organization': organization, 'dataset': dataset, 'dimension':dimension})
-# def process_org_metrics(org_id, org_name, parent_org_id, parent_org_name, job_row_id):
-#     try:
-#         job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-#         log.debug(job_row_id)
-#         log.debug(job)
-#         if not job:
-#             log.error(f"Job record not found for job_row_id={job_row_id}")
-#             return
-
-#         datasets = Session.query(package_table.c.id).filter(
-#             package_table.c.owner_org == org_id,
-#             package_table.c.type == 'dataset',
-#             package_table.c.private == False,
-#             package_table.c.state == 'active'
-#         ).all()
-
-#         for ds in datasets:
-#             # job = Session.query(job_table).get(job_row_id)
-#             job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-#             if job.status == "cancel_requested":
-#                 job.status = "cancel"
-#                 job.finish_timestamp = datetime.now(tz)
-#                 Session.commit()
-#                 log.info(f"[CANCEL] Job {job_row_id} cancelled during processing.")
-#                 return
-#             metrics.calculate_metrics_for_dataset(ds.id, job_id=job_row_id)
-
-#         job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-#         if job:
-#             job.status = "finish"
-#             job.finish_timestamp = datetime.now(tz)
-#             job.active = True
-#             Session.commit()
-#     except Exception as e:
-#         log.exception("Org job failed in CKAN worker: %s", e)
-#         job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-#         if job:
-#             job.status = "fail"
-#             job.finish_timestamp = datetime.now(tz)
-#             Session.commit()
 def build_metrics(dimension='all'):
 
     dimensions = [
@@ -199,225 +155,138 @@ def run_dataset_metrics(dataset_id, job_row_id):
 def process_org_metrics(org_id, org_name, parent_org_id, parent_org_name, job_row_id):
     log.info(f"[WORKER] Start process_org_metrics for org={org_name}, job_id={job_row_id}")
 
-    # tz = timezone('Asia/Bangkok')  # ถ้ามี set timezone
     start_time = time.time()
+    job_cancelled = False
+    job_failed = False
+    critical_error = None
 
     try:
-        # ดึง job record จาก DB ด้วย job_id (UUID ของระบบคุณ)
+        # -----------------------------
+        # Fetch job
+        # -----------------------------
         job = Session.query(job_table).filter_by(job_id=job_row_id).first()
         if not job:
-            log.error(f"[WORKER] Job record not found for job_id={job_row_id}")
-            return
-        # metrics = build_metrics('all')
-        # ---- เปลี่ยน status เป็น running ----
+            raise RuntimeError(f"Job record not found for job_id={job_row_id}")
+
+        # -----------------------------
+        # Mark running
+        # -----------------------------
         job.status = "running"
         job.started_timestamp = datetime.now(tz)
         Session.commit()
 
-        # เก็บ error logs
         error_logs = []
         failed_datasets = []
         processed_datasets = 0
         total_datasets = 0
 
-        # ---- เตรียมคำนวณ ----
+        # -----------------------------
+        # Batch processor
+        # -----------------------------
         def _process_batch(packages):
-            nonlocal processed_datasets, total_datasets, error_logs, failed_datasets
+            nonlocal processed_datasets, total_datasets
             total_datasets = len(packages)
 
             for pkg in packages:
                 try:
                     job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-                    Session.refresh(job) 
-                    log.info(f"[CHECK] Processing {pkg}, current status: {job.status}")
-                    if job.status == "cancel_requested":
-                        log.info(f"[CANCEL]  Detected cancel_requested for job {job_row_id}")
-                        job.status = "cancel"
-                        job.finish_timestamp = datetime.now(tz)
-                        job.active = False
+                    Session.refresh(job)
 
-                        # บันทึก error log ก่อน commit
+                    if job.status == "cancel_requested":
+                        log.info(f"[CANCEL] Detected cancel_requested for job {job_row_id}")
+                        Session.rollback()   # ✅ เพิ่ม
+                        job.status = "cancel"
+                        job.active = False
+                        job.finish_timestamp = datetime.now(tz)
                         if error_logs:
                             job.error_log = "\n".join(error_logs)
-
                         Session.commit()
+                        restore_previous_active_job(job_row_id)
+                        raise JobCancelledException()
 
-                        #  หา job ก่อนหน้าที่ finish แล้วตั้งเป็น active
-                        restore_previous_active_job( job_row_id)  
-                        log.info(f"[CANCEL] Job {job_row_id} cancelled during processing.")
-                        raise JobCancelledException(f"Job {job_row_id} cancelled")
-                    # ประมวลผล dataset
                     metrics = build_metrics('all')
                     metrics.calculate_metrics_for_dataset(pkg, job_id=job_row_id)
                     processed_datasets += 1
 
                 except JobCancelledException:
-                    # Cancel มี priority สูงสุด - throw ทันที
-                    log.info(f"[CANCEL] Stopping all processing")
                     raise
+
                 except Exception as e:
                     log.exception(f"[WORKER] Dataset {pkg} failed: {e}")
-                    # เก็บ error log
-                    error_msg = f"Dataset {pkg}: {str(e)[:500]}"  # จำกัดความยาว
-                    error_logs.append(error_msg)
+                    error_logs.append(f"Dataset {pkg}: {str(e)[:500]}")
                     failed_datasets.append(pkg)
-                    # Session.rollback()
-                    Session.expire_all()
-                    # เช็คอีกครั้งว่าเป็น cancel หรือ fail
-                    job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-                    Session.refresh(job)
-                    
-                    if job.status == "cancel_requested":
-                        # ถ้ามี cancel request ให้เปลี่ยนเป็น cancel
-                        log.info(f"[CANCEL] Job {job_row_id} was cancelled (not failed)")
-                        job.status = "cancel"
-                        job.active = False
-                        job.finish_timestamp = datetime.now(tz)
-                        # บันทึก error log
-                        if error_logs:
-                            job.error_log = "\n".join(error_logs)
-                        Session.commit()
+                    processed_datasets += 1
+                    Session.rollback()
 
-                        # หา job ก่อนหน้าที่ finish
-                        restore_previous_active_job( job_row_id)
-                        raise JobCancelledException(f"Job {job_row_id} cancelled")
-                    else:
-                        # Dataset fail ธรรมดา - skip และทำต่อ
-                        log.warning(f"[SKIP] Dataset {pkg} failed, continuing ({processed_datasets}/{total_datasets})")
-                        processed_datasets += 1
-                        # Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
-                        # job.status = "fail"
-                        # job.finish_timestamp = datetime.now(tz) #date.today()
-                        # Session.commit()
-            
-        # ---- เรียกประมวลผล datasets ขององค์กร ----
+        # -----------------------------
+        # Run packages
+        # -----------------------------
         try:
             org_packages(_process_batch, org_name, job)
-        except JobCancelledException as e:
-            log.info(str(e))
-            return # หยุดทำงานเมื่อถูก cancel
+        except JobCancelledException:
+            job_cancelled = True
         except Exception as e:
-            # จับ Exception อื่นๆ จาก org_packages
-            log.exception(f"[ERROR] org_packages failed: {e}")
-            error_logs.append(f"org_packages error: {str(e)[:500]}")
-            raise  
-        # ---- mark finish ----
-        job = Session.query(job_table).filter_by(job_id=job_row_id).first()
-        Session.refresh(job)
-        if job.status == "running":
-            job.status = "finish"
-            job.active = True  # 
-            # บันทึก summary
-            if failed_datasets:
-                summary = f"Completed with errors. Processed: {processed_datasets}/{total_datasets}, Failed: {len(failed_datasets)}"
-                job.error_log = summary + "\n\n" + "\n".join(error_logs)
-                log.warning(f"[FINISH] {summary}")
+            job_failed = True
+            critical_error = e
+        finally:
+            # -----------------------------
+            # Finish logic (normal path)
+            # -----------------------------
+            Session.rollback()
+            job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+
+            if job_cancelled:
+                job.status = "cancel"
+                job.active = False
+
+            elif job_failed:
+                job.status = "fail"
+                job.active = False
+
             else:
-                log.info(f"[FINISH] All {processed_datasets} datasets completed successfully")
-        else:
-            # ถ้าเป็น cancel หรือ fail → ห้ามตั้ง active=true
-            job.active = False
+                job.status = "finish"
+                job.active = True
 
-        job.finish_timestamp = datetime.now(tz)
-        end_time = time.time()
-        job.execute_time = round(end_time - start_time, 3)
-        Session.commit()
-        log.info(f"[WORKER] Finished org={org_name}, job_id={job_row_id}")
-
-    except JobCancelledException:
-        # จับเฉพาะ cancel (ถ้า leak มาจากด้านใน)
-        log.info(f"[CANCEL] Job {job_row_id} was cancelled")
-        return
+            job.finish_timestamp = datetime.now(tz)
+            job.execute_time = round(time.time() - start_time, 3)
+            Session.commit()
     except Exception as e:
-        log.exception(f"[WORKER] Job failed for org={org_name}: {e}")
-        
+        # -----------------------------
+        # Hard fail
+        # -----------------------------
+        log.exception(f"[WORKER] Job crashed: {e}")
         try:
             Session.rollback()
             job = Session.query(job_table).filter_by(job_id=job_row_id).first()
             if job:
-                #  เช็คว่ามี cancel request หรือไม่
-                if job.status == "cancel_requested":
-                    job.status = "cancel"
-                    job.active = False
-                    log.info(f"[CANCEL] Job was actually cancelled (not failed)")
-                elif job.status not in ["cancel", "fail", "finish"]:
-                    # ถ้ายังเป็น running หรือ pending → เปลี่ยนเป็น fail
-                    job.status = "fail"
-                    job.active = False
-                
+                job.status = "fail"
+                job.active = False
                 job.finish_timestamp = datetime.now(tz)
-                end_time = time.time()
-                job.execute_time = round(end_time - start_time, 3)
-
-                # เก็บ critical error
-                critical_error = f"CRITICAL ERROR: {str(e)[:1000]}\n\nTraceback:\n{traceback.format_exc()[:2000]}"
-                if hasattr(job, 'error_log') and job.error_log:
-                    job.error_log = job.error_log + "\n\n" + critical_error
-                else:
-                    job.error_log = critical_error
-
+                job.execute_time = round(time.time() - start_time, 3)
+                job.error_log = (
+                    f"CRITICAL ERROR:\n{str(e)[:1000]}\n\n"
+                    f"Traceback:\n{traceback.format_exc()[:2000]}"
+                )
                 Session.commit()
-        except Exception as inner_e:
-            log.error(f"[WORKER] Failed to update job status: {inner_e}")
-            try:
-                Session.rollback()
-            except:
-                pass
+        except Exception as inner:
+            log.error(f"[WORKER] Failed to mark job as fail: {inner}")
 
-def _del_metrict(organization=None, dataset=None, job_id=None):
-    if dataset:
-        if dataset == 'all':
-            Session.query(qa_table).delete()
-            Session.commit()
-            log.info("Deleted all data quality metrics")
-        else:
-            pkg = Session.query(package_table.c.id).filter(
-                package_table.c.name == dataset,
-                package_table.c.type == 'dataset'
-            ).first()
+    finally:
+        try:
+            job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+            if job and job.status == "running":
+                log.warning(f"[FINALIZE] Job {job_row_id} still running → force fail")
+                job.status = "fail"
+                job.active = False
+                job.finish_timestamp = datetime.now(tz)
+                job.execute_time = round(time.time() - start_time, 3)
+                Session.commit()
+        except Exception as e:
+            log.error(f"[FINALIZE] Failed to finalize job {job_row_id}: {e}")
+            Session.rollback()
 
-            if not pkg:
-                log.error("Dataset %s not found", dataset)
-                return
-
-            list_ref = [pkg[0]]
-
-            res = Session.query(resource_table.c.id).filter(
-                resource_table.c.package_id == pkg[0]
-            ).all()
-            list_ref += [rw[0] for rw in res]
-
-            Session.query(qa_table).filter(
-                qa_table.ref_id.in_(list_ref)
-            ).delete(synchronize_session='fetch')
-            Session.commit()
-            log.info("Deleted data quality metrics for dataset %s", dataset)
-
-    elif organization:
-        if organization == 'all':
-            Session.query(qa_table).delete()
-            Session.commit()
-            log.info("Deleted all data quality metrics")
-        else:
-            org = model.Group.get(organization)
-            pkg = Session.query(package_table.c.id).filter(
-                package_table.c.owner_org == org.id
-            )
-
-            list_ref = [row[0] for row in pkg.all()]
-            for result in pkg.all():
-                res = Session.query(resource_table.c.id).filter(
-                    resource_table.c.package_id == result[0]
-                ).all()
-                list_ref += [rw[0] for rw in res]
-
-            Session.query(qa_table).filter(
-                qa_table.ref_id.in_(list_ref)
-            ).delete(synchronize_session='fetch')
-            Session.commit()
-            log.info("Deleted data quality metrics for organization %s", organization)
-
-    elif job_id:
+def _del_metrict( job_id=None):
+    if job_id:
         # ตรวจสอบว่า job มีอยู่จริงไหม
         job_to_delete = Session.query(job_table).filter(job_table.job_id == job_id).first()
 
@@ -464,85 +333,267 @@ def _del_metrict(organization=None, dataset=None, job_id=None):
                     "No finished job found to set active for organization %s",
                     org_name
                 )
-    #-- ok version---
-    # elif job_id:
-    #     deleted_metrics = Session.query(qa_table).filter(
-    #         qa_table.job_id == job_id
-    #     ).delete(synchronize_session='fetch')
-
-    #     # ลบ job ด้วย
-    #     deleted_jobs = Session.query(job_table).filter(
-    #         job_table.job_id == job_id
-    #     ).delete(synchronize_session='fetch')
-
-    #     Session.commit()
-    #     if deleted_metrics or deleted_jobs:
-    #         log.info("Deleted %s metrics and %s jobs for job_id %s",
-    #                 deleted_metrics, deleted_jobs, job_id)
-    #     else:
-    #         log.warning("No data quality metrics or jobs found for job_id %s", job_id)
-
     else:
         log.error("Please provide either --dataset, --organization, or --job_id")
-# @quality.command(u'delete', help='Delete data quality metrics')
-# @click.option('--dataset',
-#               help='Delete a dataset by name. Use "all" to delete all datasets.')
-# @click.option('--organization',
-#               default= None,
-#               help='Delete quality metrics by organization')
-# def del_metrict(organization=None, dataset=None):
-#     if dataset:
-#         if dataset == 'all':
-#             # ลบทุกแถวในตาราง metrics
-#             Session.query(qa_table).delete()
-#             Session.commit()
-#             log.info("Deleted all data quality metrics")
-#         else:
-#             # หา dataset ที่ตรงกับชื่อ
-#             pkg = Session.query(package_table.c.id).filter(
-#                 package_table.c.name == dataset,
-#                 package_table.c.type == 'dataset'
-#             ).first()
 
-#             if not pkg:
-#                 log.error("Dataset %s not found", dataset)
-#                 return
-
-#             list_ref = [pkg[0]]
-
-#             # เพิ่ม resource ที่อยู่ใน dataset นี้ด้วย
-#             res = Session.query(resource_table.c.id).filter(
-#                 resource_table.c.package_id == pkg[0]
-#             ).all()
-#             list_ref += [rw[0] for rw in res]
-
-#             Session.query(qa_table).filter(
-#                 qa_table.ref_id.in_(list_ref)
-#             ).delete(synchronize_session='fetch')
-#             Session.commit()
-#             log.info("Deleted data quality metrics for dataset %s", dataset)
-
-#     elif organization:
-#         if organization == 'all':
-#             obj = Session.query(qa_table).delete()
-#             Session.commit()
-#         else:
-#             org = model.Group.get(organization)
-#             pkg = Session.query(package_table.c.id).filter(package_table.c.owner_org == org.id)
-            
-#             list_ref = [ row[0] for row in pkg.all()]
-#             for result in pkg.all():
-#                 res = Session.query(resource_table.c.id).filter(resource_table.c.package_id == result[0]).all()
-#                 list_ref += [ rw[0] for rw in res]
-#             qa = Session.query(qa_table).filter(qa_table.ref_id.in_(list_ref)).delete(synchronize_session='fetch')
-#             Session.commit()
-#             log.info("Deleted data quality metrics for organization %s", organization)
-#     else:
-#         log.error("Please provide either --dataset or --organization")
-#---- ok version -----------------
 # =========================
 # CLI command
 # =========================
+def _stop_job(job_id):
+
+    log.info(f"[STOP] Request to stop job_id={job_id}")
+
+    # 1) หา job record จาก DB -----------------------------------------
+    job_record = (
+        Session.query(job_table)
+        .filter(job_table.job_id == job_id)
+        .first()
+    )
+
+    if not job_record:
+        click.echo(f"Job '{job_id}' not found in job_table.")
+        return
+
+    if job_record.status in ["finish", "fail", "cancel"]:
+        click.echo(f"Job '{job_id}' already {job_record.status}. Nothing to stop.")
+        return
+
+    # 2) Update DB - เปลี่ยนแค่ status
+    if job_record.status in ["running", "pending"]:
+        try:
+            #  เปลี่ยนแค่ status เป็น cancel_requested
+            # ไม่ต้องตั้ง finish_timestamp และ active ตอนนี้
+            # ให้ worker เป็นคนตั้งเอง
+            old_status = job_record.status
+            job_record.status = "cancel_requested"
+            Session.commit()
+            
+            log.info(f"[STOP] Job {job_id} status changed: {old_status} -> cancel_requested")
+            click.echo(f"  Stop request sent for job '{job_id}'")
+            click.echo(f"  Status: {old_status} -> cancel_requested")
+            click.echo(f"  The worker will stop processing and update the final status.")
+            
+        except Exception as e:
+            Session.rollback()
+            log.error(f"[STOP] DB update failed: {e}")
+            click.echo(f"✗ DB update failed: {e}")
+            return
+    else:
+        click.echo(f"Job '{job_id}' has status '{job_record.status}' - cannot stop.")
+
+def gui_calculate(job_id=None, organization=None, dimension='all'):
+    log.debug('Starting data quality metrics calculation')
+    if six.PY2:
+        _register_mock_translator()
+    metrics = build_metrics(dimension)
+
+    #------------------------------
+    if organization:  
+        if organization == 'all':
+            all_orgs = get_all_organizations()  # ต้องมีฟังก์ชันคืนชื่อหรือ id ของทุก org
+            requested_timestamp = date.today()
+
+            for org_name in all_orgs:
+                try:
+                    execute_time = 0
+                    start_time = time.time()
+                    parent_org_id, parent_org_name = get_parent_organization(org_name)
+                    org_id = get_org_id_from_name(org_name)
+
+                    if not org_id:
+                        log.error(f"Organization '{org_name}' not found in CKAN.")
+                        continue
+
+                    # นับจำนวน dataset ของ org
+                    dataset_count = Session.query(package_table).filter(
+                        package_table.c.owner_org == org_id,
+                        package_table.c.type == 'dataset',
+                        package_table.c.private == False,
+                        package_table.c.state == 'active'
+                    ).count()
+
+                    log.info(f"Organization '{org_name}' has {dataset_count} active public datasets.")
+
+                    if dataset_count == 0:
+                        log.warning(f"Skip organization '{org_name}' — no active datasets found.")
+                        continue
+                    #--------- [Start] Processing organization -------------------
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
+                    
+                    # ---------------------------------------------
+                    # 1. ปิด job เดิม
+                    # ---------------------------------------------
+                    old_all_jobs = Session.query(job_table).filter(
+                        job_table.org_id == org_id,
+                        job_table.active == True
+                    ).all()
+                    for old_job in old_all_jobs:
+                        old_job.active = False
+                    Session.commit()
+
+                    # ---------------------------------------------
+                    # 2. ลบ job วันนี้ + metrics
+                    # ---------------------------------------------
+                    today = date.today()
+                    today_jobs = Session.query(job_table).filter(
+                        job_table.org_id == org_id,
+                        job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+                    ).all()
+
+                    for job in today_jobs:
+                        Session.query(qa_table).filter(
+                            qa_table.job_id == job.job_id
+                        ).delete(synchronize_session='fetch')
+                        Session.delete(job)
+                    Session.commit()
+
+                    # ---------------------------------------------
+                    # 4. สร้าง job record ใน job_table ของระบบเรา
+                    # ---------------------------------------------
+                    job_row_id = str(uuid.uuid4())
+                    new_job = job_table(
+                        job_id=job_row_id, #job_id,
+                        org_parent_id=parent_org_id,
+                        org_parent_name=parent_org_name,
+                        org_id=org_id,
+                        org_name=org_name,
+                        status="pending",
+                        # requested_timestamp=date.today(),
+                        requested_timestamp=requested_timestamp,
+                        run_type='organization',
+                        active=False
+                    )
+                    Session.add(new_job)
+                    Session.commit()
+                    
+                    # enqueue job
+                    ckan_job = toolkit.enqueue_job(
+                        process_org_metrics,
+                        args=[org_id, org_name, parent_org_id, parent_org_name, job_row_id],
+                        title=f"QA metrics for organization {org_name}"
+                    )
+                    # ckan_job_id = ckan_job.id
+                    # job.job_id = ckan_job_id
+                    Session.commit()
+                    log.info(f"[CKAN-JOB] Created job = {job_row_id} for org {org_name}")
+       
+                except Exception as e:
+                    log.error(f"Job failed for {org_name}. Error: {e}")
+                    Session.rollback()
+                    if 'new_job' in locals():
+                        job.status = "fail"
+                        job.finish_timestamp = datetime.now(tz)#date.today()
+                        job.execute_time = 0             
+                        Session.commit()
+
+        else:
+            execute_time = 0
+            start_time = time.time()
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            log.info(f"Processing organization: {organization}: date_time_start[{timestamp}]")
+
+            parent_org_id, parent_org_name = get_parent_organization(organization)
+            org_id = get_org_id_from_name(organization)  
+            #------------------------------    
+            # 1. ตรวจสอบ org_id
+            #------------------------------
+            if not org_id:
+                log.error(f"Organization '{organization}' not found in CKAN.")
+                raise ValueError(f"Organization '{organization}' not found in CKAN.")
+
+            # นับจำนวน dataset ของ org
+            dataset_count = Session.query(package_table).filter(
+                package_table.c.owner_org == org_id,
+                package_table.c.type == 'dataset',
+                package_table.c.private == False,
+                package_table.c.state == 'active'
+            ).count()
+
+            log.info(f"Organization '{organization}' has {dataset_count} active public datasets.")
+
+            if dataset_count == 0:
+                log.debug(f"Skip organization '{organization}' — no active datasets found.")
+            else:   
+
+                #=========================================================
+                # 3. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
+                #=========================================================
+                today = date.today()
+                today_jobs = Session.query(job_table).filter(
+                    job_table.org_id == org_id,
+                    job_table.run_type == 'organization',
+                    job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+                ).all()
+
+                for old_job in today_jobs:
+                    Session.query(qa_table).filter(
+                        qa_table.job_id == old_job.job_id
+                    ).delete(synchronize_session=False)
+
+                    Session.delete(old_job)
+
+                if today_jobs:
+                    log.info(
+                        "Deleted %s existing job(s) today for org %s",
+                        len(today_jobs), organization
+                    )
+
+                # =========================================================
+                # 4. ปิด active job เก่า (ของ org นี้เท่านั้น)
+                # =========================================================
+                Session.query(job_table).filter(
+                    job_table.org_id == org_id,
+                    job_table.active == True
+                ).update(
+                    {"active": False},
+                    synchronize_session=False
+                )
+
+                Session.commit()
+                # -------------------------
+                # 4. สร้าง record ลง job_table ของระบบ
+                # -------------------------
+                if job_id is None:
+                    job_row_id = str(uuid.uuid4())
+                    job = job_table(
+                        job_id=job_row_id, #job_id,
+                        org_parent_id=parent_org_id,
+                        org_parent_name=parent_org_name,
+                        org_id=org_id,
+                        org_name=organization,
+                        status="pending",
+                        requested_timestamp=date.today(),
+                        run_type='organization',
+                        active=True
+                    )
+                    Session.add(job)
+                else:
+                    job_row_id = job_id
+                    job = Session.query(job_table).filter_by(job_id=job_id).first()
+                    
+                    job.job_id = job_id
+                    job.org_parent_id = parent_org_id,
+                    job.org_parent_name = parent_org_name,
+                    job.org_id = org_id,
+                    job.org_name = organization,
+                    job.requested_timestamp = date.today(),
+                    job.run_type = 'organization',
+                    job.active = True
+                Session.commit()
+ 
+                # enqueue job
+                ckan_job = toolkit.enqueue_job(
+                    process_org_metrics,
+                    args=[org_id, organization, parent_org_id, parent_org_name,job_row_id],
+                    title=f"QA metrics for organization {organization}"
+                )
+                # ckan_job_id = ckan_job.id
+                # job.job_id = ckan_job_id
+                # Session.commit()
+                log.info(f"[CKAN-JOB] Created job id = {job_row_id} for org {organization}")
+
+
 @click.group('quality')
 def quality():
     pass
@@ -662,7 +713,6 @@ def _calculate(organization=None, dataset=None,dimension='all'):
                 log.info("Deleted %s old job(s) for dataset %s today",
                         len(today_jobs), dataset_name)
 
-           
             # -------------------------
             # 4. บันทึกลง job_table ของระบบคุณ
             # -------------------------
@@ -681,7 +731,6 @@ def _calculate(organization=None, dataset=None,dimension='all'):
             # -------------------------
             # 3. สร้าง CKAN background job (ให้ CKAN generate job id)
             # -------------------------
-
             # enqueue job ผ่าน CKAN
             ckan_job_id = toolkit.enqueue_job(
                 run_dataset_metrics,
@@ -690,30 +739,6 @@ def _calculate(organization=None, dataset=None,dimension='all'):
             )
 
             log.info(f"CKAN created job id = {ckan_job_id}")
-
-           
-
-            # try:
-            #     # เปลี่ยนเป็น running
-            #     job.status = "running"
-            #     job.started_timestamp = datetime.now(tz) #date.today()
-            #     Session.commit()
-
-            #     # run metric calculation
-            #     metrics.calculate_metrics_for_dataset(dataset_id, job_id=job_id)
-
-            #     # mark finish
-            #     job.status = "finish"
-            #     job.finish_timestamp = datetime.now(tz) #date.today()
-            #     job.active = True
-            #     Session.commit()
-
-            # except Exception as e:
-            #     log.error("Job %s for dataset %s failed. Error: %s", job_id, dataset_name, str(e))
-            #     log.exception(e)
-            #     job.status = "fail"
-            #     job.finish_timestamp =  datetime.now(tz) #date.today()
-            #     Session.commit()
 
     #------------------------------
     if organization:  
@@ -805,36 +830,7 @@ def _calculate(organization=None, dataset=None,dimension='all'):
                     # job.job_id = ckan_job_id
                     Session.commit()
                     log.info(f"[CKAN-JOB] Created job = {job_row_id} for org {org_name}")
-                    # # 4. รัน metrics
-                    # job.status = "running"
-                    # job.started_timestamp = datetime.now(tz) #date.today()
-                    # Session.commit()
-
-                    # def _process_batch(packages):
-                    #     for pkg in packages:
-                    #         try:
-                    #             metrics.calculate_metrics_for_dataset(pkg, job_id=job_id)
-                    #         except Exception as e:
-                    #             log.error(f'Job failed for {org_name}: {str(e)}')
-                    #             Session.rollback()
-                    #             job.status = "fail"
-                    #             job.finish_timestamp = datetime.now(tz)#date.today()
-                    #             Session.commit()
-
-                    # org_packages(_process_batch, org_name, job)
-
-                    # # 5. ปิดงาน
-                    # job.status = "finish"
-                    # job.finish_timestamp = datetime.now(tz) #date.today()
-                    # job.active = True
-                    # end_time = time.time()   
-                    # # Calculate the time taken
-                    # execute_time = end_time - start_time
-                    # job.execute_time = round(execute_time,3)
-                    # timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    # log.info(f"Finished organization: {org_name}: date_time_end[{timestamp_end}]")
-                    # Session.commit()
-
+       
                 except Exception as e:
                     log.error(f"Job failed for {org_name}. Error: {e}")
                     Session.rollback()
@@ -872,40 +868,10 @@ def _calculate(organization=None, dataset=None,dimension='all'):
             if dataset_count == 0:
                 log.debug(f"Skip organization '{organization}' — no active datasets found.")
             else:   
-                # #----------------------------------------------
-                # # 2. ปิด job เก่าทั้งหมดของ org (active=False)
-                # #---------------------------------------------
-                # old_all_jobs = Session.query(job_table).filter(
-                #     job_table.org_id == org_id,
-                #     job_table.active == True
-                # ).all()
 
-                # for old_job in old_all_jobs:
-                #     old_job.active = False
-                # Session.commit()
-                # if old_all_jobs:
-                #     log.info("Deactivated %s previous active job(s) for organization %s", len(old_all_jobs), organization)
-
-                # # 3. ตรวจสอบ job ของวันนี้ → ถ้ามี → ลบ metrics + job
-                # today = date.today()
-                # today_jobs = Session.query(job_table).filter(
-                #     job_table.org_id == org_id,
-                #     job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
-                # ).all()
-                # for job in today_jobs:
-                #     Session.query(qa_table).filter(
-                #         qa_table.job_id == job.job_id
-                #     ).delete(synchronize_session='fetch')
-                #     Session.delete(job)
-
-                # Session.commit()
-
-                # if today_jobs:
-                #     log.info("Deleted %s job(s) today for organization %s",
-                #             len(today_jobs), organization)
-                #****** =========================================================
+                #=========================================================
                 # 3. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
-                #******** =========================================================
+                #=========================================================
                 today = date.today()
                 today_jobs = Session.query(job_table).filter(
                     job_table.org_id == org_id,
@@ -966,45 +932,7 @@ def _calculate(organization=None, dataset=None,dimension='all'):
                 # job.job_id = ckan_job_id
                 # Session.commit()
                 log.info(f"[CKAN-JOB] Created job id = {job_row_id} for org {organization}")
-                # log.info(f"[CKAN-JOB] Created job id = {ckan_job_id} for org {organization}")
-                # try:
-                #     # เปลี่ยนเป็น running
-                #     job.status = "running"
-                #     job.started_timestamp = datetime.now(tz) #date.today()
-                #     Session.commit()
-                #     def _process_batch(packages):
-                #         for pkg in packages:
-                #             # log.debug('-----package-----')
-                #             # log.debug(pkg)
-                #             # log.debug(job_id)
-                #             try:
-                #                 metrics.calculate_metrics_for_dataset(pkg,job_id=job_id)
-                #             except Exception as e:                     
-                #                 log.error('Job failed at Cli: Failed to calculate metrics')
-                #                 Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
-                #                 job.status = "fail"
-                #                 job.finish_timestamp = datetime.now(tz)#date.today()
-                #                 Session.commit()        
-                    
-                #     org_packages(_process_batch, organization,job)
-                #     # จบงาน → mark finish
-                #     job.status = "finish"
-                #     job.finish_timestamp = datetime.now(tz)#date.today()
-                #     job.activate = True
-                #     end_time = time.time() 
-                #     execute_time = end_time - start_time
-                #     job.execute_time = round(execute_time,3)
-                #     timestamp_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    
-                #     log.info(f"Finished organization: {organization}: date_time_end[{timestamp_end}]")
-                #     Session.commit()
-                # except Exception as e:
-                #     log.error('Job failed at Cli: Failed to calculate metrics')
-                #     log.error("Job %s failed. Error: %s", job_id, str(e))
-                #     Session.rollback()   # เคลียร์ transaction ที่ error ไปแล้ว
-                #     job.status = "fail"
-                #     job.finish_timestamp = datetime.now(tz) #date.today()
-                #     Session.commit()
+             
 
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one
@@ -1087,107 +1015,116 @@ def org_packages(handler,org_name,job):
               help='Job ID to stop')
 def stop_job(job_id):
 
-    log.info(f"[STOP] Request to stop job_id={job_id}")
+    _stop_job(job_id)
 
-    # 1) หา job record จาก DB -----------------------------------------
-    job_record = (
-        Session.query(job_table)
-        .filter(job_table.job_id == job_id)
-        .first()
-    )
+    # log.info(f"[STOP] Request to stop job_id={job_id}")
 
-    if not job_record:
-        click.echo(f"Job '{job_id}' not found in job_table.")
-        return
+    # # 1) หา job record จาก DB -----------------------------------------
+    # job_record = (
+    #     Session.query(job_table)
+    #     .filter(job_table.job_id == job_id)
+    #     .first()
+    # )
 
-    if job_record.status in ["finish", "fail", "cancel"]:
-        click.echo(f"Job '{job_id}' already {job_record.status}. Nothing to stop.")
-        return
-
-    # 2) หา job จริงใน CKAN job queue ---------------------------------
-    # try:
-    #     job_list = get_action('job_list')({'ignore_auth': True}, {})
-    # except Exception as e:
-    #     click.echo(f"Could not retrieve job list: {e}")
+    # if not job_record:
+    #     click.echo(f"Job '{job_id}' not found in job_table.")
     #     return
 
-    # target_job = None
-    # for j in job_list:
-    #     # mapping job ของคุณ -> job ของ CKAN
-    #     if j.get("id") == job_record.ckan_job_id:   # <-- ใช้ค่านี้ถ้ามีเก็บไว้
-    #         target_job = j
-    #         break
-
-    # if not target_job:
-    #     click.echo(f"No CKAN queue job found matching job_id={job_id}")
+    # if job_record.status in ["finish", "fail", "cancel"]:
+    #     click.echo(f"Job '{job_id}' already {job_record.status}. Nothing to stop.")
     #     return
 
-    # ckan_job_id = target_job["id"]
-    # state = target_job["state"]
+    # # 2) หา job จริงใน CKAN job queue ---------------------------------
+    # # try:
+    # #     job_list = get_action('job_list')({'ignore_auth': True}, {})
+    # # except Exception as e:
+    # #     click.echo(f"Could not retrieve job list: {e}")
+    # #     return
 
-    # if state not in ["queued", "started"]:
-    #     click.echo(f"CKAN job {ckan_job_id} is already {state}. Cannot stop.")
-    #     return
+    # # target_job = None
+    # # for j in job_list:
+    # #     # mapping job ของคุณ -> job ของ CKAN
+    # #     if j.get("id") == job_record.ckan_job_id:   # <-- ใช้ค่านี้ถ้ามีเก็บไว้
+    # #         target_job = j
+    # #         break
 
-    # 3) Cancel ผ่าน CKAN API -----------------------------------------
-    # try:
-    #     cancel = get_action('job_cancel')
-    #     cancel({'ignore_auth': True}, {'id': ckan_job_id})
-    #     log.info(f"[STOP] job_cancel({ckan_job_id}) called.")
-    #     click.echo(f"CKAN job {ckan_job_id} canceled successfully.")
-    # except Exception as e:
-    #     log.error(f"[STOP] CKAN job_cancel failed: {e}")
-    #     click.echo(f"CKAN job_cancel failed: {e}")
-    #     return
+    # # if not target_job:
+    # #     click.echo(f"No CKAN queue job found matching job_id={job_id}")
+    # #     return
 
-    # 4) Update DB -----------------------------------------------------
+    # # ckan_job_id = target_job["id"]
+    # # state = target_job["state"]
+
+    # # if state not in ["queued", "started"]:
+    # #     click.echo(f"CKAN job {ckan_job_id} is already {state}. Cannot stop.")
+    # #     return
+
+    # # 3) Cancel ผ่าน CKAN API -----------------------------------------
+    # # try:
+    # #     cancel = get_action('job_cancel')
+    # #     cancel({'ignore_auth': True}, {'id': ckan_job_id})
+    # #     log.info(f"[STOP] job_cancel({ckan_job_id}) called.")
+    # #     click.echo(f"CKAN job {ckan_job_id} canceled successfully.")
+    # # except Exception as e:
+    # #     log.error(f"[STOP] CKAN job_cancel failed: {e}")
+    # #     click.echo(f"CKAN job_cancel failed: {e}")
+    # #     return
+
+    # # 4) Update DB -----------------------------------------------------
+    # # if job_record.status in ["running", "pending"]:
+    # #     try:
+    # #         job_record.status = "cancel_requested"
+    # #         job_record.active = False
+    # #         job_record.finish_timestamp = datetime.now()
+    # #         Session.commit()
+    # #     except Exception as e:
+    # #         Session.rollback()
+    # #         log.error(f"[STOP] DB update failed: {e}")
+    # #         click.echo(f"DB update failed: {e}")
+    # #         return
+
+    # #     # click.echo(f"Job '{job_id}' cancelled successfully.")
+    # # 2) Update DB - เปลี่ยนแค่ status
     # if job_record.status in ["running", "pending"]:
     #     try:
+    #         #  เปลี่ยนแค่ status เป็น cancel_requested
+    #         # ไม่ต้องตั้ง finish_timestamp และ active ตอนนี้
+    #         # ให้ worker เป็นคนตั้งเอง
+    #         old_status = job_record.status
     #         job_record.status = "cancel_requested"
-    #         job_record.active = False
-    #         job_record.finish_timestamp = datetime.now()
     #         Session.commit()
+            
+    #         log.info(f"[STOP] Job {job_id} status changed: {old_status} -> cancel_requested")
+    #         click.echo(f"  Stop request sent for job '{job_id}'")
+    #         click.echo(f"  Status: {old_status} -> cancel_requested")
+    #         click.echo(f"  The worker will stop processing and update the final status.")
+            
     #     except Exception as e:
     #         Session.rollback()
     #         log.error(f"[STOP] DB update failed: {e}")
-    #         click.echo(f"DB update failed: {e}")
+    #         click.echo(f"✗ DB update failed: {e}")
     #         return
-
-    #     # click.echo(f"Job '{job_id}' cancelled successfully.")
-    # 2) Update DB - เปลี่ยนแค่ status
-    if job_record.status in ["running", "pending"]:
-        try:
-            #  เปลี่ยนแค่ status เป็น cancel_requested
-            # ไม่ต้องตั้ง finish_timestamp และ active ตอนนี้
-            # ให้ worker เป็นคนตั้งเอง
-            old_status = job_record.status
-            job_record.status = "cancel_requested"
-            Session.commit()
-            
-            log.info(f"[STOP] Job {job_id} status changed: {old_status} -> cancel_requested")
-            click.echo(f"  Stop request sent for job '{job_id}'")
-            click.echo(f"  Status: {old_status} -> cancel_requested")
-            click.echo(f"  The worker will stop processing and update the final status.")
-            
-        except Exception as e:
-            Session.rollback()
-            log.error(f"[STOP] DB update failed: {e}")
-            click.echo(f"✗ DB update failed: {e}")
-            return
-    else:
-        click.echo(f"Job '{job_id}' has status '{job_record.status}' - cannot stop.")
+    # else:
+    #     click.echo(f"Job '{job_id}' has status '{job_record.status}' - cannot stop.")
 
 @quality.command(u'delete', help='Delete data quality metrics')
-@click.option('--dataset',
-              help='Delete a dataset by name. Use "all" to delete all datasets.')
-@click.option('--organization',
-              default=None,
-              help='Delete quality metrics by organization')
 @click.option('--job_id',
               default=None,
               help='Delete quality metrics by job id')
-def del_metrict(organization=None, dataset=None, job_id=None):
-    _del_metrict(organization, dataset, job_id)
+def del_metrict(job_id=None):
+    _del_metrict(job_id)
+
+# @quality.command(u'delete', help='Delete data quality metrics')
+# @click.option('--dataset',
+#               help='Delete a dataset by name. Use "all" to delete all datasets.')
+# @click.option('--organization',
+#               default=None,
+#               help='Delete quality metrics by organization')
+# @click.option('--job_id',
+#               default=None,
+#               help='Delete quality metrics by job id')
+# def del_metrict(organization=None, dataset=None, job_id=None):
+#     _del_metrict(organization, dataset, job_id)
 # def del_metrict(organization=None, dataset=None, job_id=None):
 #     if dataset:
 #         if dataset == 'all':
