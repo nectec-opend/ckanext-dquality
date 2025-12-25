@@ -247,15 +247,19 @@ $(document).ready(function(){
   }
 })
 
-document.getElementById('org-filter-form').addEventListener('submit', function (e) {
-  e.preventDefault();
-  const mainSel  = document.getElementById('org_main');
-  const subSel  = document.getElementById('org_sub');
-  const verSel  = document.getElementById('ver_selected');
-  if (mainSel && mainSel.value.trim() && !subSel.value.trim()) {
-    alert('กรุณาเลือกหน่วยงานย่อยก่อน');
-    if (subSel) subSel.focus();
-    return false;
-  }
-  e.target.submit();
-});
+const $qaForm = document.getElementById('qa-cal-form');
+
+if ($qaForm) {
+  $qaForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const mainSel  = document.getElementById('org_main');
+    const subSel  = document.getElementById('org_sub');
+    const verSel  = document.getElementById('ver_selected');
+    if (mainSel && mainSel.value.trim() && !subSel.value.trim()) {
+      alert('กรุณาเลือกหน่วยงานย่อยก่อน');
+      if (subSel) subSel.focus();
+      return false;
+    }
+    e.target.submit();
+  });
+}

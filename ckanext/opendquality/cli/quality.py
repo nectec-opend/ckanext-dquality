@@ -381,269 +381,12 @@ def _stop_job(job_id):
     else:
         click.echo(f"Job '{job_id}' has status '{job_record.status}' - cannot stop.")
 
-def gui_calculate(job_id=None, organization=None, dimension='all'):
+def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
     log.debug('Starting data quality metrics calculation')
     if six.PY2:
         _register_mock_translator()
     metrics = build_metrics(dimension)
 
-    #------------------------------
-    if organization:  
-        if organization == 'all':
-            all_orgs = get_all_organizations()  # ต้องมีฟังก์ชันคืนชื่อหรือ id ของทุก org
-            requested_timestamp = date.today()
-
-            for org_name in all_orgs:
-                try:
-                    execute_time = 0
-                    start_time = time.time()
-                    parent_org_id, parent_org_name = get_parent_organization(org_name)
-                    org_id = get_org_id_from_name(org_name)
-
-                    if not org_id:
-                        log.error(f"Organization '{org_name}' not found in CKAN.")
-                        continue
-
-                    # นับจำนวน dataset ของ org
-                    dataset_count = Session.query(package_table).filter(
-                        package_table.c.owner_org == org_id,
-                        package_table.c.type == 'dataset',
-                        package_table.c.private == False,
-                        package_table.c.state == 'active'
-                    ).count()
-
-                    log.info(f"Organization '{org_name}' has {dataset_count} active public datasets.")
-
-                    if dataset_count == 0:
-                        log.warning(f"Skip organization '{org_name}' — no active datasets found.")
-                        continue
-                    #--------- [Start] Processing organization -------------------
-                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    log.info(f"Processing organization: {org_name}: date_time_start[{timestamp}]")
-                    
-                    # ---------------------------------------------
-                    # 1. ปิด job เดิม
-                    # ---------------------------------------------
-                    old_all_jobs = Session.query(job_table).filter(
-                        job_table.org_id == org_id,
-                        job_table.active == True
-                    ).all()
-                    for old_job in old_all_jobs:
-                        old_job.active = False
-                    Session.commit()
-
-                    # ---------------------------------------------
-                    # 2. ลบ job วันนี้ + metrics
-                    # ---------------------------------------------
-                    today = date.today()
-                    today_jobs = Session.query(job_table).filter(
-                        job_table.org_id == org_id,
-                        job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
-                    ).all()
-
-                    for job in today_jobs:
-                        Session.query(qa_table).filter(
-                            qa_table.job_id == job.job_id
-                        ).delete(synchronize_session='fetch')
-                        Session.delete(job)
-                    Session.commit()
-
-                    # ---------------------------------------------
-                    # 4. สร้าง job record ใน job_table ของระบบเรา
-                    # ---------------------------------------------
-                    job_row_id = str(uuid.uuid4())
-                    new_job = job_table(
-                        job_id=job_row_id, #job_id,
-                        org_parent_id=parent_org_id,
-                        org_parent_name=parent_org_name,
-                        org_id=org_id,
-                        org_name=org_name,
-                        status="pending",
-                        # requested_timestamp=date.today(),
-                        requested_timestamp=requested_timestamp,
-                        run_type='organization',
-                        active=False
-                    )
-                    Session.add(new_job)
-                    Session.commit()
-                    
-                    # enqueue job
-                    ckan_job = toolkit.enqueue_job(
-                        process_org_metrics,
-                        args=[org_id, org_name, parent_org_id, parent_org_name, job_row_id],
-                        title=f"QA metrics for organization {org_name}"
-                    )
-                    # ckan_job_id = ckan_job.id
-                    # job.job_id = ckan_job_id
-                    Session.commit()
-                    log.info(f"[CKAN-JOB] Created job = {job_row_id} for org {org_name}")
-       
-                except Exception as e:
-                    log.error(f"Job failed for {org_name}. Error: {e}")
-                    Session.rollback()
-                    if 'new_job' in locals():
-                        job.status = "fail"
-                        job.finish_timestamp = datetime.now(tz)#date.today()
-                        job.execute_time = 0             
-                        Session.commit()
-
-        else:
-            execute_time = 0
-            start_time = time.time()
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            log.info(f"Processing organization: {organization}: date_time_start[{timestamp}]")
-
-            parent_org_id, parent_org_name = get_parent_organization(organization)
-            org_id = get_org_id_from_name(organization)  
-            #------------------------------    
-            # 1. ตรวจสอบ org_id
-            #------------------------------
-            if not org_id:
-                log.error(f"Organization '{organization}' not found in CKAN.")
-                raise ValueError(f"Organization '{organization}' not found in CKAN.")
-
-            # นับจำนวน dataset ของ org
-            dataset_count = Session.query(package_table).filter(
-                package_table.c.owner_org == org_id,
-                package_table.c.type == 'dataset',
-                package_table.c.private == False,
-                package_table.c.state == 'active'
-            ).count()
-
-            log.info(f"Organization '{organization}' has {dataset_count} active public datasets.")
-
-            if dataset_count == 0:
-                log.debug(f"Skip organization '{organization}' — no active datasets found.")
-            else:   
-
-                #=========================================================
-                # 3. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
-                #=========================================================
-                today = date.today()
-                today_jobs = Session.query(job_table).filter(
-                    job_table.org_id == org_id,
-                    job_table.run_type == 'organization',
-                    job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
-                ).all()
-
-                for old_job in today_jobs:
-                    Session.query(qa_table).filter(
-                        qa_table.job_id == old_job.job_id
-                    ).delete(synchronize_session=False)
-
-                    Session.delete(old_job)
-
-                if today_jobs:
-                    log.info(
-                        "Deleted %s existing job(s) today for org %s",
-                        len(today_jobs), organization
-                    )
-
-                # =========================================================
-                # 4. ปิด active job เก่า (ของ org นี้เท่านั้น)
-                # =========================================================
-                Session.query(job_table).filter(
-                    job_table.org_id == org_id,
-                    job_table.active == True
-                ).update(
-                    {"active": False},
-                    synchronize_session=False
-                )
-
-                Session.commit()
-                # -------------------------
-                # 4. สร้าง record ลง job_table ของระบบ
-                # -------------------------
-                if job_id is None:
-                    job_row_id = str(uuid.uuid4())
-                    job = job_table(
-                        job_id=job_row_id, #job_id,
-                        org_parent_id=parent_org_id,
-                        org_parent_name=parent_org_name,
-                        org_id=org_id,
-                        org_name=organization,
-                        status="pending",
-                        requested_timestamp=date.today(),
-                        run_type='organization',
-                        active=True
-                    )
-                    Session.add(job)
-                else:
-                    job_row_id = job_id
-                    job = Session.query(job_table).filter_by(job_id=job_id).first()
-                    
-                    job.job_id = job_id
-                    job.org_parent_id = parent_org_id,
-                    job.org_parent_name = parent_org_name,
-                    job.org_id = org_id,
-                    job.org_name = organization,
-                    job.requested_timestamp = date.today(),
-                    job.run_type = 'organization',
-                    job.active = True
-                Session.commit()
- 
-                # enqueue job
-                ckan_job = toolkit.enqueue_job(
-                    process_org_metrics,
-                    args=[org_id, organization, parent_org_id, parent_org_name,job_row_id],
-                    title=f"QA metrics for organization {organization}"
-                )
-                # ckan_job_id = ckan_job.id
-                # job.job_id = ckan_job_id
-                # Session.commit()
-                log.info(f"[CKAN-JOB] Created job id = {job_row_id} for org {organization}")
-
-
-@click.group('quality')
-def quality():
-    pass
-
-@quality.command(u'calculate', help='Calculate data quality metrics')
-@click.option('--dataset',
-              help='Calculate quality metrics for dataset by datasett name.')
-@click.option('--organization',
-              help='Calculate quality metrics for dataset by organization name.')
-@click.option('--dimension',
-              default='all',
-              help='Which metric to calculate.')
-def calculate(organization=None, dataset=None,dimension='all'):
-    jobs.enqueue(_calculate, None, kwargs={'organization': organization, 'dataset': dataset, 'dimension':dimension})
-
-def _calculate(organization=None, dataset=None,dimension='all'):
-    log.debug('Starting data quality metrics calculation')
-    if six.PY2:
-        _register_mock_translator()
-    #---*** เก็บไว้ก่อน  ****----------------------
-    # dimensions =  ['completeness','uniqueness','validity','consistency','openness','availability','downloadable','access_api','timeliness','acc_latency','freshness','relevance','utf8','preview']
-    # dimension_calculators = {
-    #     'completeness': quality_lib.Completeness(),
-    #     'uniqueness'  : quality_lib.Uniqueness(),
-    #     'validity'    : quality_lib.Validity(),
-    #     'consistency' : quality_lib.Consistency(),
-    #     'openness'    : quality_lib.Openness(),
-    #     'availability' : quality_lib.Availability(),
-    #     'downloadable' : quality_lib.Downloadable(),
-    #     'access_api' : quality_lib.AccessAPI(),
-    #     # 'machine_readable' : quality_lib.MachineReadable(),
-    #     'timeliness': quality_lib.Timeliness(),
-    #     'acc_latency': quality_lib.AcceptableLatency(),
-    #     'freshness': quality_lib.Freshness(),
-    #     'relevance': quality_lib.Relevance(),
-    #     'utf8': quality_lib.EncodingUTF8(),
-    #     'preview': quality_lib.Preview(),
-    # }
- 
-
-    # if dimension == 'all':
-    #     calculators = [dimension_calculators[dim] for dim in dimensions]
-    # elif dimension not in dimensions:
-    #     raise Exception('Invalid dimension specified. Valid dimensions are: ' +
-    #                     ', '.join(dimensions))
-    # else:
-    #     calculators = [dimension_calculators[dimension]]
-
-    # metrics = quality_lib.DataQualityMetrics(metrics=calculators)
-    metrics = build_metrics(dimension)
     if dataset:
         if dataset == 'all':
             def _process_batch(packages):
@@ -908,19 +651,32 @@ def _calculate(organization=None, dataset=None,dimension='all'):
                 # -------------------------
                 # 4. สร้าง record ลง job_table ของระบบ
                 # -------------------------
-                job_row_id = str(uuid.uuid4())
-                job = job_table(
-                    job_id=job_row_id, #job_id,
-                    org_parent_id=parent_org_id,
-                    org_parent_name=parent_org_name,
-                    org_id=org_id,
-                    org_name=organization,
-                    status="pending",
-                    requested_timestamp=date.today(),
-                    run_type='organization',
-                    active=True
-                )
-                Session.add(job)
+                if job_id is None:
+                    job_row_id = str(uuid.uuid4())
+                    job = job_table(
+                        job_id=job_row_id, #job_id,
+                        org_parent_id=parent_org_id,
+                        org_parent_name=parent_org_name,
+                        org_id=org_id,
+                        org_name=organization,
+                        status="pending",
+                        requested_timestamp=date.today(),
+                        run_type='organization',
+                        active=True
+                    )
+                    Session.add(job)
+                else:
+                    job_row_id = job_id
+                    job = Session.query(job_table).filter_by(job_id=job_id).first()
+                    
+                    job.job_id = job_id
+                    job.org_parent_id = parent_org_id,
+                    job.org_parent_name = parent_org_name,
+                    job.org_id = org_id,
+                    job.org_name = organization,
+                    job.requested_timestamp = date.today(),
+                    job.run_type = 'organization',
+                    job.active = True
                 Session.commit()
  
                 # enqueue job
@@ -933,7 +689,23 @@ def _calculate(organization=None, dataset=None,dimension='all'):
                 # job.job_id = ckan_job_id
                 # Session.commit()
                 log.info(f"[CKAN-JOB] Created job id = {job_row_id} for org {organization}")
-             
+
+
+@click.group('quality')
+def quality():
+    pass
+
+@quality.command(u'calculate', help='Calculate data quality metrics')
+@click.option('--dataset',
+              help='Calculate quality metrics for dataset by datasett name.')
+@click.option('--organization',
+              help='Calculate quality metrics for dataset by organization name.')
+@click.option('--dimension',
+              default='all',
+              help='Which metric to calculate.')
+def calculate(organization=None, dataset=None,dimension='all'):
+    _calculate(None, dataset=dataset, organization=organization, dimension=dimension)
+    # jobs.enqueue(_calculate, None, kwargs={'organization': organization, 'dataset': dataset, 'dimension':dimension})          
 
 def _register_mock_translator():
     # Workaround until the core translation function defaults to the Flask one

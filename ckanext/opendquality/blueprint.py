@@ -383,70 +383,6 @@ def home():
         
         if selected_org_cal != None and selected_org_cal != '':
             org_id = Session.query(Group.id).filter(Group.name == selected_org_cal).first()
-
-            # execute_time = 0
-            # start_time = time.time()
-            # timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            # log.info(f"Processing organization: {selected_org_cal}: date_time_start[{timestamp}]")
-
-            # parent_org_id, parent_org_name = get_parent_organization(selected_org_cal)
-            # org_id = get_org_id_from_name(selected_org_cal)  
-            # #------------------------------    
-            # # 1. ตรวจสอบ org_id
-            # #------------------------------
-            # if not org_id:
-            #     log.error(f"Organization '{selected_org_cal}' not found in CKAN.")
-            #     raise ValueError(f"Organization '{selected_org_cal}' not found in CKAN.")
-
-            # # นับจำนวน dataset ของ org
-            # dataset_count = Session.query(package_table).filter(
-            #     package_table.c.owner_org == org_id,
-            #     package_table.c.type == 'dataset',
-            #     package_table.c.private == False,
-            #     package_table.c.state == 'active'
-            # ).count()
-
-            # log.info(f"Organization '{selected_org_cal}' has {dataset_count} active public datasets.")
-
-            # if dataset_count == 0:
-            #     log.debug(f"Skip organization '{selected_org_cal}' — no active datasets found.")
-            # else:   
-
-            #     #=========================================================
-            #     # 3. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
-            #     #=========================================================
-            #     today = date.today()
-            #     today_jobs = Session.query(JobDQ).filter(
-            #         JobDQ.org_id == org_id,
-            #         JobDQ.run_type == 'organization',
-            #         JobDQ.requested_timestamp >= datetime(today.year, today.month, today.day)
-            #     ).all()
-
-            #     for old_job in today_jobs:
-            #         Session.query(DQM).filter(
-            #             DQM.job_id == old_job.job_id
-            #         ).delete(synchronize_session=False)
-
-            #         Session.delete(old_job)
-
-            #     if today_jobs:
-            #         log.info(
-            #             "Deleted %s existing job(s) today for org %s",
-            #             len(today_jobs), selected_org_cal
-            #         )
-
-            #     # =========================================================
-            #     # 4. ปิด active job เก่า (ของ org นี้เท่านั้น)
-            #     # =========================================================
-            #     Session.query(JobDQ).filter(
-            #         JobDQ.org_id == org_id,
-            #         JobDQ.active == True
-            #     ).update(
-            #         {"active": False},
-            #         synchronize_session=False
-            #     )
-
-            #     Session.commit()
             job_id = str(uuid.uuid4())
             job = JobDQ(
                 job_id=job_id, #job_id,
@@ -459,11 +395,7 @@ def home():
             Session.add(job)
             Session.commit()
 
-            #jobs.enqueue('ckanext.opendquality.cli.quality.process_org_metrics', args=[org_id, selected_org_cal, parent_org_id, parent_org_name, job_id])
-
-            jobs.enqueue('ckanext.opendquality.cli.quality.gui_calculate', None, kwargs={'job_id': job.job_id, 'organization': selected_org_cal, 'dimension':'all'})
-
-            # return toolkit.redirect_to('opendquality.index')
+            jobs.enqueue('ckanext.opendquality.cli.quality._calculate', None, kwargs={'job_id': job.job_id, 'organization': selected_org_cal, 'dimension':'all'})
             return toolkit.redirect_to(
                 'opendquality.index',
                 pending=1
