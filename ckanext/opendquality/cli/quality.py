@@ -31,6 +31,7 @@ from ckan.plugins.toolkit import config
 import time
 import ckan.lib.jobs as jobs
 from ckan.plugins.toolkit import get_action
+from sqlalchemy import desc
 
 log = getLogger(__name__)
 # Asia/Bangkok
@@ -114,7 +115,368 @@ def restore_previous_active_job(cancelled_job_id):
         log.error(f"[RESTORE] Error: {e}")
         Session.rollback()
         return False
+        
+# def should_reprocess_dataset(dataset_id, last_state):
+#     """
+#     ตรวจสอบว่าควรประมวลผล dataset ใหม่หรือไม่
+    
+#     Args:
+#         dataset_id: package_id ของ dataset
+#         last_state: state จาก job ก่อนหน้า
+    
+#     Returns:
+#         tuple: (should_process, reason)
 
+#         qa_table, job_table
+#     """
+#     try:
+#         # from ckan.model import Resource, Package
+#         # ดึง package ปัจจุบัน
+#         package = Session.query(package_table).filter(
+#             package_table.c.id == dataset_id
+#         ).first()
+        
+#         if not package:
+#             return (True, "ไม่พบ dataset")
+
+#         # ดึง resources ปัจจุบันของ dataset
+#         current_resources = Session.query(resource_table).filter(
+#             resource_table.c.package_id == dataset_id,
+#             resource_table.c.state == 'active'
+#         ).all()
+        
+#         current_resource_ids = {r.id for r in current_resources}
+#         current_metadata = {
+#             r.id: {
+#                 'last_modified': r.last_modified,
+#                 'url': r.url,
+#                 'format': r.format,
+#             } for r in current_resources
+#         }
+        
+#         # ไม่มี state เก่า
+#         if not last_state or not last_state.get('resources'):
+#             return (True, "ไม่มี state ก่อนหน้า")
+
+       
+        
+#         last_resource_ids = set(last_state['resources'].keys())
+#         last_metadata = last_state['resources']
+
+#          # ⭐ เพิ่ม: เช็ค metadata_modified ของ package
+#         if last_state.get('package_metadata_modified'):
+#             if package.metadata_modified > last_state['package_metadata_modified']:
+#                 return (True, "Package metadata มีการอัปเดท")
+
+
+#         # ตรวจสอบว่ามี error ใน state เก่าหรือไม่
+#         # if last_state.get('has_error'):
+#         #     return (True, "พบ error ใน state ก่อนหน้า")
+
+#         # ตรวจสอบว่ามี Connection timeout ใน state เก่าหรือไม่
+#         if last_state.get('has_error'):
+#             return (True, "พบ Connection timeout - ลองใหม่")
+        
+#         # ตรวจสอบการเพิ่ม/ลบไฟล์
+#         added_files = current_resource_ids - last_resource_ids
+#         deleted_files = last_resource_ids - current_resource_ids
+        
+#         if added_files:
+#             return (True, f"มีไฟล์เพิ่ม {len(added_files)} ไฟล์")
+#         if deleted_files:
+#             return (True, f"มีไฟล์ลบ {len(deleted_files)} ไฟล์")
+        
+#         # ตรวจสอบการอัปเดทไฟล์
+#         for resource_id in current_resource_ids:
+#             current_meta = current_metadata[resource_id]
+#             last_meta = last_metadata.get(resource_id, {})
+            
+#             # เช็ค last_modified
+#             if current_meta.get('last_modified') and last_meta.get('last_modified'):
+#                 if current_meta['last_modified'] > last_meta['last_modified']:
+#                     return (True, f"ไฟล์ {resource_id[:8]}... อัปเดท")
+            
+#             # เช็ค hash
+#             if current_meta.get('hash') and last_meta.get('hash'):
+#                 if current_meta['hash'] != last_meta['hash']:
+#                     return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน hash")
+            
+#             # เช็ค URL
+#             if current_meta.get('url') != last_meta.get('url'):
+#                 log.debug(current_meta.get('url'))
+#                 log.debug(last_meta.get('url'))
+#                 return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน URL")
+            
+#             # เช็ค format
+#             if current_meta.get('format') != last_meta.get('format'):
+#                 return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน format")
+        
+#         return (False, "ไม่มีการเปลี่ยนแปลง")
+        
+#     except Exception as e:
+#         log.error(f"Error in should_reprocess_dataset: {e}")
+#         return (True, f"Error: {str(e)[:100]}")
+
+def should_reprocess_dataset(dataset_id, last_state):
+    try:
+        # ดึง package ปัจจุบัน
+        package = Session.query(package_table).filter(
+            package_table.c.id == dataset_id
+        ).first()
+        
+        if not package:
+            return (True, "ไม่พบ dataset")
+
+        # ดึง resources ปัจจุบันของ dataset
+        current_resources = Session.query(resource_table).filter(
+            resource_table.c.package_id == dataset_id,
+            resource_table.c.state == 'active'
+        ).all()
+        
+        # สร้าง metadata แยกออกมา
+        current_resource_ids = set()
+        current_metadata = {}
+        
+        for r in current_resources:
+            # ดึง URL จาก extras
+            url = r.url  # default
+            try:
+                if r.extras:
+                    extras_data = json.loads(r.extras) if isinstance(r.extras, str) else r.extras
+                    url = extras_data.get('original_url', r.url)
+            except:
+                pass
+            
+            current_resource_ids.add(r.id)
+            current_metadata[r.id] = {
+                'last_modified': r.last_modified,
+                'url': url,
+                'format': r.format,
+            }
+        
+        # ไม่มี state เก่า
+        if not last_state or not last_state.get('resources'):
+            return (True, "ไม่มี state ก่อนหน้า")
+        
+        last_resource_ids = set(last_state['resources'].keys())
+        last_metadata = last_state['resources']
+
+        # เช็ค metadata_modified ของ package
+        if last_state.get('package_metadata_modified'):
+            current_package_modified = package.metadata_modified
+            last_package_modified = last_state['package_metadata_modified']
+            
+            if current_package_modified and last_package_modified:
+                if current_package_modified > last_package_modified:
+                    return (True, "Package metadata มีการอัปเดท")
+        
+        # ตรวจสอบ error
+        if last_state.get('has_connection_timeout'):
+            return (True, "พบ Connection timeout - ลองใหม่")
+        
+        if last_state.get('has_error'):
+            return (True, "พบ error ใน state ก่อนหน้า")
+        
+        # ตรวจสอบการเพิ่ม/ลบไฟล์
+        added_files = current_resource_ids - last_resource_ids
+        deleted_files = last_resource_ids - current_resource_ids
+        
+        if added_files:
+            return (True, f"มีไฟล์เพิ่ม {len(added_files)} ไฟล์")
+        if deleted_files:
+            return (True, f"มีไฟล์ลบ {len(deleted_files)} ไฟล์")
+        
+        # ตรวจสอบการอัปเดทไฟล์
+        for resource_id in current_resource_ids:
+            current_meta = current_metadata[resource_id]
+            last_meta = last_metadata.get(resource_id, {})
+            
+            if current_meta.get('last_modified') and last_meta.get('last_modified'):
+                if current_meta['last_modified'] > last_meta['last_modified']:
+                    return (True, f"ไฟล์ {resource_id[:8]}... อัปเดท")
+            
+            if current_meta.get('url') != last_meta.get('url'):
+                log.debug(current_meta.get('url'))
+                log.debug(last_meta.get('url'))
+                return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน URL")
+            
+            if current_meta.get('format') != last_meta.get('format'):
+                return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน format")
+        
+        return (False, "ไม่มีการเปลี่ยนแปลง")
+        
+    except Exception as e:
+        log.error(f"Error in should_reprocess_dataset: {e}")
+        return (True, f"Error: {str(e)[:100]}")
+
+def load_last_job_state(org_id):
+    """
+    ดึง job ล่าสุดของ org และเช็คว่าเป็นวันเดียวกันหรือไม่
+    
+    Returns:
+        dict: {
+            'job': job object หรือ None,
+            'is_same_day': True/False,
+            'job_date': วันที่ของ job
+        }
+    """
+    try:
+        # from ckanext.your_extension.model import DataQualityJob
+        
+        current_date = date.today()
+        
+        # หา job ล่าสุดที่ status = 'finish'
+        last_job = Session.query(job_table).filter(
+            job_table.org_id == org_id,
+            job_table.status == 'finish',
+            job_table.run_type == 'organization'
+        ).order_by(desc(job_table.started_timestamp)).first()
+        
+        if not last_job:
+            return {'job': None, 'is_same_day': False, 'job_date': None}
+        
+        # เช็คว่าเป็นวันเดียวกันหรือไม่
+        job_date = last_job.requested_timestamp
+        is_same_day = (job_date == current_date)
+        
+        return {
+            'job': last_job,
+            'is_same_day': is_same_day,
+            'job_date': job_date
+        }
+        
+    except Exception as e:
+        log.error(f"Error in load_last_job_state: {e}")
+        return {'job': None, 'is_same_day': False, 'job_date': None}
+
+
+def load_dataset_state_from_job(job_id, dataset_id):
+    """
+    ดึง state ของ dataset จาก job ที่ระบุ
+    โดยดูจาก data_quality_metrics
+    
+    Returns:
+        dict หรือ None
+    """
+    try:
+        # 1. ดึง metrics จาก job เก่า
+        # ดึง metrics ของ dataset นี้จาก job ที่ระบุ
+        # ดึงทั้ง resource + package metrics   xxx# type = 'resource' เท่านั้น (ไม่เอา package level)
+        metrics = Session.query(qa_table).filter(
+            qa_table.job_id == job_id,
+            qa_table.package_id == dataset_id
+            # qa_table.type == 'resource'
+        ).all()
+        
+        if not metrics:
+            return None
+        
+        # แยก resource และ package metrics
+        resource_metrics = [m for m in metrics if m.type == 'resource']
+        package_metrics = [m for m in metrics if m.type == 'package']
+
+        # ตรวจสอบว่ามี Connection timeout หรือไม่
+        has_error = any(
+            metric.error is not None and 
+            'Connection timed out' in str(metric.error)
+            for metric in resource_metrics
+        )
+        
+        # 2. วน loop สร้าง resource_states จาก data_quality_metrics
+        # สร้าง resource states
+        resource_states = {}
+        for metric in resource_metrics:
+            resource_id = metric.ref_id
+            resource_states[resource_id] = {
+                'last_modified': metric.resource_last_modified,  # = resource.last_modified
+                'url': metric.url,
+                'format': metric.format
+            }
+        
+        # เพิ่ม: เก็บ metadata_modified ของ package
+        package_metadata_modified = None
+        if package_metrics:
+            package_metadata_modified = package_metrics[0].resource_last_modified  # = metadata_modified
+        
+        return {
+            'resources': resource_states,
+            'package_metadata_modified': package_metadata_modified,  # เพิ่ม
+            'has_error': has_error,
+        }
+        
+    except Exception as e:
+        log.error(f"Error in load_dataset_state_from_job: {e}")
+        return None
+
+
+def copy_qa_results(source_job_id, target_job_id, dataset_id, org_id):
+    """
+    คัดลอก metrics จาก job หนึ่งไปอีก job หนึ่ง
+    """
+    try:
+        # ดึง metrics ทั้งหมดของ dataset นี้จาก source job
+        source_metrics = Session.query(qa_table).filter(
+            qa_table.job_id == source_job_id,
+            qa_table.package_id == dataset_id
+        ).all()
+        
+        copied_count = 0
+        
+        for metric in source_metrics:
+            # ถ้าเป็น resource level ต้องเช็คว่า resource ยังมีอยู่
+            if metric.type == 'resource':
+                resource = Session.query(resource_table).filter(
+                    resource_table.c.id == metric.ref_id,
+                    resource_table.c.state == 'active'
+                ).first()
+                
+                if not resource:
+                    continue  # skip ถ้า resource ถูกลบแล้ว
+            
+            # สร้าง metric object ใหม่โดยคัดลอกจากเก่า
+            new_metric = qa_table(
+                created_at=datetime.now(),
+                modified_at=datetime.now(),
+                type=metric.type,
+                ref_id=metric.ref_id,
+                package_id=metric.package_id,
+                resource_last_modified=metric.resource_last_modified,
+                openness=metric.openness,
+                timeliness=metric.timeliness,
+                acc_latency=metric.acc_latency,
+                freshness=metric.freshness,
+                availability=metric.availability,
+                downloadable=metric.downloadable,
+                access_api=metric.access_api,
+                relevance=metric.relevance,
+                utf8=metric.utf8,
+                preview=metric.preview,
+                completeness=metric.completeness,
+                uniqueness=metric.uniqueness,
+                validity=metric.validity,
+                consistency=metric.consistency,
+                format=metric.format,
+                file_size=metric.file_size,
+                execute_time=metric.execute_time,
+                error=metric.error,
+                url=metric.url,
+                metrics=metric.metrics,
+                job_id=target_job_id  # ใช้ job_id ใหม่
+            )
+            
+            Session.add(new_metric)
+            copied_count += 1
+        
+        Session.commit()
+        log.info(f"📋 คัดลอก {copied_count} metrics จาก job {source_job_id[:8]}...")
+        return copied_count
+        
+    except Exception as e:
+        log.error(f"Error in copy_qa_results: {e}")
+        Session.rollback()
+        return 0
+
+# ======================================================================
 def run_dataset_metrics(dataset_id, job_row_id):
     try:
         job = Session.query(job_table).filter_by(job_id=job_row_id).first()
@@ -250,6 +612,230 @@ def process_org_metrics(org_id, org_name, parent_org_id, parent_org_name, job_ro
             job.finish_timestamp = datetime.now(tz)
             job.execute_time = round(time.time() - start_time, 3)
             Session.commit()
+    except Exception as e:
+        # -----------------------------
+        # Hard fail
+        # -----------------------------
+        log.exception(f"[WORKER] Job crashed: {e}")
+        try:
+            Session.rollback()
+            job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+            if job:
+                job.status = "fail"
+                job.active = False
+                job.finish_timestamp = datetime.now(tz)
+                job.execute_time = round(time.time() - start_time, 3)
+                job.error_log = (
+                    f"CRITICAL ERROR:\n{str(e)[:1000]}\n\n"
+                    f"Traceback:\n{traceback.format_exc()[:2000]}"
+                )
+                Session.commit()
+        except Exception as inner:
+            log.error(f"[WORKER] Failed to mark job as fail: {inner}")
+
+    finally:
+        try:
+            job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+            if job and job.status == "running":
+                log.warning(f"[FINALIZE] Job {job_row_id} still running → force fail")
+                job.status = "fail"
+                job.active = False
+                job.finish_timestamp = datetime.now(tz)
+                job.execute_time = round(time.time() - start_time, 3)
+                Session.commit()
+        except Exception as e:
+            log.error(f"[FINALIZE] Failed to finalize job {job_row_id}: {e}")
+            Session.rollback()
+
+# ======================================================================
+# ฟังก์ชันใหม่: process_org_metrics_smart (Smart Reprocessing)
+# ======================================================================
+def process_org_metrics_smart(org_id, org_name, parent_org_id, parent_org_name, job_row_id, last_job_id):
+    """
+    ฟังก์ชันใหม่ - Smart Reprocessing
+    ใช้สำหรับ: org เดิม วันเดียวกัน (เฉพาะที่เปลี่ยนแปลง)
+    """
+    log.info(f"[WORKER] Start process_org_metrics_smart for org={org_name}, job_id={job_row_id}")
+    log.info(f"[SMART] จะเปรียบเทียบกับ job_id={last_job_id}")
+
+    start_time = time.time()
+    job_cancelled = False
+    job_failed = False
+    critical_error = None
+    
+    stats = {
+        'total': 0,
+        'processed': 0,
+        'copied': 0,
+        'failed': 0
+    }
+
+    try:
+        # -----------------------------
+        # Fetch job
+        # -----------------------------
+        job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+        if not job:
+            raise RuntimeError(f"Job record not found for job_id={job_row_id}")
+
+        # -----------------------------
+        # Mark running
+        # -----------------------------
+        job.status = "running"
+        job.started_timestamp = datetime.now(tz)
+        Session.commit()
+
+        error_logs = []
+        failed_datasets = []
+        processed_datasets = 0
+        total_datasets = 0
+
+        # -----------------------------
+        # Batch processor (Smart)
+        # -----------------------------
+        def _process_batch(packages):
+            nonlocal processed_datasets, total_datasets
+            total_datasets = len(packages)
+            stats['total'] = total_datasets
+
+            for pkg in packages:
+                try:
+                    job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+                    Session.refresh(job)
+
+                    if job.status == "cancel_requested":
+                        log.info(f"[CANCEL] Detected cancel_requested for job {job_row_id}")
+                        Session.rollback()
+                        job.status = "cancel"
+                        job.active = False
+                        job.finish_timestamp = datetime.now(tz)
+                        if error_logs:
+                            job.error_log = "\n".join(error_logs)
+                        Session.commit()
+                        restore_previous_active_job(job_row_id)
+                        raise JobCancelledException()
+
+                    dataset_id = pkg
+                    
+                    # ======= Smart Logic เริ่มที่นี่ =======
+                    
+                    # ดึง state จาก job เก่า
+                    last_state = load_dataset_state_from_job(last_job_id, dataset_id)
+                    
+                    # ตรวจสอบว่าควรประมวลผลใหม่หรือไม่
+                    should_process, reason = should_reprocess_dataset(dataset_id, last_state)
+                    
+                    log.info(f"📦 Dataset {dataset_id[:8]}...: {reason}")
+                    
+                    if should_process:
+                        # ประมวลผลใหม่
+                        log.info(f"🔄 ประมวลผลใหม่")
+                        metrics = build_metrics('all')
+                        metrics.calculate_metrics_for_dataset(pkg, job_id=job_row_id)
+                        stats['processed'] += 1
+                    else:
+                        # คัดลอก state เก่า
+                        log.info(f"📋 คัดลอก state จาก job {last_job_id[:8]}...")
+                        copied = copy_qa_results(last_job_id, job_row_id, dataset_id, org_id)
+                        
+                        if copied > 0:
+                            stats['copied'] += 1
+                        else:
+                            # Fallback: ถ้าคัดลอกไม่ได้ให้ประมวลผลใหม่
+                            log.warning(f"⚠️  ไม่สามารถคัดลอกได้ - ประมวลผลใหม่")
+                            metrics = build_metrics('all')
+                            metrics.calculate_metrics_for_dataset(pkg, job_id=job_row_id)
+                            stats['processed'] += 1
+                    
+                    processed_datasets += 1
+
+                except JobCancelledException:
+                    raise
+
+                except Exception as e:
+                    log.exception(f"[WORKER] Dataset {pkg} failed: {e}")
+                    error_logs.append(f"Dataset {pkg}: {str(e)[:500]}")
+                    failed_datasets.append(pkg)
+                    stats['failed'] += 1
+                    processed_datasets += 1
+                    Session.rollback()
+
+        # -----------------------------
+        # Run packages
+        # -----------------------------
+        try:
+            org_packages(_process_batch, org_name, job)
+        except JobCancelledException:
+            job_cancelled = True
+        except Exception as e:
+            job_failed = True
+            critical_error = e
+        finally:
+            # -----------------------------
+            # Finish logic (normal path)
+            # -----------------------------
+            Session.rollback()
+            job = Session.query(job_table).filter_by(job_id=job_row_id).first()
+
+            if job_cancelled:
+                job.status = "cancel"
+                job.active = False
+
+            elif job_failed:
+                job.status = "fail"
+                job.active = False
+
+            else:
+                job.status = "finish"
+                job.active = True
+
+                # =================================================================
+                #  ลบ job เก่าของวันนี้ (หลังจาก job ใหม่เสร็จแล้ว)
+                # =================================================================
+                log.info(f" ลบ job เก่าของวันนี้: {last_job_id[:8]}...")
+                try:
+                    # ลบ metrics ของ job เก่า
+                    deleted_metrics = Session.query(qa_table).filter(
+                        qa_table.job_id == last_job_id
+                    ).delete(synchronize_session=False)
+                    
+                    log.info(f" ลบ {deleted_metrics} metrics")
+                    
+                    # ลบ job
+                    Session.query(job_table).filter(
+                        job_table.job_id == last_job_id
+                    ).delete(synchronize_session=False)
+                    
+                    log.info(f"ลบ job เก่าเรียบร้อย")
+                    
+                except Exception as e:
+                    log.error(f"ไม่สามารถลบ job เก่าได้: {e}")
+                    # ไม่ rollback เพราะ job ใหม่สำเร็จแล้ว
+
+                job.finish_timestamp = datetime.now(tz)
+                job.execute_time = round(time.time() - start_time, 3)
+            
+            # Summary
+            summary = (
+                f" Smart Reprocessing Summary:\n"
+                f"Total: {stats['total']}, "
+                f"Processed: {stats['processed']}, "
+                f"Copied: {stats['copied']}, "
+                f"Failed: {stats['failed']}\n"
+            )
+            
+            if error_logs:
+                job.error_log = summary + "--- Errors ---\n" + "\n".join(error_logs)
+            else:
+                job.error_log = summary if stats['total'] > 0 else None
+            
+            Session.commit()
+            
+            log.info(
+                f"✅ เสร็จสิ้น (SMART): {org_name} - "
+                f"Total={stats['total']}, Processed={stats['processed']}, Copied={stats['copied']}"
+            )
+            
     except Exception as e:
         # -----------------------------
         # Hard fail
@@ -592,9 +1178,9 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
 
             parent_org_id, parent_org_name = get_parent_organization(organization)
             org_id = get_org_id_from_name(organization)  
-            #------------------------------    
+            #=================================================================   
             # 1. ตรวจสอบ org_id
-            #------------------------------
+            #=================================================================
             if not org_id:
                 log.error(f"Organization '{organization}' not found in CKAN.")
                 raise ValueError(f"Organization '{organization}' not found in CKAN.")
@@ -613,31 +1199,50 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
                 log.debug(f"Skip organization '{organization}' — no active datasets found.")
             else:   
 
-                #=========================================================
-                # 3. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
-                #=========================================================
-                today = date.today()
-                today_jobs = Session.query(job_table).filter(
+                # #=========================================================
+                # # 2. ลบ job ของ org นี้ที่เป็น "วันนี้" เท่านั้น
+                # #=========================================================
+                # today = date.today()
+                # today_jobs = Session.query(job_table).filter(
+                #     job_table.org_id == org_id,
+                #     job_table.run_type == 'organization',
+                #     job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
+                # ).all()
+
+                # for old_job in today_jobs:
+                #     Session.query(qa_table).filter(
+                #         qa_table.job_id == old_job.job_id
+                #     ).delete(synchronize_session=False)
+
+                #     Session.delete(old_job)
+
+                # if today_jobs:
+                #     log.info(
+                #         "Deleted %s existing job(s) today for org %s",
+                #         len(today_jobs), organization
+                #     )
+                # =================================================================
+                # 2. ตรวจสอบว่ามี job ของ org นี้ที่กำลังรันอยู่หรือไม่
+                # =================================================================
+                running_job = Session.query(job_table).filter(
                     job_table.org_id == org_id,
                     job_table.run_type == 'organization',
-                    job_table.requested_timestamp >= datetime(today.year, today.month, today.day)
-                ).all()
-
-                for old_job in today_jobs:
-                    Session.query(qa_table).filter(
-                        qa_table.job_id == old_job.job_id
-                    ).delete(synchronize_session=False)
-
-                    Session.delete(old_job)
-
-                if today_jobs:
-                    log.info(
-                        "Deleted %s existing job(s) today for org %s",
-                        len(today_jobs), organization
-                    )
-
+                    job_table.status.in_(['pending', 'running']),
+                    job_table.active == True
+                ).first()
+                
+                if running_job:
+                    log.warning(f" Organization '{organization}' มี job กำลังรันอยู่ (job_id: {running_job.job_id})")
+                    log.info(f" Skip")
+                    return None
+                    #raise SystemExit(0)  # หรือใช้ return/continue
+                # ดึง job ล่าสุด
+                last_job_info = load_last_job_state(org_id)
+                last_job = last_job_info['job']
+                is_same_day = last_job_info['is_same_day']
+                job_date = last_job_info['job_date']
                 # =========================================================
-                # 4. ปิด active job เก่า (ของ org นี้เท่านั้น)
+                # 3. ปิด active job เก่า (ของ org นี้เท่านั้น)
                 # =========================================================
                 Session.query(job_table).filter(
                     job_table.org_id == org_id,
@@ -648,9 +1253,9 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
                 )
 
                 Session.commit()
-                # -------------------------
+                # =================================================================
                 # 4. สร้าง record ลง job_table ของระบบ
-                # -------------------------
+                # =================================================================
                 if job_id is None:
                     job_row_id = str(uuid.uuid4())
                     job = job_table(
@@ -668,7 +1273,6 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
                 else:
                     job_row_id = job_id
                     job = Session.query(job_table).filter_by(job_id=job_id).first()
-                    
                     job.job_id = job_id
                     job.org_parent_id = parent_org_id,
                     job.org_parent_name = parent_org_name,
@@ -679,15 +1283,40 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
                     job.active = True
                 Session.commit()
  
-                # enqueue job
-                ckan_job = toolkit.enqueue_job(
-                    process_org_metrics,
-                    args=[org_id, organization, parent_org_id, parent_org_name,job_row_id],
-                    title=f"QA metrics for organization {organization}"
-                )
-                # ckan_job_id = ckan_job.id
-                # job.job_id = ckan_job_id
-                # Session.commit()
+                # # =================================================================
+                # # 5. ส่งต่อ job_row_id ไปยัง process_org_metrics พร้อมกับ logic
+                # #    สำหรับตรวจสอบ state ก่อนประมวลผลแต่ละ dataset
+                # # =================================================================
+                # ckan_job = toolkit.enqueue_job(
+                #     process_org_metrics,
+                #     args=[org_id, organization, parent_org_id, parent_org_name,job_row_id],
+                #     title=f"QA metrics for organization {organization}"
+                # )
+                # log.info(f"[CKAN-JOB] Created job id = {job_row_id} for org {organization}")
+                # ======================================================================
+                # ตัดสินใจเลือกฟังก์ชัน
+                # ======================================================================
+                if is_same_day and last_job:
+                    # กรณีวันเดียวกัน → ใช้ Smart Reprocessing
+                    log.info(f" ใช้ Smart Reprocessing (เปรียบเทียบกับ job: {last_job.job_id[:8]}...)")
+                    ckan_job = toolkit.enqueue_job(
+                        process_org_metrics_smart,
+                        args=[org_id, organization, parent_org_id, parent_org_name, job_row_id, last_job.job_id],
+                        title=f"QA metrics (SMART) for {organization}"
+                    )
+                else:
+                    # กรณี org ใหม่ หรือ คนละวัน → ใช้ฟังก์ชันเดิม
+                    if last_job:
+                        log.info(f" ใช้ Full Reprocessing (job ล่าสุด: {job_date})")
+                    else:
+                        log.info(f" ใช้ Full Reprocessing (org ใหม่)")
+                    
+                    ckan_job = toolkit.enqueue_job(
+                        process_org_metrics,
+                        args=[org_id, organization, parent_org_id, parent_org_name, job_row_id],
+                        title=f"QA metrics for {organization}"
+                    )
+                
                 log.info(f"[CKAN-JOB] Created job id = {job_row_id} for org {organization}")
 
 

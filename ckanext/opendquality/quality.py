@@ -451,12 +451,6 @@ class DataQualityMetrics(object):
             Session.refresh(job)
             
             if job.status == "cancel_requested":
-                # self.logger.info(f"[CANCEL] Job {job_id} cancelled before cumulative calculation")
-                # job.status = "cancel"
-                # job.active = False
-                # job.finish_timestamp = datetime.now(tz)
-                # Session.commit()
-                # restore_previous_active_job(job_id)  
                 raise JobCancelledException(f"Job {job_id} cancelled before cumulative metrics")
         
             self.logger.debug('Calculating cumulative data quality metrics for %s',
@@ -851,56 +845,10 @@ class DataQualityMetrics(object):
                 #     data_quality = self._new_metrics_record('resource', resource['id'])
                 #     data_quality.resource_last_modified = last_modified
                 #     self.logger.debug('First time data quality calculation.')
-                #-----------------------------------------
+                #---------------------------------------------------------
                 data_quality = self._new_metrics_record('resource', resource['id'], job_id)
                 data_quality.resource_last_modified = last_modified
-                self.logger.debug('First time data quality calculation.')
-                #-----------------------------------------
-                # if data_quality:
-                #     self.logger.debug('Data Quality calculated for '
-                #                     'version modified on: %s',
-                #                     data_quality.resource_last_modified)
-                #     # if data_quality.resource_last_modified >= last_modified:
-                #     if data_quality.resource_last_modified < last_modified:
-                #         cached_calculation = True
-                #         log.debug('--delete and run new updated file--')
-                #         #delete record
-                #         self._delete_metrics_record('resource', resource['id'])
-                #         #calculate new record
-                #         data_quality = self._new_metrics_record('resource', resource['id'])
-                #         data_quality.resource_last_modified = last_modified
-                #         self.logger.debug('Re-calculation.')
-                #     elif (data_quality.resource_last_modified == last_modified):
-                #         cached_calculation = True
-                #         # check if all metrics have been calculated or some needs to be
-                #         # calculated again
-                #         if all(map(lambda m: m is not None, [
-                #                     data_quality.completeness,
-                #                     data_quality.uniqueness,
-                #                     data_quality.validity,
-                #                     data_quality.timeliness,
-                #                     data_quality.consistency,
-                #                     data_quality.openness,
-                #                     data_quality.downloadable,
-                #                     data_quality.access_api,
-                #                     data_quality.machine_readable
-                #                     ])):
-                #             self.logger.debug('Data Quality already calculated.')
-                #             return data_quality.metrics
-                #         else:
-                #             self.logger.debug('Data Quality not calculated for '
-                #                             'all dimensions.')
-                #     else:
-                #         #calculate new record
-                #         data_quality = self._new_metrics_record('resource',
-                #                                                 resource['id'])
-                #         data_quality.resource_last_modified = last_modified
-                #         self.logger.debug('Resource changed since last calculated. '
-                #                         'Calculating data quality again.')
-                # else:
-                #     data_quality = self._new_metrics_record('resource', resource['id'])
-                #     data_quality.resource_last_modified = last_modified
-                #     self.logger.debug('First data quality calculation.')                
+                self.logger.debug('First time data quality calculation.')            
                 #--GET Package_id and Org_name----------------------------
                 resource_id = resource['id']
                 query = (
@@ -1277,7 +1225,11 @@ class DataQualityMetrics(object):
 
        #-------Add Package ID------------------- 
         query = (
-            Session.query(Package.id.label('package_id'), Group.name.label('org_name'))
+            Session.query(
+                Package.id.label('package_id'), 
+                Group.name.label('org_name'),
+                Package.metadata_modified.label('metadata_modified')  
+            )
             .select_from(Package)
             .join(Group, Package.owner_org == Group.id)
             .filter(Package.id == package_id)
@@ -1286,6 +1238,7 @@ class DataQualityMetrics(object):
         if p_result:
             data_quality.package_id = p_result.package_id
             data_quality.org_name   = p_result.org_name
+            data_quality.resource_last_modified   = p_result.metadata_modified
 
         data_quality.metrics = cumulative
         data_quality.modified_at = datetime.now()
