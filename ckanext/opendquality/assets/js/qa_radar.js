@@ -177,7 +177,7 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     }
 
     /* ---------- 2) Acceptable Latency ---------- */
-    const order = ['ไม่มีการอัพเดตหลังจัดเก็บ','อัพเดตตามรอบ','รบกวนปรับปรุง','ควรปรับปรุง','ต้องปรับปรุง'];
+    const order = ['ไม่ได้ระบุ','อัพเดทตามรอบ','รบกวนปรับปรุง','ควรปรับปรุง','ต้องปรับปรุง'];
     const counts = order.map(k => Number(data.latency_buckets?.[k] || 0));
     // const badgeL = document.getElementById('badge-latmax');
     // if (badgeL) badgeL.textContent = `Dataset Acceptable Latency MAX: ${data.max_latency ?? 0}`;
@@ -185,7 +185,7 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     const lctx = getCtx('chart-latency');
     if (lctx) {
       destroyIfExist('latency');
-      const colors = ['#9e9e9e','#ffe0b2','#ffccbc','#ffab91','#ef5350'];
+      const colors = ['#bfbabaff','#a5d6a7','#ffccbc','#ffab91','#ef5350'];
       dqCharts.latency = new Chart(lctx, {
         type: 'bar',
         data: { labels: order, datasets: [{ data: counts, backgroundColor: colors }] },

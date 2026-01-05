@@ -110,8 +110,15 @@ def qa_counts(org_id=None, version=None):
         .filter(
             DQM.type == "resource",
             Resource.state == "active"
-        ).scalar()
+        )
     )
+
+    if version is not None:
+        resource_count = resource_count.filter(JobDQ.requested_timestamp == version)
+    else:
+        resource_count = resource_count.filter(JobDQ.active == True)
+
+    resource_count = resource_count.scalar()
 
     return {
         "organizations": org_count or 0,
@@ -120,81 +127,30 @@ def qa_counts(org_id=None, version=None):
     }
 
 def qa_detail_blocks(org_id=None, version=None):
-    order_col = getattr(DQM, "created_at", DQM.id)
-    latest = (
-        Session.query(
-            DQM.ref_id.label("package_id"),
-            DQM.job_id,
-            DQM.metrics,
-            DQM.downloadable,
-            DQM.access_api,
-            DQM.type,
-            func.row_number().over(
-                partition_by=DQM.ref_id,
-                order_by=desc(order_col)
-            ).label("rn")
-        )
-    ).subquery("latest")
 
-    base_q = (
+    data = (
         Session.query(
-            Package.id.label("pid"),
-            Group.id.label("gid"),
-            latest.c.metrics,
-            latest.c.downloadable,
-            latest.c.access_api,
+            func.sum(case((DQM.downloadable == 1, 1), else_=0)).label("dl_yes"),
+            func.sum(case((DQM.downloadable != 1, 1), else_=0)).label("dl_no"),
+            func.sum(case((DQM.access_api == 1, 1), else_=0)).label("api_yes"),
+            func.sum(case((DQM.access_api != 1, 1), else_=0)).label("api_no")
         )
-        .join(latest, latest.c.package_id == Package.id)
-        .join(Group, Group.id == Package.owner_org)
-        .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(DQM.type == 'resource', JobDQ.status == 'finish')
     )
     if version is not None:
-        base_q = base_q.filter(JobDQ.requested_timestamp == version)
+        data = data.filter(JobDQ.requested_timestamp == version)
     else:
-        base_q = base_q.filter(JobDQ.active == True)
-
+        data = data.filter(JobDQ.active == True)
     if org_id:
-        base_q = base_q.filter(Group.id == org_id)
+        data = data.filter(JobDQ.org_id == org_id)
 
-    base = base_q.subquery("base")
-    
-    METRICS = base.c.metrics
-    if not isinstance(METRICS.type, (postgresql.JSONB, postgresql.JSON)):
-        METRICS = cast(METRICS, postgresql.JSONB)
-
-    def jsum_int(key):
-        return func.coalesce(func.sum(cast(METRICS.op('->>')(key), Integer)), 0)
-        
-    dl_true  = (func.coalesce(cast(base.c.downloadable, Float), 0) > 0)
-    api_true = (func.coalesce(cast(base.c.access_api,  Float), 0) > 0)
-
-    agg = Session.query(
-        jsum_int('blank_header'),
-        jsum_int('duplicate_header'),
-        jsum_int('extra_value'),
-        jsum_int('downloads'),
-        jsum_int('views'),
-
-        func.sum(case((dl_true,  1), else_=0)),
-        func.sum(case((dl_true,  0), else_=1)),
-        func.sum(case((api_true, 1), else_=0)),
-        func.sum(case((api_true, 0), else_=1)),
-
-        func.count(base.c.pid)
-    )
-
-    (blank, dup, extra, dw, vw,
-     dl_yes, dl_no, api_yes, api_no, total) = agg.one()
+    dl_yes, dl_no, api_yes, api_no = data.one()
 
     return {
-        "validity":    {"blank_header": int(blank or 0),
-                        "duplicate_header": int(dup or 0),
-                        "extra_value": int(extra or 0)},
-        "relevancy":   {"downloads": int(dw or 0), "views": int(vw or 0)},
         "availability":{"downloadable": {"yes": int(dl_yes or 0), "no": int(dl_no or 0)},
-                        "access_api":  {"yes": int(api_yes or 0), "no": int(api_no or 0)},
-                        "total": int(total or 0)},
+                        "access_api":  {"yes": int(api_yes or 0), "no": int(api_no or 0)}
+        }
     }
 
 def get_relevance_top(org_id=None, version=None, limit=5):
@@ -255,21 +211,22 @@ def get_relevance_top(org_id=None, version=None, limit=5):
     return results
 
 def get_timeliness_summary(org_id=None, version=None):
-    B1_NONE_UPDATE = case([(DQM.acc_latency.is_(None), 1)], else_=0)
-    B2_ON_SCHEDULE = case([(DQM.acc_latency <= 0, 1)], else_=0)
+    B1_ON_SCHEDULE = case([(DQM.acc_latency < 0, 1)], else_=0)
+    B2_UPTODATE = case([(DQM.acc_latency == 0, 1)], else_=0)
     B3_NEEDS_ATTENTION = case(
-        [((DQM.acc_latency > 0) & (DQM.acc_latency <= 7), 1)], else_=0
+        [((DQM.acc_latency > 0) & (DQM.acc_latency <= 25), 1)], else_=0
     )
     B4_SHOULD_IMPROVE = case(
-        [((DQM.acc_latency > 7) & (DQM.acc_latency <= 30), 1)], else_=0
+        [((DQM.acc_latency > 25) & (DQM.acc_latency <= 50), 1)], else_=0
     )
-    B5_MUST_IMPROVE = case([(DQM.acc_latency > 30, 1)], else_=0)
-    OUTDATED_THRESHOLD = 30
+    B5_MUST_IMPROVE = case(
+        [((DQM.acc_latency > 50) & (DQM.acc_latency <= 100), 1)], else_=0)
+    OUTDATED_THRESHOLD = 100
 
     q = Session.query(
         func.avg(DQM.freshness).label('avg_freshness'),
-        func.sum(B1_NONE_UPDATE).label('b1'),
-        func.sum(B2_ON_SCHEDULE).label('b2'),
+        func.sum(B1_ON_SCHEDULE).label('b1'),
+        func.sum(B2_UPTODATE).label('b2'),
         func.sum(B3_NEEDS_ATTENTION).label('b3'),
         func.sum(B4_SHOULD_IMPROVE).label('b4'),
         func.sum(B5_MUST_IMPROVE).label('b5'),
@@ -302,11 +259,11 @@ def get_timeliness_summary(org_id=None, version=None):
     return {
         "avg_freshness": float(r.avg_freshness or 0),
         "latency_buckets": {
-            "ไม่มีการอัพเดตหลังจัดเก็บ": int(r.b1 or 0),
-            "อัพเดตตามรอบ": int(r.b2 or 0),
+            "ไม่ได้ระบุ": int(r.b1 or 0),
+            "อัพเดทตามรอบ": int(r.b2 or 0),
             "รบกวนปรับปรุง": int(r.b3 or 0),
             "ควรปรับปรุง": int(r.b4 or 0),
-            "ต้องปรับปรุง": int(r.b5 or 0)
+            "ต้องปรับปรุง": int(r.b5 or 0),
         },
         "outdated_count": int(r.outdated or 0),
         "max_latency": int(r.max_latency or 0)

@@ -723,7 +723,7 @@ def dashboard(org_id=None):
         except ValueError:
             selected_version = None
 
-    resource_format_count = get_resource_format_counts(org_id)
+    resource_format_count = get_resource_format_counts(org_id, selected_version)
     priority = ["PDF", "XLSX", "CSV", "JSON", "XLS", "XML", "TXT"]
     others = sorted([k for k in resource_format_count if k not in priority])
     resource_format_labels = priority + others
