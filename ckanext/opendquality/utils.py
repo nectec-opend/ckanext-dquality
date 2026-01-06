@@ -104,12 +104,9 @@ def qa_counts(org_id=None, version=None):
 
     resource_count = (
         Session.query(func.count(DQM.id))
-        .join(Resource, Resource.id == DQM.ref_id)
-        .join(qa_pkg_ids, qa_pkg_ids.c.package_id == Resource.package_id)
         .join(JobDQ, DQM.job_id == JobDQ.job_id)
         .filter(
             DQM.type == "resource",
-            Resource.state == "active"
         )
     )
 
@@ -117,6 +114,8 @@ def qa_counts(org_id=None, version=None):
         resource_count = resource_count.filter(JobDQ.requested_timestamp == version)
     else:
         resource_count = resource_count.filter(JobDQ.active == True)
+    if org_id:
+        resource_count = resource_count.filter(JobDQ.org_id == org_id)
 
     resource_count = resource_count.scalar()
 

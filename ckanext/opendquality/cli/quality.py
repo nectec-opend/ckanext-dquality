@@ -244,9 +244,11 @@ def should_reprocess_dataset(dataset_id, last_state):
                 if r.extras:
                     extras_data = json.loads(r.extras) if isinstance(r.extras, str) else r.extras
                     url = extras_data.get('original_url', r.url)
-            except:
-                pass
+            except Exception as e:
+                log.warning("Cannot parse extras for resource %s: %s", r.id, e)
             
+            log.debug("resource %s url=%s extras=%s", r.id, url, r.extras)
+
             current_resource_ids.add(r.id)
             current_metadata[r.id] = {
                 'last_modified': r.last_modified,
@@ -271,11 +273,8 @@ def should_reprocess_dataset(dataset_id, last_state):
                     return (True, "Package metadata มีการอัปเดท")
         
         # ตรวจสอบ error
-        if last_state.get('has_connection_timeout'):
-            return (True, "พบ Connection timeout - ลองใหม่")
-        
         if last_state.get('has_error'):
-            return (True, "พบ error ใน state ก่อนหน้า")
+            return (True, "พบ Connection timeout ใน state ก่อนหน้า รันใหม่")
         
         # ตรวจสอบการเพิ่ม/ลบไฟล์
         added_files = current_resource_ids - last_resource_ids
@@ -293,15 +292,19 @@ def should_reprocess_dataset(dataset_id, last_state):
             
             if current_meta.get('last_modified') and last_meta.get('last_modified'):
                 if current_meta['last_modified'] > last_meta['last_modified']:
+                    log.debug(current_meta.get('last_modified'))
+                    log.debug(last_meta.get('last_modified'))
                     return (True, f"ไฟล์ {resource_id[:8]}... อัปเดท")
             
-            if current_meta.get('url') != last_meta.get('url'):
-                log.debug(current_meta.get('url'))
-                log.debug(last_meta.get('url'))
-                return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน URL")
+            # if current_meta.get('url') != last_meta.get('url'):
+            #     log.debug(current_meta.get('url'))
+            #     log.debug(last_meta.get('url'))
+            #     return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน URL")
             
-            if current_meta.get('format') != last_meta.get('format'):
-                return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน format")
+            # if current_meta.get('format') != last_meta.get('format'):
+            #     log.debug(current_meta.get('format'))
+            #     log.debug(last_meta.get('format'))
+                # return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน format")
         
         return (False, "ไม่มีการเปลี่ยนแปลง")
         
