@@ -2,19 +2,44 @@ name: Build
 
 on:
   push:
+    branches:
+      - dev_qualityv2
 
 jobs:
   build:
+    name: Build and analyze with SonarQube
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # 1) Checkout source code (ไม่ใช้ actions/checkout)
+      - name: Checkout repository
+        run: |
+          git clone https://github.com/nectec-opend/ckanext-opendquality.git .
+          git fetch --all
 
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v2
+      # 2) Install Java (SonarScanner ต้องใช้)
+      - name: Install Java
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk
+
+      # 3) Download & install SonarScanner CLI
+      - name: Install SonarScanner
+        run: |
+          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip sonar-scanner.zip
+          echo "$PWD/sonar-scanner-*/bin" >> $GITHUB_PATH
+
+      # 4) Run SonarQube analysis
+      - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: http://164.115.20.162:9000
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=ckanext-opendquality \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=http://164.115.20.162:9000 \
+            -Dsonar.login=$SONAR_TOKEN
 
 
 # name: Build
