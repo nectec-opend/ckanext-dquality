@@ -257,12 +257,13 @@ def get_timeliness_summary(org_id=None, version=None):
 
     return {
         "avg_freshness": float(r.avg_freshness or 0),
+        "no_schedules": int(r.b1 or 0),
+        "uptodate": int(r.b2 or 0),
+        "total_late_update": int((r.b3 or 0) + (r.b4 or 0) + (r.b5 or 0)),
         "latency_buckets": {
-            "ไม่ได้ระบุ": int(r.b1 or 0),
-            "อัพเดทตามรอบ": int(r.b2 or 0),
-            "รบกวนปรับปรุง": int(r.b3 or 0),
-            "ควรปรับปรุง": int(r.b4 or 0),
-            "ต้องปรับปรุง": int(r.b5 or 0),
+            "ล่าช้าค่อนข้างมาก": int(r.b5 or 0),
+            "ล่าช้าป่านกลาง": int(r.b4 or 0),
+            "ล่าช้าเล็กน้อย": int(r.b3 or 0),
         },
         "outdated_count": int(r.outdated or 0),
         "max_latency": int(r.max_latency or 0)

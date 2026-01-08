@@ -49,6 +49,28 @@ const externalTooltipPlugin = {
     
   }
 };
+
+const centerTextPlugin = (value = 1000) => (
+  {
+    id: 'centerText',
+    afterDraw(chart) {
+      const { ctx, chartArea } = chart;
+      const x = (chartArea.left + chartArea.right) / 2;
+      const y = (chartArea.top + chartArea.bottom) / 2;
+
+      ctx.save();
+      ctx.font = 'bold 40px Arial';
+      ctx.fillStyle = '#000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(value.toLocaleString(), x, y - 10);
+
+      // ctx.font = '14px Arial';
+      // ctx.fillText('Count Timeliness = 0', x, y + 30);
+      // ctx.restore();
+    }
+  }
+)
 function radarChart(ele, data) {
   return new Chart(ele, {
     type: 'radar',
@@ -86,18 +108,32 @@ function radarChart(ele, data) {
     plugins: [externalTooltipPlugin] // ใช้ plugin ที่สร้างขึ้น
   });
 }
-function donut(canvasId, centerId, yes, no) {
+function donut(canvasId, centerId, yes, no, label=['ได้','ไม่ได้']) {
   document.getElementById(centerId).textContent = yes;
   return new Chart(document.getElementById(canvasId), {
     type: 'doughnut',
-    data: { datasets: [{ data: [yes, no], backgroundColor: ['#32C8C8', '#FFC850']}] },
-    options: { cutout: '70%', plugins: { legend: { display: false } } }
+    data: { labels: label, datasets: [{ data: [yes, no], backgroundColor: ['#32C8C8', '#FFC850']}] },
+    options: { 
+      cutout: '70%', 
+      plugins: { 
+        legend: { display: false }, 
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const value = context.raw;
+              const percent = ((value / (yes+no)) * 100).toFixed(1);
+              return ` ${percent}% (${value})`;
+            }
+          }
+        } 
+      }
+    }
   });
 }
 
 // Availability – donuts
-donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no);
-donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no);
+donut('chart-dl', 'center-dl', M.availability.downloadable.yes, M.availability.downloadable.no, ['ดาวน์โหลดได้','ดาวน์โหลดไม่ได้']);
+donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.access_api.no, ['เข้าถึงผ่าน API ได้','เข้าถึงผ่าน API ไม่ได้']);
 
 /* =========================
  * Timeliness (Chart.js 4.5.0)
@@ -131,53 +167,87 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     catch (e) { console.error('Timeliness API error', e); return; }
 
     /* ---------- 1) Freshness ---------- */
-    const freshnessPct = toPct(data.avg_freshness);
-    const badgeF = document.getElementById('badge-freshness');
-    if (badgeF) badgeF.textContent = `Dataset AVG Freshness: ${freshnessPct}%`;
+    const freshnessPct = toPct(data.total_late_update);
+    // const badgeF = document.getElementById('badge-freshness');
+    // if (badgeF) badgeF.textContent = `Dataset AVG Freshness: ${freshnessPct}%`;
 
     const fctx = getCtx('chart-freshness');
     if (fctx) {
       destroyIfExist('freshness');
-      const grad = fctx.createLinearGradient(0, 0, fctx.canvas.width, 0);
-      grad.addColorStop(0, '#2e7d32');
-      grad.addColorStop(1, '#a5d6a7');
 
       dqCharts.freshness = new Chart(fctx, {
         type: 'bar',
-        data: {
+        data :{
           labels: [''],
-          datasets: [
-            { 
-              data: [freshnessPct],
-              backgroundColor: (ctx) => {
-                const v = ctx.raw;
-                if (v < 25) return 'rgba(197, 245, 186, 0.7)';
-                else if (v < 50) return 'rgba(142, 240, 142, 0.7)';
-                else if (v < 75) return 'rgba(60, 179, 113, 0.8)';
-                else return 'rgba(0, 100, 0, 0.9)';
-              },
+          datasets: [{
+            data: [freshnessPct],
+            backgroundColor: 'rgba(30, 213, 30, 0.72)',
+            borderRadius: 0,
+            barThickness: 20000,
           }]
         },
         options: {
-          indexAxis: 'y',
           responsive: true,
-          maintainAspectRatio: true,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}%` } } },
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false}
+          },
           scales: {
             x: {
-              beginAtZero: true, max: 100,
-              reverse: true,
-              ticks: { callback: (v) => `${v}%` },
-              grid: { display: true }
+              display: false,
             },
-            y: { display: false }
+            y: {
+              min: 0,
+              max: 10000,
+              display: false,
+            }
           }
-        }
+        },
+        plugins: [centerTextPlugin(freshnessPct)]
       });
+      
+      
+      // const grad = fctx.createLinearGradient(0, 0, fctx.canvas.width, 0);
+      // grad.addColorStop(0, '#2e7d32');
+      // grad.addColorStop(1, '#a5d6a7');
+
+      // dqCharts.freshness = new Chart(fctx, {
+      //   type: 'bar',
+      //   data: {
+      //     labels: [''],
+      //     datasets: [
+      //       { 
+      //         data: [freshnessPct],
+      //         backgroundColor: (ctx) => {
+      //           const v = ctx.raw;
+      //           if (v < 25) return 'rgba(197, 245, 186, 0.7)';
+      //           else if (v < 50) return 'rgba(142, 240, 142, 0.7)';
+      //           else if (v < 75) return 'rgba(60, 179, 113, 0.8)';
+      //           else return 'rgba(0, 100, 0, 0.9)';
+      //         },
+      //     }]
+      //   },
+      //   options: {
+      //     indexAxis: 'y',
+      //     responsive: true,
+      //     maintainAspectRatio: true,
+      //     plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}%` } } },
+      //     scales: {
+      //       x: {
+      //         beginAtZero: true, max: 100,
+      //         reverse: true,
+      //         ticks: { callback: (v) => `${v}%` },
+      //         grid: { display: true }
+      //       },
+      //       y: { display: false }
+      //     }
+      //   }
+      // });
     }
 
     /* ---------- 2) Acceptable Latency ---------- */
-    const order = ['ไม่ได้ระบุ','อัพเดทตามรอบ','รบกวนปรับปรุง','ควรปรับปรุง','ต้องปรับปรุง'];
+    const order = ['ล่าช้าค่อนข้างมาก','ล่าช้าป่านกลาง','ล่าช้าเล็กน้อย'];
     const counts = order.map(k => Number(data.latency_buckets?.[k] || 0));
     // const badgeL = document.getElementById('badge-latmax');
     // if (badgeL) badgeL.textContent = `Dataset Acceptable Latency MAX: ${data.max_latency ?? 0}`;
@@ -185,7 +255,7 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     const lctx = getCtx('chart-latency');
     if (lctx) {
       destroyIfExist('latency');
-      const colors = ['#bfbabaff','#a5d6a7','#ffccbc','#ffab91','#ef5350'];
+      const colors = ['#f27c21ff', '#ec9654ff', '#e2b38fff'];
       dqCharts.latency = new Chart(lctx, {
         type: 'bar',
         data: { labels: order, datasets: [{ data: counts, backgroundColor: colors }] },

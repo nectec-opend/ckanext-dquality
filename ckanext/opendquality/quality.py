@@ -4354,40 +4354,47 @@ class Validity():#DimensionMetric
             * `total`, `int`, total number of records.
             * `valid`, `int`, number of valid records.
         '''
-        # total = sum([r.get('total', 0) for r in metrics])
-        # valid = sum([r.get('valid', 0) for r in metrics])
-        # if total == 0:
-        #     return {
-        #         'value': 0.0,
-        #         'total': 0,
-        #         'valid': 0,
-        #     }
-        # return {
-        #         'value': round(float(valid)/float(total) * 100.0,2) if total else 0.0,
-        #         'total': total,
-        #         'valid': valid,
-        #     }
         N_total = len(resources)
-        N_validity = 0 
-        for item_metric in metrics:
-            #check dict is not Empty
-            
-            # if item_metric and isinstance(item_metric.get('value'), (int, float)):
-            #     val = item_metric.get('value')
-            val = item_metric.get('value') if item_metric else None
-            if isinstance(val, (int, float)):
-                if val:
-                    N_validity += val
-                
-            else:
-                N_total -= 1
+        N_validity = 0.0
+        validity_list = []
 
-        validity_score = (N_validity / N_total ) if N_total > 0 else 0.0
+        for item_metric in metrics:
+            if not item_metric:
+                continue
+
+            val = item_metric.get('value')
+
+            if isinstance(val, (int, float)):
+                N_validity += val
+                validity_list.append(val)
+
+        validity_score = (N_validity / N_total) if N_total > 0 else 0.0
+        max_validity = max(validity_list) if validity_list else 0.0
+
         return {
             "N_total": N_total,
-            "N_validity": N_validity,
-            "value": round(validity_score, 2)
+            "N_validity": round(N_validity, 2),
+            "value": round(validity_score, 2),
+            "max_validity": round(max_validity, 2)
         }
+        # N_total = len(resources)
+        # N_validity = 0 
+        # for item_metric in metrics:
+        #     #check dict is not Empty
+        #     val = item_metric.get('value') if item_metric else None
+        #     if isinstance(val, (int, float)):
+        #         if val:
+        #             N_validity += val
+                
+        #     else:
+        #         N_total -= 1
+
+        # validity_score = (N_validity / N_total ) if N_total > 0 else 0.0
+        # return {
+        #     "N_total": N_total,
+        #     "N_validity": N_validity,
+        #     "value": round(validity_score, 2)
+        # }
 class Relevance(): #DimensionMetric
     '''Calculates the Relevance of the data.
 

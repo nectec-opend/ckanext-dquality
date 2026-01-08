@@ -115,107 +115,6 @@ def restore_previous_active_job(cancelled_job_id):
         log.error(f"[RESTORE] Error: {e}")
         Session.rollback()
         return False
-        
-# def should_reprocess_dataset(dataset_id, last_state):
-#     """
-#     ตรวจสอบว่าควรประมวลผล dataset ใหม่หรือไม่
-    
-#     Args:
-#         dataset_id: package_id ของ dataset
-#         last_state: state จาก job ก่อนหน้า
-    
-#     Returns:
-#         tuple: (should_process, reason)
-
-#         qa_table, job_table
-#     """
-#     try:
-#         # from ckan.model import Resource, Package
-#         # ดึง package ปัจจุบัน
-#         package = Session.query(package_table).filter(
-#             package_table.c.id == dataset_id
-#         ).first()
-        
-#         if not package:
-#             return (True, "ไม่พบ dataset")
-
-#         # ดึง resources ปัจจุบันของ dataset
-#         current_resources = Session.query(resource_table).filter(
-#             resource_table.c.package_id == dataset_id,
-#             resource_table.c.state == 'active'
-#         ).all()
-        
-#         current_resource_ids = {r.id for r in current_resources}
-#         current_metadata = {
-#             r.id: {
-#                 'last_modified': r.last_modified,
-#                 'url': r.url,
-#                 'format': r.format,
-#             } for r in current_resources
-#         }
-        
-#         # ไม่มี state เก่า
-#         if not last_state or not last_state.get('resources'):
-#             return (True, "ไม่มี state ก่อนหน้า")
-
-       
-        
-#         last_resource_ids = set(last_state['resources'].keys())
-#         last_metadata = last_state['resources']
-
-#          # ⭐ เพิ่ม: เช็ค metadata_modified ของ package
-#         if last_state.get('package_metadata_modified'):
-#             if package.metadata_modified > last_state['package_metadata_modified']:
-#                 return (True, "Package metadata มีการอัปเดท")
-
-
-#         # ตรวจสอบว่ามี error ใน state เก่าหรือไม่
-#         # if last_state.get('has_error'):
-#         #     return (True, "พบ error ใน state ก่อนหน้า")
-
-#         # ตรวจสอบว่ามี Connection timeout ใน state เก่าหรือไม่
-#         if last_state.get('has_error'):
-#             return (True, "พบ Connection timeout - ลองใหม่")
-        
-#         # ตรวจสอบการเพิ่ม/ลบไฟล์
-#         added_files = current_resource_ids - last_resource_ids
-#         deleted_files = last_resource_ids - current_resource_ids
-        
-#         if added_files:
-#             return (True, f"มีไฟล์เพิ่ม {len(added_files)} ไฟล์")
-#         if deleted_files:
-#             return (True, f"มีไฟล์ลบ {len(deleted_files)} ไฟล์")
-        
-#         # ตรวจสอบการอัปเดทไฟล์
-#         for resource_id in current_resource_ids:
-#             current_meta = current_metadata[resource_id]
-#             last_meta = last_metadata.get(resource_id, {})
-            
-#             # เช็ค last_modified
-#             if current_meta.get('last_modified') and last_meta.get('last_modified'):
-#                 if current_meta['last_modified'] > last_meta['last_modified']:
-#                     return (True, f"ไฟล์ {resource_id[:8]}... อัปเดท")
-            
-#             # เช็ค hash
-#             if current_meta.get('hash') and last_meta.get('hash'):
-#                 if current_meta['hash'] != last_meta['hash']:
-#                     return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน hash")
-            
-#             # เช็ค URL
-#             if current_meta.get('url') != last_meta.get('url'):
-#                 log.debug(current_meta.get('url'))
-#                 log.debug(last_meta.get('url'))
-#                 return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน URL")
-            
-#             # เช็ค format
-#             if current_meta.get('format') != last_meta.get('format'):
-#                 return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน format")
-        
-#         return (False, "ไม่มีการเปลี่ยนแปลง")
-        
-#     except Exception as e:
-#         log.error(f"Error in should_reprocess_dataset: {e}")
-#         return (True, f"Error: {str(e)[:100]}")
 
 def should_reprocess_dataset(dataset_id, last_state):
     try:
@@ -559,7 +458,7 @@ def process_org_metrics(org_id, org_name, parent_org_id, parent_org_name, job_ro
 
                     if job.status == "cancel_requested":
                         log.info(f"[CANCEL] Detected cancel_requested for job {job_row_id}")
-                        Session.rollback()   # ✅ เพิ่ม
+                        Session.rollback()   # เพิ่ม
                         job.status = "cancel"
                         job.active = False
                         job.finish_timestamp = datetime.now(tz)
@@ -653,7 +552,7 @@ def process_org_metrics(org_id, org_name, parent_org_id, parent_org_name, job_ro
 # ======================================================================
 # ฟังก์ชันใหม่: process_org_metrics_smart (Smart Reprocessing)
 # ======================================================================
-def process_org_metrics_smart(org_id, org_name, parent_org_id, parent_org_name, job_row_id, last_job_id):
+def process_org_metrics_smart(org_id, org_name, parent_org_id, parent_org_name, job_row_id, last_job_id, delete_old_job):
     """
     ฟังก์ชันใหม่ - Smart Reprocessing
     ใช้สำหรับ: org เดิม วันเดียวกัน (เฉพาะที่เปลี่ยนแปลง)
@@ -795,25 +694,26 @@ def process_org_metrics_smart(org_id, org_name, parent_org_id, parent_org_name, 
                 # =================================================================
                 #  ลบ job เก่าของวันนี้ (หลังจาก job ใหม่เสร็จแล้ว)
                 # =================================================================
-                log.info(f" ลบ job เก่าของวันนี้: {last_job_id[:8]}...")
-                try:
-                    # ลบ metrics ของ job เก่า
-                    deleted_metrics = Session.query(qa_table).filter(
-                        qa_table.job_id == last_job_id
-                    ).delete(synchronize_session=False)
-                    
-                    log.info(f" ลบ {deleted_metrics} metrics")
-                    
-                    # ลบ job
-                    Session.query(job_table).filter(
-                        job_table.job_id == last_job_id
-                    ).delete(synchronize_session=False)
-                    
-                    log.info(f"ลบ job เก่าเรียบร้อย")
-                    
-                except Exception as e:
-                    log.error(f"ไม่สามารถลบ job เก่าได้: {e}")
-                    # ไม่ rollback เพราะ job ใหม่สำเร็จแล้ว
+                if delete_old_job:
+                    log.info(f" ลบ job เก่าของวันนี้: {last_job_id[:8]}...")
+                    try:
+                        # ลบ metrics ของ job เก่า
+                        deleted_metrics = Session.query(qa_table).filter(
+                            qa_table.job_id == last_job_id
+                        ).delete(synchronize_session=False)
+                        
+                        log.info(f" ลบ {deleted_metrics} metrics")
+                        
+                        # ลบ job
+                        Session.query(job_table).filter(
+                            job_table.job_id == last_job_id
+                        ).delete(synchronize_session=False)
+                        
+                        log.info(f"ลบ job เก่าเรียบร้อย")
+                        
+                    except Exception as e:
+                        log.error(f"ไม่สามารถลบ job เก่าได้: {e}")
+                        # ไม่ rollback เพราะ job ใหม่สำเร็จแล้ว
 
                 job.finish_timestamp = datetime.now(tz)
                 job.execute_time = round(time.time() - start_time, 3)
@@ -1299,12 +1199,15 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
                 # ======================================================================
                 # ตัดสินใจเลือกฟังก์ชัน
                 # ======================================================================
-                if is_same_day and last_job:
+                delete_old_job = False
+                if  last_job:
+                    if is_same_day:
+                        delete_old_job = True
                     # กรณีวันเดียวกัน → ใช้ Smart Reprocessing
                     log.info(f" ใช้ Smart Reprocessing (เปรียบเทียบกับ job: {last_job.job_id[:8]}...)")
                     ckan_job = toolkit.enqueue_job(
                         process_org_metrics_smart,
-                        args=[org_id, organization, parent_org_id, parent_org_name, job_row_id, last_job.job_id],
+                        args=[org_id, organization, parent_org_id, parent_org_name, job_row_id, last_job.job_id,delete_old_job],
                         title=f"QA metrics (SMART) for {organization}"
                     )
                 else:
