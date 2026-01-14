@@ -67,6 +67,7 @@ CHUNK_SIZE = 256 * 1024    # 256 KB
 DOWNLOAD_TIMEOUT = 60      # 60 seconds
 SSL_VERIFY = True
 record_limit = os.environ.get('CKANEXT__OPENDQUALITY__RECORD_LIMIT', toolkit.config.get('ckanext.opendquality.record_limit', 5001))
+file_size_limit = os.environ.get('CKANEXT__OPENDQUALITY__FILE_SIZE_LIMIT', toolkit.config.get('ckanext.opendquality.file_size_limit', 10))
 
 class LazyStreamingList(object):
     '''Implements a buffered stream that emulates an iterable object.
@@ -914,7 +915,7 @@ class DataQualityMetrics(object):
                     #     log.debug('------ End call Data Stream2-----')
                         #-------------------------------------------------------------
                         #using metadata for calculate metrics                                     
-                        if (file_size_mb <= 10 and connection_url):
+                        if (file_size_mb <= file_size_limit and connection_url):
                             #-----Fetch DATA------------------------------------------------
                             if not data_stream2:
                                 data_stream2 = self._fetch_resource_data2(resource)
@@ -1520,7 +1521,7 @@ class ResourceFetchData2(object):
     def _fetch_data_datastore_defined_row(self, resource):
         # log.debug('--data store--')
         page = 0
-        limit = 5001
+        limit = record_limit
         # log.debug("resource_id")
         # log.debug(resource.get('id'))
         data = []
@@ -1599,7 +1600,7 @@ class ResourceFetchData2(object):
         
         #---------------------------------------
         data = []
-        n_rows = 5001
+        n_rows = record_limit
         # log.debug('----resource format-----')
         filepath = url
         format_url = filepath.split(".")[-1]

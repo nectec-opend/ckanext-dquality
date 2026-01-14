@@ -165,12 +165,24 @@
 }
 
 #chart-freshness {
-  height: 120px !important;
+  height: 250px !important;
+  width: 100% !important;
+  margin-top: 50px !important;
+}
+#cart-total-late-update {
+  height: 105px !important;
   width: 100% !important;
 }
-#chart-latency,
+#chart-latency {
+  height: 185px !important;
+  width: 100% !important;
+}
 #chart-outdated {
-  height: 220px !important;
+  height: 85px !important;
+  width: 100% !important;
+}
+#chart-noschedules{
+  height: 85px !important;
   width: 100% !important;
 }
 .card canvas {
@@ -212,7 +224,7 @@
 .section-title{
     font-weight:800; letter-spacing:.2px;
   }
-  .metric-tile{
+  /* .metric-tile{
     border:1px solid rgba(0,0,0,.08);
     border-radius:1rem;
     background:#fff;
@@ -220,16 +232,74 @@
     text-align:center;
   }
   .metric-label{
-    color:#6c757d;          /* เทาอ่อน */
-    font-size:1.25rem;
+    color:#6c757d;
+    font-size: 15px;
     font-weight:700;
     margin-bottom:.35rem;
   }
   .metric-value{
     font-weight:800;
-    font-size:3rem;         /* ตัวเลขใหญ่ */
+    font-size: 2rem; 
     line-height:1;
-  }
+  } */
+   /* กล่องหลัก */
+.structure-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 10px ;
+  height: 100%;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  position: relative;
+}
+
+/* header */
+.structure-header {
+  font-size: 20px;
+  font-weight: 700;
+  padding-left: 14px;
+  margin-bottom: 10px;
+  border-left: 6px solid;
+  color: #333;
+}
+
+/* สีตามประเภท */
+.structure-box.dataset {
+  background: #f1f7ff;
+}
+.structure-box.dataset .structure-header {
+  border-color: #3b82f6; /* น้ำเงิน */
+}
+
+.structure-box.resource {
+  background: #effdf3;
+}
+.structure-box.resource .structure-header {
+  border-color: #16a34a; /* เขียว */
+}
+
+/* label */
+.metric-label {
+  font-size: 15px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+/* value */
+.metric-value {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.metric-value.green {
+  color: #16a34a;
+}
+
+.metric-value.red {
+  color: #dc2626;
+}
+
   /* โทนสีตัวเลขตามตัวอย่าง */
   .value-blue   { color:#0d6efd; }
   .value-orange { color:#fd7e14; }

@@ -1,4 +1,4 @@
-from sqlalchemy import func, desc, cast, Integer, case, Float, and_
+from sqlalchemy import func, desc, cast, Integer, case, Float, and_, Numeric
 from ckan.model import package_table, Session, Package, Group, Resource
 from ckanext.opendquality.model import DataQualityMetrics as DQM, JobDQ
 from sqlalchemy.dialects import postgresql
@@ -8,7 +8,7 @@ order_col = getattr(DQM, "created_at", DQM.id)
 
 LABELS = [
     "Validity", "Completeness", "Consistency",
-    "Timeliness (Freshness)", "Relevancy", "Availability"
+    "Timeliness", "Relevancy", "Availability"
 ]
 
 def _clip(x):
@@ -20,28 +20,80 @@ def _clip(x):
         x = 0.0
     return max(0.0, min(100.0, x))
 
+# def get_radar_aggregate_all(org_id=None, version=None):
+#     latest = (
+#         Session.query(
+#             DQM.ref_id.label("ref_id"),
+#             DQM.job_id,
+#             DQM.validity, DQM.completeness, DQM.consistency,
+#             DQM.freshness, DQM.relevance, DQM.availability,
+#             DQM.type,
+#             func.row_number().over(
+#                 partition_by=DQM.ref_id,
+#                 order_by=desc(order_col)
+#             ).label("rn"),
+#         )
+#         # .filter(DQM.type == "package")  # ใส่ถ้าแยกชนิดไว้
+#     ).subquery("latest")
+    
+#     q = (
+#         Session.query(
+#             func.avg(latest.c.validity),
+#             func.avg(latest.c.completeness),
+#             func.avg(latest.c.consistency),
+#             func.avg(latest.c.freshness),
+#             func.avg(latest.c.relevance),
+#             func.avg(latest.c.availability),
+#         )
+#         .select_from(Package)
+#         .join(latest, latest.c.ref_id == Package.id)
+#         .join(Group, Group.id == Package.owner_org)
+#         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
+#         .filter(latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+#     )
+#     if version is not None:
+#         q = q.filter(JobDQ.requested_timestamp == version)
+#     else:
+#         q = q.filter(JobDQ.active == True)
+#     if org_id is not None:
+#         q = q.filter(Group.id == org_id)
+
+#     v_valid, v_comp, v_cons, v_fresh, v_rel, v_avail = q.one()
+
+#     values = [_clip(v) for v in (v_valid, v_comp, v_cons, v_fresh, v_rel, v_avail)]
+#     return {
+#         "labels": LABELS,
+#         "data": values,
+#         "label": "All datasets (avg)"
+#     }
+
 def get_radar_aggregate_all(org_id=None, version=None):
     latest = (
         Session.query(
             DQM.ref_id.label("ref_id"),
             DQM.job_id,
             DQM.validity, DQM.completeness, DQM.consistency,
-            DQM.freshness, DQM.relevance, DQM.availability,
+            DQM.timeliness, DQM.relevance, DQM.availability,
             DQM.type,
             func.row_number().over(
                 partition_by=DQM.ref_id,
                 order_by=desc(order_col)
             ).label("rn"),
         )
-        # .filter(DQM.type == "package")  # ใส่ถ้าแยกชนิดไว้
     ).subquery("latest")
-    
+
+    base_filters = [
+        latest.c.type == 'package',
+        JobDQ.status == 'finish',
+        JobDQ.run_type == 'organization',
+        latest.c.rn == 1
+    ]
+
     q = (
         Session.query(
             func.avg(latest.c.validity),
             func.avg(latest.c.completeness),
             func.avg(latest.c.consistency),
-            func.avg(latest.c.freshness),
             func.avg(latest.c.relevance),
             func.avg(latest.c.availability),
         )
@@ -49,23 +101,59 @@ def get_radar_aggregate_all(org_id=None, version=None):
         .join(latest, latest.c.ref_id == Package.id)
         .join(Group, Group.id == Package.owner_org)
         .join(JobDQ, latest.c.job_id == JobDQ.job_id)
-        .filter(latest.c.type == 'package', JobDQ.status == 'finish', JobDQ.run_type == 'organization')
+        .filter(*base_filters)
     )
+
+    # query สำหรับ timeliness (freshness == 0)
+    q_time = (
+        Session.query(
+            func.count().label("total"),
+            func.sum(
+                case(
+                    (latest.c.timeliness == 0, 1),
+                    else_=0
+                )
+            ).label("bad")
+        )
+        .select_from(Package)
+        .join(latest, latest.c.ref_id == Package.id)
+        .join(Group, Group.id == Package.owner_org)
+        .join(JobDQ, latest.c.job_id == JobDQ.job_id)
+        .filter(*base_filters)
+    )
+
     if version is not None:
         q = q.filter(JobDQ.requested_timestamp == version)
+        q_time = q_time.filter(JobDQ.requested_timestamp == version)
     else:
         q = q.filter(JobDQ.active == True)
+        q_time = q_time.filter(JobDQ.active == True)
+
     if org_id is not None:
         q = q.filter(Group.id == org_id)
+        q_time = q_time.filter(Group.id == org_id)
 
-    v_valid, v_comp, v_cons, v_fresh, v_rel, v_avail = q.one()
+    v_valid, v_comp, v_cons, v_rel, v_avail = q.one()
+    total, bad = q_time.one()
 
-    values = [_clip(v) for v in (v_valid, v_comp, v_cons, v_fresh, v_rel, v_avail)]
+    # คำนวณ timeliness ตามสูตรใหม่
+    v_timeliness = (bad / total * 100) if total else 0
+
+    values = [
+        _clip(v_valid),
+        _clip(v_comp),
+        _clip(v_cons),
+        _clip(v_timeliness),  # << แทน freshness เดิม
+        _clip(v_rel),
+        _clip(v_avail),
+    ]
+
     return {
         "labels": LABELS,
         "data": values,
         "label": "All datasets (avg)"
     }
+
 
 def qa_counts(org_id=None, version=None):
     qa_pkg_ids = (
@@ -210,17 +298,16 @@ def get_relevance_top(org_id=None, version=None, limit=5):
     return results
 
 def get_timeliness_summary(org_id=None, version=None):
-    B1_ON_SCHEDULE = case([(DQM.acc_latency < 0, 1)], else_=0)
-    B2_UPTODATE = case([(DQM.acc_latency == 0, 1)], else_=0)
-    B3_NEEDS_ATTENTION = case(
-        [((DQM.acc_latency > 0) & (DQM.acc_latency <= 25), 1)], else_=0
-    )
-    B4_SHOULD_IMPROVE = case(
-        [((DQM.acc_latency > 25) & (DQM.acc_latency <= 50), 1)], else_=0
-    )
-    B5_MUST_IMPROVE = case(
-        [((DQM.acc_latency > 50) & (DQM.acc_latency <= 100), 1)], else_=0)
-    OUTDATED_THRESHOLD = 100
+    B1_ON_SCHEDULE = case([(DQM.timeliness == -1, 1)], else_=0)
+    B2_UPTODATE = case([(DQM.timeliness == 0, 1)], else_=0)
+    B3_NEEDS_ATTENTION = case([(DQM.timeliness == 1, 1)], else_=0)
+    B4_SHOULD_IMPROVE = case([(DQM.timeliness == 2, 1)], else_=0)
+    B5_MUST_IMPROVE = case([(DQM.timeliness == 3, 1)], else_=0)
+    # case(
+    #     [((DQM.acc_latency > 25) & (DQM.acc_latency <= 50), 1)], else_=0
+    # )
+    # B5_MUST_IMPROVE = case([(DQM.timeliness == 3, 1)], else_=0)
+    OUTDATED_THRESHOLD = 4
 
     q = Session.query(
         func.avg(DQM.freshness).label('avg_freshness'),
@@ -229,7 +316,7 @@ def get_timeliness_summary(org_id=None, version=None):
         func.sum(B3_NEEDS_ATTENTION).label('b3'),
         func.sum(B4_SHOULD_IMPROVE).label('b4'),
         func.sum(B5_MUST_IMPROVE).label('b5'),
-        func.sum(case((DQM.acc_latency > OUTDATED_THRESHOLD, 1), else_=0)).label('outdated'),
+        func.sum(case((DQM.timeliness == OUTDATED_THRESHOLD, 1), else_=0)).label('outdated'),
         func.max(DQM.acc_latency).label('max_latency')
     ).join(Package, Package.id == DQM.ref_id)\
      .join(Group, Group.id == Package.owner_org)\
@@ -295,8 +382,13 @@ def get_openness_score(org_id=None, version=None):
 
 def get_openness_counts(org_id=None, version=None):
     data_type_expr = case(
-        (DQM.openness.in_([0, 1]), 'unstructured'),
-        else_='structured'
+        (DQM.openness.in_([0, 1]), 'unstructured_resources'),
+        else_='structured_resources'
+    ).label('data_type')
+
+    data_type_package_expr = case(
+        (DQM.openness.in_([0, 1]), 'unstructured_packages'),
+        else_='structured_packages'
     ).label('data_type')
 
     query = (
@@ -313,29 +405,65 @@ def get_openness_counts(org_id=None, version=None):
         )
     )
 
+    query_package = (
+        Session.query(
+            data_type_package_expr,
+            func.count(DQM.id).label('count')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == 'package',
+            JobDQ.status == 'finish',
+            JobDQ.run_type == 'organization',
+            DQM.openness.isnot(None)
+        )
+    )
+
+
     if version is not None:
         query = query.filter(JobDQ.requested_timestamp == version)
+        query_package = query_package.filter(JobDQ.requested_timestamp == version)
     else:
         query = query.filter(JobDQ.active == True)
+        query_package = query_package.filter(JobDQ.active == True)
 
     if org_id:
         query = query.filter(JobDQ.org_id == org_id)
+        query_package = query_package.filter(JobDQ.org_id == org_id)
 
     query = query.group_by(data_type_expr)
+    query_package = query_package.group_by(data_type_package_expr)
 
     rows = query.all()
-    summary = {'structured': 0, 'unstructured': 0}
+    rows_package = query_package.all()
+    summary = {'structured_packages': 0, 'unstructured_packages': 0, 'structured_resources': 0, 'unstructured_resources': 0}
     for row in rows:
-        summary[row.data_type] = row.count
+        if row.data_type in summary:
+            summary[row.data_type] = row.count
+    for row in rows_package:
+        if row.data_type in summary:
+            summary[row.data_type] = row.count
 
     return summary
 
 def get_validity_counts(org_id=None, version=None):
+    validity_value = cast(
+        cast(
+            func.coalesce(
+                DQM.metrics
+                    .op('->')('validity')
+                    .op('->>')('max_validity'),
+                '0'
+            ),
+            Numeric
+        ),
+        Integer
+    )
     query = (
         Session.query(
             case(
-                (DQM.validity < 100, 'un_validity'),
-                (DQM.validity == 100, 'validity'),
+                (DQM.validity < 100, 'un_validity_resources'),
+                (DQM.validity == 100, 'validity_resources'),
                 else_='other'
             ).label('validity_type'),
             func.count(DQM.id).label('count')
@@ -348,20 +476,46 @@ def get_validity_counts(org_id=None, version=None):
         )
     )
 
+    query_package = (
+        Session.query(
+            case(
+                (validity_value < 100, 'un_validity_packages'),
+                (validity_value == 100, 'validity_packages'),
+                else_='other'
+            ).label('validity_type'),
+            func.count(DQM.id).label('count')
+        )
+        .join(JobDQ, DQM.job_id == JobDQ.job_id)
+        .filter(
+            DQM.type == 'package',
+            JobDQ.status == 'finish',
+            JobDQ.run_type == 'organization'
+        )
+    )
+
     if version is not None:
         query = query.filter(JobDQ.requested_timestamp == version)
+        query_package = query_package.filter(JobDQ.requested_timestamp == version)
     else:
         query = query.filter(JobDQ.active == True)
+        query_package = query_package.filter(JobDQ.active == True)
 
     if org_id:
         query = query.filter(JobDQ.org_id == org_id)
+        query_package = query_package.filter(JobDQ.org_id == org_id)
 
     # group by
     query = query.group_by('validity_type')
     result = query.all()
-    
-    summary = {'validity': 0, 'un_validity': 0}
+
+    query_package = query_package.group_by('validity_type')
+    result_package = query_package.all()
+
+    summary = {'validity_resources': 0, 'un_validity_resources': 0, 'validity_packages': 0, 'un_validity_packages': 0}
     for row in result:
+        if row.validity_type in summary:
+            summary[row.validity_type] = row.count
+    for row in result_package:
         if row.validity_type in summary:
             summary[row.validity_type] = row.count
 

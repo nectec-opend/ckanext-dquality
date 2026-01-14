@@ -30,6 +30,7 @@ enpoint_public = os.environ.get('CKANEXT__OPENDQUALITY__PUBLIC_ENDPOINTS', toolk
 #     'opendquality.dashboard',
 # }
 EXEMPT_ENDPOINTS = set(enpoint_public.split(' ') if enpoint_public else [])
+EXEMPT_ENDPOINTS.add('opendquality.index')
 
 @qa.before_request
 def request_before():

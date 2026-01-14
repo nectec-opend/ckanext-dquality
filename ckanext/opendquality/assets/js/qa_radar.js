@@ -50,27 +50,158 @@ const externalTooltipPlugin = {
   }
 };
 
-const centerTextPlugin = (value = 1000) => (
-  {
-    id: 'centerText',
-    afterDraw(chart) {
-      const { ctx, chartArea } = chart;
-      const x = (chartArea.left + chartArea.right) / 2;
-      const y = (chartArea.top + chartArea.bottom) / 2;
+const centerValuePlugin = (value=null, color=null, fontOptions=null) => ({
+  id: 'centerValue',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data.length) return;
 
+    const bar = meta.data[0];
+    const x = bar.x;
+    const y = bar.y + (bar.base - bar.y) / 2;
+
+    ctx.save();
+    ctx.font = fontOptions ? fontOptions : 'bold 16px Arial';
+    ctx.fillStyle = color ? color : '#000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(value.toLocaleString(), x, y);
+    ctx.restore();
+  }
+});
+
+// function centerValueHorizontalPlugin(legacyValue = null) {
+//   return {
+//     id: 'centerValueHorizontal',
+//     afterDatasetsDraw(chart) {
+//       const opt = chart.options.plugins?.centerValue || {};
+//       if (opt.enabled === false) return;
+
+//       const datasetIndex = opt.datasetIndex ?? 0;
+//       const color = opt.color ?? '#000';
+//       const font = opt.font ?? 'bold 13px sans-serif';
+
+//       const meta = chart.getDatasetMeta(datasetIndex);
+//       const dataset = chart.data.datasets[datasetIndex];
+//       if (!meta || !dataset) return;
+
+//       const { ctx } = chart;
+//       ctx.save();
+//       ctx.fillStyle = color;
+//       ctx.font = font;
+//       ctx.textAlign = 'center';
+//       ctx.textBaseline = 'middle';
+
+//       meta.data.forEach((bar, i) => {
+//         let value =
+//           legacyValue !== null && legacyValue !== undefined
+//             ? legacyValue
+//             : dataset.data?.[i];
+
+//         if (value === null || value === undefined) return;
+
+//         const n = Number(value);
+//         if (!Number.isFinite(n)) return;
+
+//         const text = String(Math.round(n));
+
+//         // ctx.fillText(text, bar.x / 2, bar.y);
+//         const x =
+//           n === 0
+//             ? (chartArea.left + chartArea.right) / 2 // กลาง chart
+//             : bar.x / 2;                              // กลางแท่งเดิม
+
+//         ctx.fillText(text, x, bar.y);
+//       });
+
+//       ctx.restore();
+//     }
+//   };
+// }
+
+function centerValueHorizontalPlugin(legacyValue = null) {
+
+  // ⭐ helper กัน font ผิด
+  function safeFont(font) {
+    if (typeof font !== 'string') return '13px sans-serif';
+    return font.replace(/\bunderline\b/g, '').trim();
+  }
+
+  return {
+    id: 'centerValueHorizontal',
+    afterDatasetsDraw(chart) {
+      const opt = chart.options.plugins?.centerValue || {};
+      if (opt.enabled === false) return;
+
+      const datasetIndex = opt.datasetIndex ?? 0;
+      const color = opt.color ?? '#000';
+      const font = opt.font ?? '13px sans-serif';
+
+      const meta = chart.getDatasetMeta(datasetIndex);
+      const dataset = chart.data.datasets[datasetIndex];
+      const chartArea = chart.chartArea;
+      if (!meta || !dataset || !chartArea) return;
+
+      const { ctx } = chart;
       ctx.save();
-      ctx.font = 'bold 40px Arial';
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = color;
+      ctx.font = safeFont(font);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(value.toLocaleString(), x, y - 10);
 
-      // ctx.font = '14px Arial';
-      // ctx.fillText('Count Timeliness = 0', x, y + 30);
-      // ctx.restore();
+      const MIN_BAR_LENGTH = 40;
+
+      meta.data.forEach((bar, i) => {
+        let value =
+          legacyValue !== null && legacyValue !== undefined
+            ? legacyValue
+            : dataset.data?.[i];
+
+        const n = Number(value);
+        if (!Number.isFinite(n)) return;
+
+        let x;
+        const barLength = bar.x - chartArea.left;
+
+        if (n === 0) {
+          // x = (chartArea.left + chartArea.right) / 2; 
+          return; // ไม่แสดงค่า 0
+        } else if (barLength < MIN_BAR_LENGTH) {
+          x = chartArea.left + MIN_BAR_LENGTH / 2;
+        } else {
+          x = chartArea.left + barLength / 2;
+        }
+
+        ctx.fillText(String(Math.round(n)), x, bar.y);
+      });
+
+      ctx.restore();
     }
+  };
+}
+
+
+
+const fullBgPlugin = (color) => ({
+  id: 'fullBg',
+  beforeDraw(chart) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.fillRect(
+      chartArea.left,
+      chartArea.top,
+      chartArea.width,
+      chartArea.height
+    );
+    ctx.restore();
   }
-)
+});
+
+
 function radarChart(ele, data) {
   return new Chart(ele, {
     type: 'radar',
@@ -167,90 +298,131 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
     catch (e) { console.error('Timeliness API error', e); return; }
 
     /* ---------- 1) Freshness ---------- */
-    const freshnessPct = toPct(data.total_late_update);
-    // const badgeF = document.getElementById('badge-freshness');
-    // if (badgeF) badgeF.textContent = `Dataset AVG Freshness: ${freshnessPct}%`;
+    const freshnessPct = toPct(data.uptodate);
 
     const fctx = getCtx('chart-freshness');
     if (fctx) {
       destroyIfExist('freshness');
-
+      const safeMax = freshnessPct > 0 ? freshnessPct: 1;
       dqCharts.freshness = new Chart(fctx, {
         type: 'bar',
-        data :{
-          labels: [''],
-          datasets: [{
+        data: {
+          labels: ['จำนวนชุดข้อมูลที่เป็นปัจจุบัน'],
+          datasets: freshnessPct > 0 ? [{
             data: [freshnessPct],
-            backgroundColor: 'rgba(30, 213, 30, 0.72)',
-            borderRadius: 0,
-            barThickness: 20000,
-          }]
+            backgroundColor: 'rgba(62, 138, 62, 0.88)',
+            barThickness: 'flex',
+            borderRadius: 10,
+            borderSkipped: false,
+            categoryPercentage: 1.0,
+            barPercentage: 1.0
+          }] : []
         },
         options: {
+          indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
-            tooltip: { enabled: false}
+            tooltip: { enabled: true },
+            title: {
+              display: true,
+              text: 'จำนวนชุดข้อมูลที่เป็นปัจจุบัน',
+              position: 'bottom',
+              align: 'center',
+              padding: { top: 10, bottom: 0 },
+              font: { size: 14, weight: 'normal', style: 'underline' }
+            }
           },
           scales: {
-            x: {
-              display: false,
-            },
             y: {
-              min: 0,
-              max: 10000,
               display: false,
+              grid: {
+                display: false
+              }
+            },
+            x: {
+              min: 0,
+              display: true,
+              max: safeMax,
+              ticks: {
+                stepSize: safeMax,
+                callback: (v) => v.toLocaleString()
+              },
+              grid: {
+                drawBorder: false
+              }
             }
           }
         },
-        plugins: [centerTextPlugin(freshnessPct)]
+        plugins: freshnessPct > 0 ? [centerValueHorizontalPlugin(freshnessPct)] : []
+        // plugins: freshnessPct > 0 ? [centerValuePlugin(freshnessPct)] : []
       });
-      
-      
-      // const grad = fctx.createLinearGradient(0, 0, fctx.canvas.width, 0);
-      // grad.addColorStop(0, '#2e7d32');
-      // grad.addColorStop(1, '#a5d6a7');
-
-      // dqCharts.freshness = new Chart(fctx, {
-      //   type: 'bar',
-      //   data: {
-      //     labels: [''],
-      //     datasets: [
-      //       { 
-      //         data: [freshnessPct],
-      //         backgroundColor: (ctx) => {
-      //           const v = ctx.raw;
-      //           if (v < 25) return 'rgba(197, 245, 186, 0.7)';
-      //           else if (v < 50) return 'rgba(142, 240, 142, 0.7)';
-      //           else if (v < 75) return 'rgba(60, 179, 113, 0.8)';
-      //           else return 'rgba(0, 100, 0, 0.9)';
-      //         },
-      //     }]
-      //   },
-      //   options: {
-      //     indexAxis: 'y',
-      //     responsive: true,
-      //     maintainAspectRatio: true,
-      //     plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}%` } } },
-      //     scales: {
-      //       x: {
-      //         beginAtZero: true, max: 100,
-      //         reverse: true,
-      //         ticks: { callback: (v) => `${v}%` },
-      //         grid: { display: true }
-      //       },
-      //       y: { display: false }
-      //     }
-      //   }
-      // });
     }
 
     /* ---------- 2) Acceptable Latency ---------- */
     const order = ['ล่าช้าค่อนข้างมาก','ล่าช้าป่านกลาง','ล่าช้าเล็กน้อย'];
     const counts = order.map(k => Number(data.latency_buckets?.[k] || 0));
-    // const badgeL = document.getElementById('badge-latmax');
-    // if (badgeL) badgeL.textContent = `Dataset Acceptable Latency MAX: ${data.max_latency ?? 0}`;
+    const totalLatency = data.total_late_update || 0;
+
+    const ttlctx = getCtx('cart-total-late-update');
+    if (ttlctx) {
+      destroyIfExist('totalLateUpdate');
+      const safeMax = totalLatency > 0 ? totalLatency: 1;
+      dqCharts.totalLateUpdate = new Chart(ttlctx, {
+        type: 'bar',
+        data: {
+          labels: ['จำนวนข้อมูลที่อยู่ในรอบการปรับปรุงทั้งหมด'],
+          datasets: totalLatency > 0 ? [{
+            data: [totalLatency],
+            backgroundColor: '#f37412ff',
+            borderRadius: 8,
+            borderSkipped: false,
+            barThickness: 'flex',
+            categoryPercentage: 1.0,
+            barPercentage: 1.0
+          }] : []
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: true },
+            title: {
+              display: true,
+              text: 'จำนวนข้อมูลที่อยู่ในรอบการปรับปรุงทั้งหมด',
+              position: 'top',
+              align: 'center',
+              padding: { top: 0, bottom: 0 },
+              font: { size: 14, weight: 'normal', style: 'underline' }
+            }
+          },
+          scales: {
+            x: {
+              min: 0,
+              display: true,
+              max: safeMax,
+              ticks: {
+                stepSize: safeMax,
+                callback: v => v.toLocaleString()
+              },
+              grid: {
+                drawBorder: false
+              }
+            },
+            y: {
+              display: false,
+              grid: {
+                display: false
+              }
+            }
+          }
+        },
+        plugins: totalLatency > 0 ? [centerValueHorizontalPlugin(totalLatency)] : []
+      });
+    }
 
     const lctx = getCtx('chart-latency');
     if (lctx) {
@@ -258,17 +430,23 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
       const colors = ['#f27c21ff', '#ec9654ff', '#e2b38fff'];
       dqCharts.latency = new Chart(lctx, {
         type: 'bar',
-        data: { labels: order, datasets: [{ data: counts, backgroundColor: colors }] },
+        data: { labels: order, datasets: [{ data: counts, backgroundColor: colors, borderRadius: 5 }] },
         options: {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw}` } } },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw}` } },
+            centerValue: {
+              enabled: true,
+              datasetIndex: 0
+            }
+          },
           scales: {
-            x: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { beginAtZero: true, ticks: { precision: 0 }, display: true },
             y: { ticks: { autoSkip: false } }
           }
-        }
+        },
+        plugins: [centerValueHorizontalPlugin()]
       });
     }
 
@@ -278,17 +456,56 @@ donut('chart-api', 'center-api', M.availability.access_api.yes, M.availability.a
       destroyIfExist('outdated');
       dqCharts.outdated = new Chart(octx, {
         type: 'bar',
-        data: { labels: [''], datasets: [{ data: [Number(data.outdated_count || 0)], backgroundColor: '#e53935' }] },
+        data: { labels: ['ล่าช้ามากเกินรอบ\nปรับปรุง 1 เท่าขึ้นไป'], datasets: [{ data: [Number(data.outdated_count || 0)], backgroundColor: '#e53935', borderRadius: 5 }] },
         options: {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}` } } },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}` } },
+            title: {
+              display: true,
+              text: 'จำนวนข้อมูลที่ปรับปรุงล่าช้ามากเกินรอบ',
+              position: 'bottom',
+              align: 'center',
+              padding: { top: 10, bottom: 0 },
+              font: { size: 14, weight: 'normal', style: 'underline' }
+            },
+          },
           scales: {
-            x: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { beginAtZero: true, ticks: { precision: 0 }, display: true },
             y: { display: false }
           }
-        }
+        },
+        plugins: data.outdated_count > 0 ? [centerValueHorizontalPlugin(data.outdated_count)] : []
+      });
+    }
+
+    const nctx = getCtx('chart-noschedules');
+    if (nctx) {
+      destroyIfExist('noschedules');
+      dqCharts.noschedules = new Chart(nctx, {
+        type: 'bar',
+        data: { labels: ['ไม่ระบุ'], datasets: [{ data: [Number(data.no_schedules || 0)], backgroundColor: '#e3dfdfff', borderRadius: 5 }] },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw}` } }, 
+            title: {
+              display: true,
+              text: 'จำนวนข้อมูลที่ไม่ได้ระบุรอบการปรับปรุง',
+              position: 'bottom',
+              align: 'center',
+              padding: { top: 10, bottom: 0 },
+              font: { size: 14, weight: 'normal', style: 'underline' }
+            },
+          },
+          scales: {
+            x: { beginAtZero: true, ticks: { precision: 0 } , display: true },
+            y: { display: false }
+          }
+        },
+        plugins: data.no_schedules > 0 ? [centerValueHorizontalPlugin(data.no_schedules)] : []
       });
     }
   }

@@ -51,41 +51,103 @@
 <div class="row qa-radar-row" style="z-index: 2;">
   <div class="col col-lg-8">
     <div>
-      
-      <h3 class="section-title mb-3">
-        <span class="me-2">🧩</span> โครงสร้างของข้อมูล (ทรัพยากร)
-      </h3>
-      <div class="row g-3 mb-4">
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Structured Data</div>
-            <div class="metric-value value-green">{{ openness_count.structured}}</div>
+        <h3 class="section-title">
+          <span class="me-2">🧩</span> โครงสร้างของข้อมูล
+        </h3>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="structure-box dataset">
+              <div class="structure-header">
+                ชุดข้อมูล
+              </div>
+              <div class="row text-center">
+                <div class="col-6">
+                  <div class="metric-label">Structured Data</div>
+                  <div class="metric-value green">
+                    {{ openness_count.structured_packages}}
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="metric-label">Unstructured Data</div>
+                  <div class="metric-value red">
+                    {{ openness_count.unstructured_packages}}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Unstructured Data</div>
-            <div class="metric-value value-red">{{ openness_count.unstructured}}</div>
+          <div class="col-md-6">
+            <div class="structure-box resource">
+              <div class="structure-header">
+                ทรัพยากร
+              </div>
+              <div class="row text-center">
+                <div class="col-6">
+                  <div class="metric-label">Structured Data</div>
+                  <div class="metric-value green">
+                    {{ openness_count.structured_resources}}
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="metric-label">Unstructured Data</div>
+                  <div class="metric-value red">
+                    {{ openness_count.unstructured_resources}}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <h3 class="section-title mb-3">
-        <span class="me-2">🤖</span> ความสามารถในการอ่านด้วยเครื่อง (ทรัพยากร)
+        </div>
+
+      <h3 class="section-title mt-3">
+        <span class="me-2">🤖</span> ความสามารถในการอ่านด้วยเครื่อง
       </h3>
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Machine-Readable</div>
-            <div class="metric-value value-green">{{ validity_count.validity }}</div>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="structure-box dataset">
+            <div class="structure-header">
+              ชุดข้อมูล
+            </div>
+
+            <div class="row text-center">
+              <div class="col-6">
+                <div class="metric-label">Machine-Readable</div>
+                <div class="metric-value green">
+                  {{ validity_count.validity_packages }}
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="metric-label">Not Machine-Readable</div>
+                <div class="metric-value red">
+                  {{ validity_count.un_validity_packages }}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="col-12 col-md-6">
-          <div class="metric-tile">
-            <div class="metric-label">Not Machine-Readable</div>
-            <div class="metric-value value-red">{{ validity_count.un_validity }}</div>
+        <div class="col-md-6">
+          <div class="structure-box resource">
+            <div class="structure-header">
+              ทรัพยากร
+            </div>
+            <div class="row text-center">
+              <div class="col-6">
+                <div class="metric-label">Machine-Readable</div>
+                <div class="metric-value green">
+                  {{ validity_count.validity_resources }}
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="metric-label">Not Machine-Readable</div>
+                <div class="metric-value red">
+                  {{ validity_count.un_validity_resources }}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+
       </div>
     </div>
   </div>
@@ -157,25 +219,42 @@
       <div class="col-lg-4">
         <div class="border rounded h-100 p-3 position-relative">
           <div class="fw-bold mb-2">ข้อมูลที่เป็นปัจจุบัน (ชุดข้อมูล)</div>
-          <canvas id="chart-freshness" style="height:120px; width:100%;"></canvas>
+          <canvas id="chart-freshness"></canvas>
           <!-- <div class="text-center mt-2 text-muted">ความสดใหม่ของข้อมูล</div> -->
         </div>
       </div>
 
       <!-- Acceptable Latency + Outdated -->
-      <div class="col-lg-8">
+      <div class="col-lg-5">
         <div class="border rounded h-100 p-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-bold">ข้อมูลที่อยู่ในรอบการปรับปรุง (ชุดข้อมูล)</div>
           </div>
-          <div class="row g-3">
-            <div class="col-8">
-              <canvas id="chart-latency" style="height:220px; width:100%;"></canvas>
-              <div class="small text-muted mt-1">ชุดข้อมูลที่ควรปรับปรุง</div>
+          <div class="col-12">
+            <canvas id="cart-total-late-update"></canvas>
+          </div>
+          <div class="col-12">
+            <canvas id="chart-latency"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-3">
+        <div class="border rounded h-100 p-3">
+          <div class="row" style="margin-top: 3rem">
+            <!-- <div class="d-flex justify-content-between align-items-center mb-2">
+              <div><h6>ข้อมูลที่ต้องได้รับการปรับปรุง (ชุดข้อมูล)</h6></div>
+            </div> -->
+            <div class="border-start">
+              <canvas id="chart-outdated"></canvas>
             </div>
-            <div class="col-4 border-start">
-              <canvas id="chart-outdated" style="height:220px; width:100%;"></canvas>
-              <div class="small text-center text-muted mt-1">ชุดข้อมูลล้าสมัยเกินไป</div>
+          </div>
+          <div class="row" style="margin-top: 3rem;">
+            <!-- <div class="d-flex justify-content-between align-items-center mb-2">
+              <div><h6>ข้อมูลที่ระบุความเป็นปัจจุบันไม่ได้ (ชุดข้อมูล)</h6></div>
+            </div> -->
+            <div class="border-start">
+              <canvas id="chart-noschedules"></canvas>
             </div>
           </div>
         </div>
@@ -238,7 +317,7 @@
           </div>
         </div>
         <div class="d-flex align-items-center gap-4 qa-donut">
-          <div class="fw-semibold text-muted" style="width:10rem;">Access API</div>
+          <div class="fw-semibold text-muted" style="width:10rem;">API Accessible</div>
           <div class="qa-donut-wrap">
             <canvas id="chart-api"></canvas>
             <div class="qa-donut-center" id="center-api"></div>
@@ -277,7 +356,7 @@
   ]
   }
 
-  var M = {{ metrics| tojson | safe}};
+  var M = {{ metrics | tojson | safe}};
   var T = {{ timeliness_summary | tojson | safe}};
   const { labels, data } = {{ resource_format_count | tojson | safe }};
   const versions = {{ versions | tojson | safe }};
