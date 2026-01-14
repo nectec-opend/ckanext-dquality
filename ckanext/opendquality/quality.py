@@ -914,7 +914,8 @@ class DataQualityMetrics(object):
                     #         error_fetching_resource = data_stream2.get('error')
                     #     log.debug('------ End call Data Stream2-----')
                         #-------------------------------------------------------------
-                        #using metadata for calculate metrics                                     
+                        #using metadata for calculate metrics    
+                        file_size_limit_mb =  int(file_size_limit)                            
                         if (file_size_mb <= file_size_limit and connection_url):
                             #-----Fetch DATA------------------------------------------------
                             if not data_stream2:
@@ -1521,7 +1522,7 @@ class ResourceFetchData2(object):
     def _fetch_data_datastore_defined_row(self, resource):
         # log.debug('--data store--')
         page = 0
-        limit = record_limit
+        limit = int(ecord_limit)
         # log.debug("resource_id")
         # log.debug(resource.get('id'))
         data = []
@@ -1600,7 +1601,7 @@ class ResourceFetchData2(object):
         
         #---------------------------------------
         data = []
-        n_rows = record_limit
+        n_rows = int(record_limit)
         # log.debug('----resource format-----')
         filepath = url
         format_url = filepath.split(".")[-1]
@@ -1614,6 +1615,10 @@ class ResourceFetchData2(object):
             response = self.get_response(url, {})
             # --- เช็ค Content-Type ---
             content_type = response.headers.get("Content-Type", "").lower()
+            log.warning(
+                "RESOURCE url=%s format=%s mimetype=%s content-type=%s",
+                url, resource_format, mimetype, content_type
+            )
             if "text/html" in content_type:
                 # log.debug(f"Skip HTML resource: {url}")
                 response.close()
@@ -2509,6 +2514,104 @@ class Openness():#DimensionMetric
     
     def __init__(self):
         self.name = 'openness'
+    # def get_openness_score(self, data_format, mimetype=None):
+
+    #     # -----------------------------
+    #     # Openness score table
+    #     # -----------------------------
+    #     openness_score = { 
+    #         # 5-star (Linked / fully open)
+    #         "TTL": 5, "RDF": 5, "JSON-LD": 5, "N3": 5, "SPARQL": 5, 
+
+    #         # 3-star (Open / machine-readable)
+    #         "KML": 3, "GML": 3, "WCS": 3, "NETCDF": 3,
+    #         "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
+    #         "WMS": 3, "WMTS": 3, "XYZ": 3,
+    #         "RSS": 3, "ATOM FEED": 3,
+    #         "GEOJSON": 3,
+    #         "XML": 3, "ODG": 3,
+    #         "CSV": 3, "JSON": 3, "ODS": 3, "ODB": 3, "ODF": 3,
+
+    #         # 2-star (Proprietary structured)
+    #         "ARCGIS MAP SERVICE": 2,
+    #         "ARCGIS MAP PREVIEW": 2,
+    #         "DBASE": 2, "SHP": 2, "ESRI REST": 2,
+    #         "XLS": 2, "XLSX": 2, "MDB": 2,
+
+    #         # 1-star (Human-readable / binary)
+    #         "GIF": 1, "TIFF": 1, "JPEG": 1, "BMP": 1, "SVG": 1, "PNG": 1,
+    #         "ODT": 1, "ODP": 1, "ODC": 1,
+    #         "BIN": 1, "TAR": 1, "ZIP": 1, "GZ": 1, "RAR": 1, 
+    #         "PDF": 1, "DOCX": 1, "DOC": 1, "PPT": 1, "PPTX": 1, "TXT": 1,
+    #         "HTML": 1
+    #     }
+
+    #     # -----------------------------
+    #     # mimetype → format fallback
+    #     # -----------------------------
+    #     mimetype_to_format = {
+    #         'text/csv': 'CSV',
+    #         'application/json': 'JSON',
+    #         'application/ld+json': 'JSON-LD',
+    #         'application/rdf+xml': 'RDF',
+    #         'application/xml': 'XML',
+    #         'text/xml': 'XML',
+    #         'application/pdf': 'PDF',
+
+    #         'application/vnd.ms-excel': 'XLS',
+    #         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+    #         'application/msword': 'DOC',
+    #         'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+    #         'application/vnd.ms-powerpoint': 'PPT',
+    #         'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+
+    #         'application/vnd.google-earth.kml+xml': 'KML',
+    #         'application/vnd.google-earth.kmz': 'KMZ',
+    #         'application/gml+xml': 'GML',
+
+    #         'image/png': 'PNG',
+    #         'image/jpeg': 'JPEG',
+    #         'image/bmp': 'BMP',
+    #         'image/gif': 'GIF',
+    #         'image/tiff': 'TIFF',
+    #         'image/svg+xml': 'SVG',
+
+    #         'application/zip': 'ZIP',
+    #         'application/gzip': 'GZ',
+    #         'application/x-tar': 'TAR',
+    #         'application/vnd.rar': 'RAR',
+
+    #         'text/plain': 'TXT',
+    #         'text/html': 'HTML'
+    #     }
+
+    #     # -----------------------------
+    #     # normalize format 
+    #     # -----------------------------
+    #     if not data_format and mimetype:
+    #         data_format = mimetype_to_format.get(mimetype)
+
+    #     if not data_format:
+    #         return 0
+
+    #     fmt = data_format.strip().upper()
+
+    #     # normalize ชื่อที่มักไม่ตรง
+    #     FORMAT_ALIAS = {
+    #         'JSONLD': 'JSON-LD',
+    #         'GEO-JSON': 'GEOJSON',
+    #         'ATOM': 'ATOM FEED',
+    #         'TURTLE': 'TTL',
+    #         'NTRIPLES': 'N3',
+    #         'TRIG': 'TTL',
+    #         'NQUADS': 'N3',
+    #         'DBF': 'DBASE'
+    #     }
+
+    #     fmt = fmt.replace('.', '')
+    #     fmt = FORMAT_ALIAS.get(fmt, fmt)
+
+    #     return openness_score.get(fmt, 0)
 
     def get_openness_score(self,data_format,mimetype):
         openness_score = { 
@@ -2579,88 +2682,7 @@ class Openness():#DimensionMetric
             score = openness_score.get(data_format.upper(), 0)
 
         return score
-        # openness_score = { "JSON-LD": 5,"N3": 5, "SPARQL": 5, "RDF": 5,
-        # "TTL": 5, "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,
-        # "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,
-        # "ODS": 3, "JSON": 3,"ODB": 3, "ODF": 3,
-        # "ODG": 3, "XML": 3,"WMS": 3, "WMTS": 3,
-        # "SVG": 3, "JPEG": 3,"CSV": 3, "Atom Feed": 3,
-        # "XYZ": 3, "PNG": 3,"RSS": 3, "GeoJSON": 3,
-        # "IATI": 3, "ICS": 3,"XLS": 2, "MDB": 2,
-        # "ArcGIS Map Service": 2,"BMP": 2, "TIFF": 2,
-        # "XLSX": 2, "GIF": 2,"E00": 2, "MrSID": 2,
-        # "ArcGIS Map Preview": 2,"MOP": 2, "Esri REST": 2,
-        # "dBase": 2, "SHP": 2,"PPTX": 1, "DOC": 1,
-        # "ArcGIS Online Map": 1, "ZIP": 1, "GZ": 1,
-        # "ODT": 1, "RAR": 1,"TXT": 1, "DCR": 1,
-        # "DOCX": 1, "BIN": 1,"PPT": 1, "ODP": 1,
-        # "PDF": 1, "ODC": 1,"MXD": 1, "TAR": 1,"EXE": 0,
-        # "JS": 0,"Perl": 0,"OWL": 0, "HTML": 0,
-        # "XSLT": 0, "RDFa": 0}
 
-        # #if user add a resource as a link, data type will be null
-        # if(data_format == ''):
-        #     score = 0
-        #     if(mimetype == 'text/csv'):
-        #         data_format = 'CSV'    
-        #     elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
-        #         data_format = 'XLSX'
-        #     elif(mimetype == 'application/vnd.ms-excel'):
-        #         data_format = 'XLS'
-        #     elif(mimetype == 'application/pdf'):
-        #         data_format = 'PDF'
-        #     elif(mimetype == 'application/rdf+xml'):
-        #         data_format = 'RDF'
-        #     elif(mimetype == 'application/ld+json'):
-        #         data_format = 'JSON-LD'
-        #     elif(mimetype == 'application/xml'):
-        #         data_format = 'XML'           
-        #     elif(mimetype == 'application/vnd.google-earth.kml+xml'):
-        #         data_format = 'KML'
-        #     elif(mimetype == 'application/gml+xml'):
-        #         data_format = 'GML'          
-        #     elif(mimetype == 'application/json'):
-        #         data_format = 'JSON'
-        #     elif(mimetype == 'image/png'):
-        #         data_format = 'PNG'
-        #     elif(mimetype == 'image/jpeg'):
-        #         data_format = 'JPEG'
-        #     elif(mimetype == 'image/bmp'):
-        #         data_format = 'BMP'
-        #     elif(mimetype == 'image/gif'):
-        #         data_format = 'GIF'
-        #     elif(mimetype == 'image/tiff'):
-        #         data_format = 'TIFF'
-        #     elif(mimetype == 'application/zip'):
-        #         data_format = 'ZIP'
-        #     elif(mimetype == 'application/msword'):
-        #         data_format = 'DOC'
-        #     elif(mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'):
-        #         data_format = 'DOCX'
-        #     elif(mimetype == 'application/vnd.oasis.opendocument.text'):
-        #         data_format = 'ODT'
-        #     elif(mimetype == 'application/vnd.oasis.opendocument.spreadsheet'):
-        #         data_format = 'ODS'
-        #     elif(mimetype == 'application/vnd.oasis.opendocument.presentation'):
-        #         data_format = 'ODP'
-        #     elif(mimetype == 'application/vnd.ms-powerpoint'):
-        #         data_format = 'PPT'
-        #     elif(mimetype == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'):
-        #         data_format = 'PPTX'
-        #     elif(mimetype == 'text/html'):
-        #         data_format = 'HTML'
-        #     elif(mimetype == 'application/vnd.rar'):
-        #         data_format = 'RAR'
-        #     elif(mimetype == 'text/plain'):
-        #         data_format = 'TXT'
-        #     if(data_format != '' ):
-        #         score =  openness_score.get(data_format)
-        # else:
-        #     score =  openness_score.get(data_format)
-        # # data type is not in the list
-        # if (score == None):
-        #     score = 0
-        # return score
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
         from the resource data.
@@ -2680,7 +2702,17 @@ class Openness():#DimensionMetric
         '''
         data_format = resource['format']
         mimetype    = resource['mimetype']
-    
+        resource_url = resource['url'] 
+        # ใช้ logic กลางในการตรวจจับ format
+        # detected_format = self.convert_mimetype_to_format(mimetype,data_format,resource_url)
+        # log.debug('Openness: detected_format: %f%%', detected_format)
+        # openness_score = self.get_openness_score(detected_format, mimetype)
+
+        # return {
+        #     'format': detected_format,
+        #     'value': openness_score,
+        #     'mimetype': mimetype
+        # }
         if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
             resource_url = resource['url']   
             format_url = resource_url.split(".")[-1]

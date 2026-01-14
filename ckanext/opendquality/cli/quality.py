@@ -892,7 +892,7 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
         else:
             # pkg = Session.query(package_table.c.id).filter(package_table.c.name == dataset, package_table.c.type == 'dataset', package_table.c.private == False,package_table.c.state == 'active').first()
             # metrics.calculate_metrics_for_dataset(pkg[0])
-            #-------------------------------
+            #------Enqueue job ผ่าน CKAN------#
             # หา dataset id
             pkg = Session.query(package_table.c.id, package_table.c.name).filter(
                 package_table.c.name == dataset,
