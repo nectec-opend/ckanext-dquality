@@ -1200,9 +1200,11 @@ def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
                 # ตัดสินใจเลือกฟังก์ชัน
                 # ======================================================================
                 delete_old_job = False
-                if  last_job:
-                    if is_same_day:
-                        delete_old_job = True
+                # if  last_job:
+                #     if is_same_day:
+                #         delete_old_job = True
+                if  last_job and is_same_day:
+                    delete_old_job = True
                     # กรณีวันเดียวกัน → ใช้ Smart Reprocessing
                     log.info(f" ใช้ Smart Reprocessing (เปรียบเทียบกับ job: {last_job.job_id[:8]}...)")
                     ckan_job = toolkit.enqueue_job(
