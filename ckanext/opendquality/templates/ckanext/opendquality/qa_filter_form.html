@@ -1,20 +1,22 @@
 {{ h.csrf_input() }}
     {% if parents is not none %}
-    {%- set options=[] -%}
-    {#%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%#}
-    {%- for p in parents -%}
-    {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
-    {%- endfor -%}
-    {{ form.select(
-    'org_main',
-    label=_('หน่วยงานหลัก'),
-    selected=selected_main,
-    options=options,
-    classes=["col-3"],
-    id='org_main',
-    attrs={'data-module': 'autocomplete'},
-    error={}
-    )}}
+      {%- set options=[] -%}
+       {% if not admin_report %}
+          {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%}
+        {% endif %}
+      {%- for p in parents -%}
+      {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
+      {%- endfor -%}
+      {{ form.select(
+      'org_main',
+      label=_('หน่วยงานหลัก'),
+      selected=selected_main,
+      options=options,
+      classes=["col-3"],
+      id='org_main',
+      attrs={'data-module': 'autocomplete'},
+      error={}
+      )}}
     {% endif %}
     
 
