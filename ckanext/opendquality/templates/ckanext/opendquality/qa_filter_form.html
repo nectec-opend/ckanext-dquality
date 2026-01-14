@@ -1,7 +1,7 @@
 {{ h.csrf_input() }}
     {% if parents is not none %}
     {%- set options=[] -%}
-    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%}
+    {#%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%#}
     {%- for p in parents -%}
     {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
     {%- endfor -%}

@@ -457,7 +457,9 @@ def admin_report(org_id=None):
 
     if not as_agency:
         parents ,children_by_parent = build_hierachy_with_orgs()
+        selected_main = selected_main if selected_main else parents[0].get('id')
         sub_options = children_by_parent.get(selected_main, []) if selected_main else []
+        selected_sub = selected_sub if selected_sub else sub_options[0].get('id')
     else:
         sub_options = build_agency_orgs()
         parents = children_by_parent  = None

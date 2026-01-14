@@ -142,7 +142,7 @@ ckan.module("qa-datatables", function ($) {
         pageLength: 50,
         lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "ทั้งหมด"] ],
         language: {
-          url: "//cdn.datatables.net/plug-ins/2.0.0/i18n/th.json"
+          url: "/opendquality/datatables/i18n/th.json"
         },
         layout: {
           topStart: ['pageLength', 'info'],
