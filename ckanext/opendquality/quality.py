@@ -2613,76 +2613,148 @@ class Openness():#DimensionMetric
 
     #     return openness_score.get(fmt, 0)
 
-    def get_openness_score(self,data_format,mimetype):
+    # def get_openness_score(self,data_format,mimetype):
+    #     openness_score = { 
+    #     "TTL": 5, "RDF": 5, "JSON-LD": 5,"N3": 5, "SPARQL": 5, 
+    #     "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,#Geo
+    #     "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,  #Geo
+    #     "WMS": 3, "WMTS": 3,"XYZ": 3,#Geo
+    #     "RSS": 3, "Atom Feed": 3,
+    #     "GeoJSON": 3, 
+    #     "XML": 3,"ODG": 3,
+    #     "CSV": 3, "JSON": 3, "ODS": 3,"ODB": 3, "ODF": 3,#open
+    #     "ArcGIS Map Service": 2,  #Geo
+    #     "ArcGIS Map Preview": 2,  #Geo
+    #     "dBase": 2, "SHP": 2, "Esri REST": 2, #Geo
+    #     "XLS": 2,"XLSX": 2,"MDB": 2, #microsoft access
+    #     "GIF": 1, "TIFF": 1, "JPEG": 1, "BMP": 1,"SVG": 1,"PNG": 1,
+    #     "ODT": 1, "ODP": 1,"ODC": 1,
+    #     "BIN": 1,  "TAR": 1, "ZIP": 1, "GZ": 1, "RAR": 1, 
+    #     "PDF": 1,"DOCX": 1,"DOC": 1 ,"PPT": 1,"PPTX": 1,"TXT": 1,
+    #     "HTML": 1
+    #     }
+    #     mimetype_to_format = {
+    #     'text/csv': 'CSV',
+    #     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+    #     'application/vnd.ms-excel': 'XLS',
+    #     'application/pdf': 'PDF',
+    #     'application/rdf+xml': 'RDF',
+    #     'application/ld+json': 'JSON-LD',
+    #     'application/json': 'JSON',
+    #     'application/xml': 'XML',
+    #     'text/xml': 'XML',
+    #     'application/vnd.google-earth.kml+xml': 'KML',
+    #     'application/vnd.google-earth.kmz': 'KMZ',
+    #     'application/gml+xml': 'GML',
+    #     'image/png': 'PNG',
+    #     'image/jpeg': 'JPEG',
+    #     'image/bmp': 'BMP',
+    #     'image/gif': 'GIF',
+    #     'image/tiff': 'TIFF',
+    #     'image/svg+xml': 'SVG',
+    #     'application/zip': 'ZIP',
+    #     'application/gzip': 'GZ',
+    #     'application/x-tar': 'TAR',
+    #     'application/msword': 'DOC',
+    #     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+    #     'application/vnd.ms-powerpoint': 'PPT',
+    #     'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+    #     'application/vnd.oasis.opendocument.text': 'ODT',
+    #     'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
+    #     'application/vnd.oasis.opendocument.presentation': 'ODP',
+    #     'application/vnd.oasis.opendocument.chart': 'ODC',
+    #     'application/vnd.oasis.opendocument.formula': 'ODF',
+    #     'application/vnd.oasis.opendocument.database': 'ODB',
+    #     'application/x-dbf': 'dBase',
+    #     'application/x-msaccess': 'MDB',
+    #     'text/plain': 'TXT',
+    #     'text/html': 'HTML',
+    #     'application/vnd.rar': 'RAR',
+    #     }
+    #     # Default score
+    #     score = 0
+
+    #     # If data_format is missing, try to get it from mimetype
+    #     if not data_format:
+    #         data_format = mimetype_to_format.get(mimetype, '')
+        
+    #     if data_format:
+    #         score = openness_score.get(data_format.upper(), 0)
+
+    #     return score
+    def get_openness_score(self, data_format, mimetype):
         openness_score = { 
-        "TTL": 5, "RDF": 5, "JSON-LD": 5,"N3": 5, "SPARQL": 5, 
-        "KML": 3, "GML": 3, "WCS": 3, "NetCDF": 3,#Geo
-        "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,  #Geo
-        "WMS": 3, "WMTS": 3,"XYZ": 3,#Geo
-        "RSS": 3, "Atom Feed": 3,
-        "GeoJSON": 3, 
-        "XML": 3,"ODG": 3,
-        "CSV": 3, "JSON": 3, "ODS": 3,"ODB": 3, "ODF": 3,#open
-        "ArcGIS Map Service": 2,  #Geo
-        "ArcGIS Map Preview": 2,  #Geo
-        "dBase": 2, "SHP": 2, "Esri REST": 2, #Geo
-        "XLS": 2,"XLSX": 2,"MDB": 2, #microsoft access
-        "GIF": 1, "TIFF": 1, "JPEG": 1, "BMP": 1,"SVG": 1,"PNG": 1,
-        "ODT": 1, "ODP": 1,"ODC": 1,
-        "BIN": 1,  "TAR": 1, "ZIP": 1, "GZ": 1, "RAR": 1, 
-        "PDF": 1,"DOCX": 1,"DOC": 1 ,"PPT": 1,"PPTX": 1,"TXT": 1,
-        "HTML": 1
+            "TTL": 5, "RDF": 5, "JSON-LD": 5, "N3": 5, "SPARQL": 5, 
+            "KML": 3, "GML": 3, "WCS": 3, "NETCDF": 3,  # Geo
+            "TSV": 3, "WFS": 3, "KMZ": 3, "QGIS": 3,  # Geo
+            "WMS": 3, "WMTS": 3, "XYZ": 3,  # Geo
+            "RSS": 3, "ATOM FEED": 3,
+            "GEOJSON": 3, 
+            "XML": 3, "ODG": 3,
+            "CSV": 3, "JSON": 3, "ODS": 3, "ODB": 3, "ODF": 3,  # open
+            "ARCGIS MAP SERVICE": 2,  # Geo
+            "ARCGIS MAP PREVIEW": 2,  # Geo
+            "DBASE": 2, "SHP": 2, "ESRI REST": 2,  # Geo
+            "XLS": 2, "XLSX": 2, "MDB": 2,  # microsoft access
+            "GIF": 1, "TIFF": 1, "JPEG": 1, "BMP": 1, "SVG": 1, "PNG": 1,
+            "ODT": 1, "ODP": 1, "ODC": 1,
+            "BIN": 1, "TAR": 1, "ZIP": 1, "GZ": 1, "RAR": 1, 
+            "PDF": 1, "DOCX": 1, "DOC": 1, "PPT": 1, "PPTX": 1, "TXT": 1,
+            "HTML": 1
         }
+        
         mimetype_to_format = {
-        'text/csv': 'CSV',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-        'application/vnd.ms-excel': 'XLS',
-        'application/pdf': 'PDF',
-        'application/rdf+xml': 'RDF',
-        'application/ld+json': 'JSON-LD',
-        'application/json': 'JSON',
-        'application/xml': 'XML',
-        'text/xml': 'XML',
-        'application/vnd.google-earth.kml+xml': 'KML',
-        'application/vnd.google-earth.kmz': 'KMZ',
-        'application/gml+xml': 'GML',
-        'image/png': 'PNG',
-        'image/jpeg': 'JPEG',
-        'image/bmp': 'BMP',
-        'image/gif': 'GIF',
-        'image/tiff': 'TIFF',
-        'image/svg+xml': 'SVG',
-        'application/zip': 'ZIP',
-        'application/gzip': 'GZ',
-        'application/x-tar': 'TAR',
-        'application/msword': 'DOC',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-        'application/vnd.ms-powerpoint': 'PPT',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
-        'application/vnd.oasis.opendocument.text': 'ODT',
-        'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
-        'application/vnd.oasis.opendocument.presentation': 'ODP',
-        'application/vnd.oasis.opendocument.chart': 'ODC',
-        'application/vnd.oasis.opendocument.formula': 'ODF',
-        'application/vnd.oasis.opendocument.database': 'ODB',
-        'application/x-dbf': 'dBase',
-        'application/x-msaccess': 'MDB',
-        'text/plain': 'TXT',
-        'text/html': 'HTML',
-        'application/vnd.rar': 'RAR',
+            'text/csv': 'CSV',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+            'application/vnd.ms-excel': 'XLS',
+            'application/pdf': 'PDF',
+            'application/rdf+xml': 'RDF',
+            'application/ld+json': 'JSON-LD',
+            'application/json': 'JSON',
+            'application/xml': 'XML',
+            'text/xml': 'XML',
+            'application/vnd.google-earth.kml+xml': 'KML',
+            'application/vnd.google-earth.kmz': 'KMZ',
+            'application/gml+xml': 'GML',
+            'image/png': 'PNG',
+            'image/jpeg': 'JPEG',
+            'image/bmp': 'BMP',
+            'image/gif': 'GIF',
+            'image/tiff': 'TIFF',
+            'image/svg+xml': 'SVG',
+            'application/zip': 'ZIP',
+            'application/gzip': 'GZ',
+            'application/x-tar': 'TAR',
+            'application/msword': 'DOC',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+            'application/vnd.ms-powerpoint': 'PPT',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+            'application/vnd.oasis.opendocument.text': 'ODT',
+            'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
+            'application/vnd.oasis.opendocument.presentation': 'ODP',
+            'application/vnd.oasis.opendocument.chart': 'ODC',
+            'application/vnd.oasis.opendocument.formula': 'ODF',
+            'application/vnd.oasis.opendocument.database': 'ODB',
+            'application/x-dbf': 'DBASE',
+            'application/x-msaccess': 'MDB',
+            'text/plain': 'TXT',
+            'text/html': 'HTML',
+            'application/vnd.rar': 'RAR',
         }
+        
         # Default score
         score = 0
 
-        # If data_format is missing, try to get it from mimetype
-        if not data_format:
+        # If data_format is missing or empty, try to get it from mimetype
+        if not data_format or data_format.strip() == '':
             data_format = mimetype_to_format.get(mimetype, '')
         
+        # Clean and normalize format
         if data_format:
-            score = openness_score.get(data_format.upper(), 0)
+            data_format = str(data_format).strip().upper()
+            score = openness_score.get(data_format, 0)
 
         return score
-
     def calculate_metric(self, resource):
         '''Calculates the openness dimension metric for the given resource
         from the resource data.
@@ -2701,32 +2773,48 @@ class Openness():#DimensionMetric
             * `complete`, `int`, number of cells that have value.
         '''
         data_format = resource['format']
-        mimetype    = resource['mimetype']
         resource_url = resource['url'] 
         # ใช้ logic กลางในการตรวจจับ format
-        # detected_format = self.convert_mimetype_to_format(mimetype,data_format,resource_url)
-        # log.debug('Openness: detected_format: %f%%', detected_format)
-        # openness_score = self.get_openness_score(detected_format, mimetype)
-
-        # return {
-        #     'format': detected_format,
-        #     'value': openness_score,
-        #     'mimetype': mimetype
-        # }
-        if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
-            resource_url = resource['url']   
-            format_url = resource_url.split(".")[-1]
-            data_format = format_url.upper()
-
-        data_format = data_format.replace(".", "")
-        data_format = data_format.upper()  
-        openness_score = self.get_openness_score(data_format,mimetype)
+        mimetype = ResourceFetchData2.detect_mimetype(resource_url)
+        data_quality = DataQualityMetrics()
+        detected_format = data_quality.convert_mimetype_to_format(mimetype, data_format, resource_url)
+        log.debug('Openness detected_format')
+        log.debug(mimetype)
+        log.debug(detected_format)
+        # ถ้า detected_format เป็น None หรือ empty ให้ใช้ logic เดิม
+        if not detected_format:
+            if data_format:
+                detected_format = data_format.replace(".", "").upper()
+            elif resource_url:
+                format_url = resource_url.split(".")[-1]
+                detected_format = format_url.replace(".", "").upper()
+            else:
+                detected_format = "UNKNOWN"
+        
+        # ใช้ detected_format ในการคำนวณ openness score
+        openness_score = self.get_openness_score(detected_format, mimetype)
+        
         # log.debug('Openness score: %f%%', openness_score)
+        
         return {
-            'format': data_format,
+            'format': detected_format,
             'value': openness_score,
-            'mimetype':mimetype
+            'mimetype': mimetype
         }
+        # if ((data_format == '' or data_format == None) and (mimetype == '' or mimetype == None)):
+        #     resource_url = resource['url']   
+        #     format_url = resource_url.split(".")[-1]
+        #     data_format = format_url.upper()
+
+        # data_format = data_format.replace(".", "")
+        # data_format = data_format.upper()  
+        # openness_score = self.get_openness_score(data_format,mimetype)
+        # # log.debug('Openness score: %f%%', openness_score)
+        # return {
+        #     'format': data_format,
+        #     'value': openness_score,
+        #     'mimetype':mimetype
+        # }
         
     def calculate_cumulative_metric(self, resources, metrics):
         '''Calculates the cumulative report for all resources from the
