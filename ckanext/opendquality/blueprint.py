@@ -37,7 +37,8 @@ def request_before():
     if request.endpoint in EXEMPT_ENDPOINTS:
         return
     user = getattr(toolkit.c, 'userobj', None)
-    if not user or not getattr(user, 'sysadmin', False):
+    # if not user or not getattr(user, 'sysadmin', False):
+    if not user: #or not getattr(user, 'sysadmin', False):
         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
 
 @qa.teardown_request
