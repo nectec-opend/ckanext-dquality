@@ -458,9 +458,9 @@ def admin_report(org_id=None):
 
     if not as_agency:
         parents ,children_by_parent = build_hierachy_with_orgs()
-        selected_main = selected_main if selected_main else parents[0].get('id')
+        selected_main = selected_main if selected_main else parents[0].get('id') if len(parents) else []
         sub_options = children_by_parent.get(selected_main, []) if selected_main else []
-        selected_sub = selected_sub if selected_sub else sub_options[0].get('id')
+        selected_sub = selected_sub if selected_sub else sub_options[0].get('id') if len(sub_options) else []
     else:
         sub_options = build_agency_orgs()
         parents = children_by_parent  = None
@@ -515,6 +515,7 @@ def admin_report(org_id=None):
             DQM.file_size.label('file_size'),
             DQM.execute_time.label('execute_time'),
             DQM.error.label('error'),
+            DQM.url.label('url'),
             DQM.metrics.label('metrics'),
             JobDQ.org_parent_id,
             DQM.type.label('dq_type'),
@@ -545,6 +546,7 @@ def admin_report(org_id=None):
             DQM.file_size.label('file_size'),
             DQM.execute_time.label('execute_time'),
             DQM.error.label('error'),
+            DQM.url.label('url'),
             DQM.metrics.label('metrics'),
             JobDQ.org_parent_id,
             DQM.type.label('dq_type'),
@@ -612,6 +614,7 @@ def admin_report(org_id=None):
                     DQM.execute_time.label('execute_time'),
                     DQM.error.label('error'),
                     DQM.metrics.label('metrics'),
+                    DQM.url.label('url'),
                     JobDQ.org_parent_id,
                     DQM.type.label('dq_type'),
                     DQM.modified_at.label('modified_at')
@@ -655,6 +658,7 @@ def admin_report(org_id=None):
                     DQM.file_size.label('file_size'),
                     DQM.execute_time.label('execute_time'),
                     DQM.error.label('error'),
+                    DQM.url.label('url'),
                     DQM.metrics.label('metrics'),
                     JobDQ.org_parent_id,
                     DQM.type.label('dq_type'),

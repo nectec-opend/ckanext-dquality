@@ -57,6 +57,8 @@
         <th>{{ _("uniqueness") }}</th>
         <th>{{ _("validity") }}</th>
         <th>{{ _("consistency") }}</th>
+        <th>{{ _("error") }}</th>
+        <th>{{ _("url") }}</th>
         <th>{{ _("metrics") }}</th>
       </tr>
     </thead>
@@ -87,6 +89,21 @@
         <td>{{ report.validity }}</td>
         <td>{{ report.consistency }}</td>
         <td>
+          {% if report.error %}
+            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#errorModal"
+              data-error='{{ report.error | safe }}'>
+              Show Error
+            </button>
+          {% else %}
+            No Error
+          {% endif %}
+        </td>
+        <td>
+          {% if report.url %}
+            <a href="{{ report.url | safe }}">Resource URL</a>
+          {% endif %}
+        </td>
+        <td>
           <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#jsonModal"
             data-json='{{ report.metrics |tojson | safe }}'>
             Show Metrics
@@ -95,6 +112,19 @@
       </tr>
       {% endfor %}
   </table>
+</div>
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="errorModalLabel">Error</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="error-content" class="bg-light p-3 rounded small text-break"></pre>
+      </div>
+    </div>
+  </div>
 </div>
 <div class="modal fade" id="jsonModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -145,6 +175,21 @@
         document.getElementById('json-content').textContent = formatted;
       } catch (e) {
         document.getElementById('json-content').textContent = 'Invalid JSON';
+      }
+    });
+  });
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('errorModal');
+    modal.addEventListener('show.bs.modal', function (event) {
+      var button = event.relatedTarget;
+      var textError = button.getAttribute('data-error');
+      try {
+        // var jsonObj = JSON.parse(rawJson);
+        // var formatted = JSON.stringify(jsonObj, null, 2);
+        document.getElementById('error-content').textContent = textError;
+      } catch (e) {
+        document.getElementById('error-content').textContent = 'Invalid JSON';
       }
     });
   });
