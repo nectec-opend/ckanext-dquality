@@ -791,12 +791,6 @@ class DataQualityMetrics(object):
         #-------Check Data Dict using Resource Name -----------       
         resource_id = resource['id']
         resource_url = resource['url']
-        if 'url' in resource and resource['url']:
-            if "209.15.113.87" in resource_url:
-                resource_url = resource_url.replace("209.15.113.87", "data.go.th")
-                resource['url'] = resource_url   # set ค่าใหม่เข้า resource object เลย
-        
-        # log.debug(resource_url)
         try:
             resource_name = resource['name']
             resource_name = resource_name.lower()            
@@ -816,7 +810,6 @@ class DataQualityMetrics(object):
         connection_url = False
         error_file_size = ''
         error_fetching_resource = ''
-        # error_file_not_match = ''
         today = datetime.today().strftime("%Y-%m-%d")
         #ตรวจสอบว่า user ใส่ format มาถูกหรือไม่ ตอนนี้ไม่ได้ใช้แล้ว
         # file_info = self.inspect_file(resource)
@@ -1663,11 +1656,10 @@ class ResourceFetchData2(object):
             suffix=ext,                  # เช่น .csv, .xlsx
             delete=False
         )
-        # log.debug("-----temp file---")
-        # log.debug(tmp_file.name)
+
         try:
             length = 0
-            m = hashlib.md5()
+            m = hashlib.md5()  # NOSONAR
             raw_data = b''     
 
             for chunk in response.iter_content(CHUNK_SIZE):
