@@ -10,19 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout (ไม่ใช้ external action)
       - name: Checkout repository
         run: |
-          git clone https://github.com/nectec-opend/ckanext-opendquality.git .
-          git fetch --all
+          git clone -b dev_qualityv2 https://github.com/nectec-opend/ckanext-opendquality.git .
 
-      # 2) Install Java
       - name: Install Java
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk
 
-      # 3) Install SonarScanner
       - name: Install SonarScanner
         run: |
           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
@@ -30,13 +26,6 @@ jobs:
           SONAR_DIR=$(ls -d sonar-scanner-*)
           echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
 
-      # 4) Debug
-      - name: Check sonar-scanner
-        run: |
-          which sonar-scanner
-          sonar-scanner --version
-
-      # 5) Run SonarQube Scan
       - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
