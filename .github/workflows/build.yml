@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout (ใช้ของ GitHub Actions ให้ตรง branch ที่ push)
+      # 1) Checkout ด้วย git (ไม่ใช้ external action)
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # สำคัญกับ SonarQube
+        run: |
+          git clone https://github.com/nectec-opend/ckanext-opendquality.git .
+          git checkout dev_qualityv2
 
       # 2) Install Java
       - name: Install Java
@@ -30,13 +30,13 @@ jobs:
           SONAR_DIR=$(ls -d sonar-scanner-*)
           echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
 
-      # 4) Check sonar-scanner
+      # 4) Debug
       - name: Check sonar-scanner
         run: |
           which sonar-scanner
           sonar-scanner --version
 
-      # 5) Run SonarQube Scan (ผูก branch ให้ชัด)
+      # 5) Run SonarQube Scan (ผูก branch)
       - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
