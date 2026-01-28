@@ -1,123 +1,151 @@
-[![Tests](https://github.com//ckanext-opendquality/workflows/Tests/badge.svg?branch=main)](https://github.com//ckanext-opendquality/actions)
+# ckanext-dquality
 
-# ckanext-opendquality
+ระบบตรวจสอบคุณภาพข้อมูลถูกพัฒนาในรูปแบบส่วนขยาย **ckanext-dquality** สำหรับแพลตฟอร์ม CKAN  
+โดยรองรับการตรวจสอบคุณภาพข้อมูลทั้งในระดับ **ชุดข้อมูล (Dataset)** และระดับ **ไฟล์ทรัพยากร (Resource)**  
 
-**TODO:** Put a description of your extension here:  What does it do? What features does it have? Consider including some screenshots or embedding a video!
+ระบบสามารถประเมินคุณภาพข้อมูลตามมิติต่าง ๆ ของ Data Quality พร้อมสนับสนุนการบริหารจัดการ  
+การติดตามสถานะ และการรายงานผลการตรวจสอบคุณภาพข้อมูลอย่างเป็นระบบ
 
+## ✨ Features
 
-## Requirements
+- ตรวจสอบคุณภาพข้อมูลในระดับ
+  - 📦 Dataset (Package)
+  - 📁 Resource
+- รองรับมิติคุณภาพข้อมูล (Data Quality Dimensions) เช่น
+  - ความถูกต้องของโครงสร้างตาราง (Data Validity)
+  - ความสมบูรณ์ของข้อมูล (Completeness)
+  - ความสอดคล้องของข้อมูล (Data Consistency)
+  - ความสามารถในการเข้าถึงข้อมูล (Data Availability)
+  - ความทันสมัยของข้อมูล (Timeliness)
+  - ความตรงตามความต้องการของข้อมูล (Relevancy)
+  - ความเป็นเอกลักษณ์ของข้อมูล (Data Uniqueness)
+- รองรับการรันตรวจสอบผ่าน **Background Job (RQ / ckan.lib.jobs)**
+- แสดงผลลัพธ์ผ่าน Dashboard (Chart / Table)
+- รองรับการคำนวณผลการตรวจคุณภาพในระดับ
+  - ราย Dataset
+  - ราย Organization
+- มีหน้า Admin สำหรับสั่งรันงาน ตรวจสอบสถานะ และจัดการ Job
 
-**TODO:** For example, you might want to mention here which versions of CKAN this
-extension works with.
+## 📦 Requirements
+- CKAN >= 2.10.7
+- Python 3.9
+- Extensions ที่แนะนำให้ติดตั้งเพิ่มเติม:
+  - `ckanext-scheming` (กรณีมีการใช้งาน schema เพิ่มเติม)
+  - `ckanext-harvest` (กรณีมีการเก็บข้อมูลด้วยการ harvest)
+  - `ckanext-thai_gdc` (version 3.0.0)
 
-If your extension works across different versions you can add the following table:
+## 🔧 Installation
 
-Compatibility with core CKAN versions:
+ขั้นตอนการติดตั้ง **ckanext-dquality** มีดังนี้
 
-| CKAN version    | Compatible?   |
-| --------------- | ------------- |
-| 2.6 and earlier | not tested    |
-| 2.7             | not tested    |
-| 2.8             | not tested    |
-| 2.9             | not tested    |
+### 1. Activate CKAN Virtual Environment
 
-Suggested values:
+ก่อนติดตั้ง extension ให้เข้าใช้งาน virtual environment ของ CKAN
 
-* "yes"
-* "not tested" - I can't think of a reason why it wouldn't work
-* "not yet" - there is an intention to get it working
-* "no"
+```sh
+source /usr/lib/ckan/default/bin/activate
+```
 
+### 2. ติดตั้ง Extension ลงใน Virtual Environment ของ CKAN
 
-## Installation
+```sh
+pip install -e git+https://github.com/nectec-opend/ckanext-dquality.git#egg=ckanext-dquality
+```
 
-**TODO:** Add any additional install steps to the list below.
-   For example installing any non-Python dependencies or adding any required
-   config settings.
+```sh
+pip install -r /usr/lib/ckan/default/src/ckanext-dquality/requirements.txt
+```
 
-To install ckanext-opendquality:
+### 3. Enable Plugin ใน CKAN
 
-1. Activate your CKAN virtual environment, for example:
+แก้ไขไฟล์ config ของ CKAN (โดยปกติคือ `/etc/ckan/default/ckan.ini`)
 
-     . /usr/lib/ckan/default/bin/activate
+```sh
+ckan.plugins = dquality ...
+```
 
-2. Clone the source and install it on the virtualenv
+## Config settings สำหรับ ckanext-dquality
 
-    git clone https://github.com//ckanext-opendquality.git
-    cd ckanext-opendquality
-    pip install -e .
-	pip install -r requirements.txt
+การตั้งค่าเพิ่มเติมสำหรับ **ckanext-dquality** ในไฟล์ CKAN config (`/etc/ckan/default/ckan.ini`)
 
-3. Add `opendquality` to the `ckan.plugins` setting in your CKAN
-   config file (by default the config file is located at
-   `/etc/ckan/default/ckan.ini`).
+### 1. (optional) อนุญาตให้ผู้ใช้ทั่วไปเข้าถึงหน้า Table / Dashboard Report
 
-4. Restart CKAN. For example if you've deployed CKAN with Apache on Ubuntu:
+```sh
+ckanext.opendquality.public_endpoint = dquality.admin_report dquality.dashboard
+```
 
-     sudo service apache2 reload
+### 2. (optional) กำหนดขนาดไฟล์ทรัพยากรสูงสุด (หน่วยเป็น MB) ที่อนุญาตให้ใช้ในการตรวจคุณภาพข้อมูล  
+ค่าเริ่มต้นคือ 10MB
 
+```sh
+ckanext.opendquality.filesize_limit = 20
+```
 
-## Config settings
+### 3. (optional) กำหนดจำนวนแถวสูงสุดที่อนุญาตให้อ่านจากไฟล์ทรัพยากรในการตรวจคุณภาพข้อมูล  
+ค่าเริ่มต้นคือ 5000 แถว
 
-None at present
+```sh
+ckanext.opendquality.record_limit = 6000
+```
 
-**TODO:** Document any optional config settings here. For example:
+### 4. (optional) กำหนดระยะเวลาการทำงานสูงสุดของ jobs worker (หน่วยเป็นวินาที)
 
-	# The minimum number of hours to wait before re-checking a resource
-	# (optional, default: 24).
-	ckanext.opendquality.some_setting = some_default_value
+```sh
+ckan.jobs.timeout = 10800 #(3 ชั่วโมง)
+```
 
+## Restart CKAN Service
 
-## Developer installation
+```sh
+sudo supervisorctl reload
+```
 
-To install ckanext-opendquality for development, activate your CKAN virtualenv and
-do:
+## Database init สำหรับ ckanext-dquality
 
-    git clone https://github.com//ckanext-opendquality.git
-    cd ckanext-opendquality
-    python setup.py develop
-    pip install -r dev-requirements.txt
+ใช้สำหรับสร้างตารางที่จำเป็นของ extension ลงในฐานข้อมูล
 
+```sh
+sudo /usr/lib/ckan/default/bin/ckan -c /etc/ckan/default/ckan.ini dquality init
+```
 
-## Tests
+## Running data quality calculate by organization
 
-To run the tests, do:
+### 1. ตรวจสอบคุณภาพชุดข้อมูลแบบระบุหน่วยงาน
 
-    pytest --ckan-ini=test.ini
+```sh
+sudo /usr/lib/ckan/default/bin/ckan -c /etc/ckan/default/ckan.ini quality calculate --organization org-name
+```
 
+>> `org-name` คือชื่อหน่วยงาน (organization name) ที่อยู่ใน CKAN
 
-## Releasing a new version of ckanext-opendquality
+### 2. ตรวจสอบคุณภาพชุดข้อมูลของทุกหน่วยงาน
 
-If ckanext-opendquality should be available on PyPI you can follow these steps to publish a new version:
+```sh
+sudo /usr/lib/ckan/default/bin/ckan -c /etc/ckan/default/ckan.ini quality calculate --organization all
+```
 
-1. Update the version number in the `setup.py` file. See [PEP 440](http://legacy.python.org/dev/peps/pep-0440/#public-version-identifiers) for how to choose version numbers.
+## Stop and Delete Data Quality Job
 
-2. Make sure you have the latest version of necessary packages:
+### Stop
 
-    pip install --upgrade setuptools wheel twine
+```sh
+sudo /usr/lib/ckan/default/bin/ckan -c /etc/ckan/default/ckan.ini quality stop --job_id job-id
+```
 
-3. Create a source and binary distributions of the new version:
+### Delete
 
-       python setup.py sdist bdist_wheel && twine check dist/*
+```sh
+sudo /usr/lib/ckan/default/bin/ckan -c /etc/ckan/default/ckan.ini quality delete --job_id job-id
+```
 
-   Fix any errors you get.
+>> `job-id` คือค่า `job_id` ที่อยู่ในตาราง `data_quality_job` ของฐานข้อมูล
 
-4. Upload the source distribution to PyPI:
+## การตั้งเวลาในการตรวจคุณภาพชุดข้อมูลแบบอัตโนมัติด้วย crontab (optional)
 
-       twine upload dist/*
+```sh
+crontab -e
+```
 
-5. Commit any outstanding changes:
-
-       git commit -a
-       git push
-
-6. Tag the new release of the project on GitHub with the version number from
-   the `setup.py` file. For example if the version number in `setup.py` is
-   0.0.1 then do:
-
-       git tag 0.0.1
-       git push --tags
-
-## License
-
-[AGPL](https://www.gnu.org/licenses/agpl-3.0.en.html)
+```sh
+0 4 1 */3 * /usr/lib/ckan/default/bin/ckan -c /etc/ckan/default/ckan.ini quality calculate --organization all
+```
