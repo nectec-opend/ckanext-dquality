@@ -22,7 +22,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk
 
-      # 3) Install SonarScanner (FIX PATH ตรงนี้)
+      # 3) Install SonarScanner
       - name: Install SonarScanner
         run: |
           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
@@ -30,7 +30,7 @@ jobs:
           SONAR_DIR=$(ls -d sonar-scanner-*)
           echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
 
-      # 4) Debug: เช็กว่ามี sonar-scanner จริง
+      # 4) Debug
       - name: Check sonar-scanner
         run: |
           which sonar-scanner
@@ -44,9 +44,11 @@ jobs:
           sonar-scanner \
             -Dsonar.projectKey=ckanext-opendquality2 \
             -Dsonar.sources=. \
+            -Dsonar.branch.name=dev_qualityv2 \
             -Dsonar.host.url=http://164.115.20.162:9000 \
-            -Dsonar.login=$SONAR_TOKEN
+            -Dsonar.token=$SONAR_TOKEN
 
+#---------
 # name: Build
 
 # on:
@@ -54,23 +56,45 @@ jobs:
 #     branches:
 #       - dev_qualityv2
 
-
 # jobs:
 #   build:
-#     name: Build and analyze
 #     runs-on: ubuntu-latest
-    
+
 #     steps:
-#       - uses: actions/checkout@v4
-#         with:
-#           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-#       - uses: SonarSource/sonarqube-scan-action@v6
+#       # 1) Checkout (ไม่ใช้ external action)
+#       - name: Checkout repository
+#         run: |
+#           git clone https://github.com/nectec-opend/ckanext-opendquality.git .
+#           git fetch --all
+
+#       # 2) Install Java
+#       - name: Install Java
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y openjdk-17-jdk
+
+#       # 3) Install SonarScanner (FIX PATH ตรงนี้)
+#       - name: Install SonarScanner
+#         run: |
+#           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+#           unzip sonar-scanner.zip
+#           SONAR_DIR=$(ls -d sonar-scanner-*)
+#           echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
+
+#       # 4) Debug: เช็กว่ามี sonar-scanner จริง
+#       - name: Check sonar-scanner
+#         run: |
+#           which sonar-scanner
+#           sonar-scanner --version
+
+#       # 5) Run SonarQube Scan
+#       - name: Run SonarQube Scan
 #         env:
 #           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-#           SONAR_HOST_URL: http://164.115.20.162:9000
-#       # If you wish to fail your job when the Quality Gate is red, uncomment the
-#       # following lines. This would typically be used to fail a deployment.
-#       # - uses: SonarSource/sonarqube-quality-gate-action@v1
-#       #   timeout-minutes: 5
-#       #   env:
-#       #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+#         run: |
+#           sonar-scanner \
+#             -Dsonar.projectKey=ckanext-opendquality2 \
+#             -Dsonar.sources=. \
+#             -Dsonar.host.url=http://164.115.20.162:9000 \
+#             -Dsonar.login=$SONAR_TOKEN
+
