@@ -194,17 +194,7 @@ def should_reprocess_dataset(dataset_id, last_state):
                     log.debug(current_meta.get('last_modified'))
                     log.debug(last_meta.get('last_modified'))
                     return (True, f"ไฟล์ {resource_id[:8]}... อัปเดท")
-            
-            # if current_meta.get('url') != last_meta.get('url'):
-            #     log.debug(current_meta.get('url'))
-            #     log.debug(last_meta.get('url'))
-            #     return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน URL")
-            
-            # if current_meta.get('format') != last_meta.get('format'):
-            #     log.debug(current_meta.get('format'))
-            #     log.debug(last_meta.get('format'))
-                # return (True, f"ไฟล์ {resource_id[:8]}... เปลี่ยน format")
-        
+                
         return (False, "ไม่มีการเปลี่ยนแปลง")
         
     except Exception as e:
@@ -223,11 +213,7 @@ def load_last_job_state(org_id):
         }
     """
     try:
-        # from ckanext.your_extension.model import DataQualityJob
-        
         current_date = date.today()
-        
-        # หา job ล่าสุดที่ status = 'finish'
         last_job = Session.query(job_table).filter(
             job_table.org_id == org_id,
             job_table.status == 'finish',
@@ -579,7 +565,6 @@ def process_org_metrics_smart(org_id, org_name, parent_org_id, parent_org_name, 
         job = Session.query(job_table).filter_by(job_id=job_row_id).first()
         if not job:
             raise RuntimeError(f"Job record not found for job_id={job_row_id}")
-
         # -----------------------------
         # Mark running
         # -----------------------------

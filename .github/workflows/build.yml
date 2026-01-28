@@ -36,7 +36,8 @@ jobs:
             -Dsonar.projectKey=ckanext-opendquality2 \
             -Dsonar.sources=. \
             -Dsonar.host.url=http://164.115.20.162:9000 \
-            -Dsonar.login=$SONAR_TOKEN
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.coverage.exclusions=**/*.py
 
 #---------
 # name: Build
