@@ -1351,7 +1351,6 @@ class ResourceFetchData(object):
                     headers = {'Authorization': sysadmin_api_key}
                 return self._download_resource_from_url(
                     resource['url'],
-                    resource['format'],
                     headers
                 )
         except OSError as e:
