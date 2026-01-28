@@ -428,7 +428,8 @@ def home():
         Package, Package.owner_org == Group.id
     ).filter(
         Package.state == 'active',
-        Package.type == 'dataset'
+        Package.type == 'dataset',
+        Package.private == False
     ).distinct().all()
 
     extra_vars = {
