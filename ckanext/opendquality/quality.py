@@ -3,12 +3,8 @@ import ckan.plugins.toolkit as toolkit, dateutil
 from datetime import datetime, timezone, timedelta
 from logging import getLogger
 import ckan.lib.uploader as uploader
-# from ckan.common import config
-# from six import text_type
 from sqlalchemy import Table, select, join, func, and_
 from sqlalchemy.sql import text
-# # import ckan.plugins as p
-# import ckan.model as model
 from ckan.model import Session, User, user_table, Package,Resource, Group, PackageExtra
 import json
 import re
@@ -16,7 +12,6 @@ import csv
 from goodtables import validate
 import pandas as pd
 from pandas import read_excel
-# from tempfile import TemporaryFile
 import math
 import tempfile
 import hashlib
@@ -48,7 +43,6 @@ from ckan import model
 from typing import List, Dict, Any, Tuple
 from ckanext.opendquality.cli.quality import JobCancelledException
 from ckanext.opendquality.cli.quality import restore_previous_active_job
-# from frictionless import Schema
 
 log = getLogger(__name__)
 tz = timezone(timedelta(hours=7))
@@ -116,20 +110,6 @@ class LazyStreamingList(object):
         self.buffer = result.get('records', [])
         self.page += 1
 
-    # def iterator(self):
-    #     '''Returns an iterator over all of the records.
-    #     '''
-    #     current = 0
-    #     self._fetch_buffer()
-    #     while True:
-    #         if current >= self.total or not self.buffer:
-    #             # end of all results
-    #             raise StopIteration()
-    #         for row in self.buffer:
-    #             current += 1
-    #             yield row
-    #         # fetch next buffer
-    #         self._fetch_buffer()
     def iterator(self):
         '''Returns an iterator over all of the records.
         '''
@@ -791,6 +771,7 @@ class DataQualityMetrics(object):
         #-------Check Data Dict using Resource Name -----------       
         resource_id = resource['id']
         resource_url = resource['url']
+        #-- Fix IP --
         try:
             resource_name = resource['name']
             resource_name = resource_name.lower()            
@@ -908,8 +889,8 @@ class DataQualityMetrics(object):
                     #     log.debug('------ End call Data Stream2-----')
                         #-------------------------------------------------------------
                         #using metadata for calculate metrics    
-                        file_size_limit_mb =  int(file_size_limit)                            
-                        if (file_size_mb <= file_size_limit and connection_url):
+                        file_size_limit_mb =  int(file_size_limit)                                                
+                        if (file_size_mb <= file_size_limit_mb and connection_url):
                             #-----Fetch DATA------------------------------------------------
                             if not data_stream2:
                                 data_stream2 = self._fetch_resource_data2(resource)
@@ -918,27 +899,20 @@ class DataQualityMetrics(object):
                                         hasattr(data_stream2['records'], 'rewind'):
                                     data_stream2['records'].rewind()
                                 else:
-                                    data_stream2 = self._fetch_resource_data2(resource)                   
-                            # log.debug(data_stream2)
+                                    data_stream2 = self._fetch_resource_data2(resource) 
+
                             if data_stream2.get('error'):
                                 error_fetching_resource = data_stream2.get('error')
-                            # log.debug('------ End call Data Stream2-----')
-                            # log.debug('------ mimetype -----')               
+                            # log.debug('------ End call Data Stream2-----')               
                             # #-------------------------------------------------------------
-                            # log.debug('------ check all metrics-----')
                             if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
-                                # log.debug('------ check metric-----')
-                                # log.debug(metric.name)
-                                results[metric.name] = metric.calculate_metric(resource)
-                            
-                            elif metric.name == 'timeliness':     
-                                # log.debug('----timeliness------')                                         
+                                results[metric.name] = metric.calculate_metric(resource)                            
+                            elif metric.name == 'timeliness':                                           
                                 results[metric.name] = metric.calculate_metric(resource)
                                 timeliness_val = results[metric.name] 
 
                             elif metric.name in ['acc_latency', 'freshness']:   
-                                if timeliness_val:
-                                    # log.debug('----acc_latency------')                                         
+                                if timeliness_val:                                        
                                     results[metric.name] = metric.calculate_metric(resource, timeliness_val)
                                 else:
                                     continue
@@ -997,6 +971,7 @@ class DataQualityMetrics(object):
                             #     results[metric.name] = metric.calculate_metric(resource) #,data_stream
                         #file_size > 10 MB
                         else:
+                            log.debug('file_size > 10 MB')
                             error_file_size = 'file_size > 10 MB'
                             openness_5_star_format = self.is_openness_5_star_format(resource['format'])
                             
@@ -1035,9 +1010,9 @@ class DataQualityMetrics(object):
                                 results['connection_url'] = { 'error': True}
                         
                     except Exception as e:
-                        # self.logger.error('Failed to calculate: %s. Error: %s',
-                        #                 metric, str(e))
-                        # self.logger.exception(e)
+                        self.logger.error('Failed to calculate: %s. Error: %s',
+                                        metric, str(e))
+                        self.logger.exception(e)
                         results['error'] = "Failed to calculate:"+metric.name
                         results[metric.name] = {
                             'failed': True,
@@ -1595,7 +1570,7 @@ class ResourceFetchData2(object):
         #---------------------------------------
         data = []
         n_rows = int(record_limit)
-        # log.debug('----resource format-----')
+        log.debug('----_download_resource_from_url-----')
         filepath = url
         format_url = filepath.split(".")[-1]
         mimetype = ResourceFetchData2.detect_mimetype(filepath)
@@ -1691,10 +1666,7 @@ class ResourceFetchData2(object):
                     mimetype = "application/vnd.ms-excel"
 
 
-            if(mimetype == 'text/csv'): #(resource_format =='CSV'):
-                # log.debug('----csv----')     
-                # log.debug(filepath)
-                #-----------------------------------      
+            if(mimetype == 'text/csv'):       
                 try:
                     # log.debug('--Reading CSV from temp--')
                     tmp_file.seek(0)
@@ -1705,8 +1677,7 @@ class ResourceFetchData2(object):
                         data.append(row)
                         records_read += 1
                         if records_read >= n_rows:
-                            break
-                    
+                            break                 
                     # log.debug(data)
                 except UnicodeDecodeError:
                     log.debug("An UnicodeDecodeError occurred")
@@ -1718,7 +1689,7 @@ class ResourceFetchData2(object):
                     # data = self._fetch_data_datastore_defined_row(self.resource) 
 
                 
-            elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
+            elif(mimetype == 'application/json'): 
                 data = []
                 try:
                     # log.debug('--Reading JSON from temp file--')
@@ -1799,48 +1770,6 @@ class ResourceFetchData2(object):
                 # except Exception as e:
                 #     log.debug("Unexpected error occurred while reading JSON: %s", e)
                 #     data = []
-                #-----------olddd-------
-                # data = []
-                # try:
-                #     log.debug('--Reading JSON data--')
-                    
-                #     # Check if the filepath is a URL or a file path
-                #     if filepath.startswith('http'):  # If it's a URL
-                #         response = requests.get(filepath)
-                #         response.encoding = 'utf-8'  # Ensure correct encoding
-                #         content_type = response.headers.get('Content-Type', '')
-                #         log.debug(content_type)
-                #         # Ensure content type is JSON
-                #         if 'application/json' in content_type or 'application/octet-stream' in content_type:
-                #             json_data = StringIO(response.text)
-                #             data_df = pd.read_json(json_data)
-                #         else:
-                #             try:
-                #                 json_obj = json.loads(response.text)
-                #                 data_df = pd.json_normalize(json_obj)
-                #                 log.debug("Parsed as JSON despite invalid Content-Type")
-                #             except json.JSONDecodeError:
-                #                 log.debug("Expected JSON but received:")
-                #                 log.debug("Response content preview:")
-                #                 raise ValueError("Unsupported Content-Type and invalid JSON")                                
-                #     else:  # If it's a file path
-                #         data_df = pd.read_json(filepath)
-
-                #     # Convert DataFrame to list of lists
-                #     data = data_df.values.tolist()                  
-                #     log.debug('--Data successfully read--')
-                #     # log.debug(data)
-                # except ValueError as e:
-                #     log.debug("Error parsing JSON")
-                #     data = []
-                # except json.JSONDecodeError as e:
-                #     log.debug("Error decoding JSON")
-                #     log.debug("Response content")
-                #     log.debug(response.content)
-                #     data = []
-                # except Exception as e:
-                #     log.debug("Unexpected error occurred")
-                #     data = []
             elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
                 # log.debug('--Reading XLSX data--')
                 try:
@@ -1890,252 +1819,13 @@ class ResourceFetchData2(object):
             # log.debug(data)
         finally:
             # ลบไฟล์ด้วยตัวเอง
-            tmp_file.close()       # ปิดไฟล์ก่อน
-            os.remove(tmp_file.name)  # ลบไฟล์
+            tmp_file.close()       
+            os.remove(tmp_file.name)  
             # log.debug("----Temp file deleted:----")
             # log.debug(tmp_file.name)
             # log.debug("---dir tempfile----")
             # log.debug(os.listdir(tempfile.gettempdir()))
         return data
-    # def _download_resource_from_url(self, url, headers=None):
-        
-    #     #---------------------------------------
-    #     data = []
-    #     log.debug('----resource format-----')
-    #     filepath = url #self.resource['url']
-    #     format_url = filepath.split(".")[-1]
-    #     log.debug('----mimetype:_download_resource_from_url-----')
-    #     mimetype = ResourceFetchData2.detect_mimetype(filepath)
-    #     log.debug(filepath)
-    #     log.debug(mimetype)  
-    #     timeout = 5
-    #     n_rows = 5001
-    #     headers = {"User-Agent": "Mozilla/5.0"}     
-    #     try:
-    #         response = self.get_response(url, {})
-    #         # response = requests.get(filepath, headers=headers, timeout=30)
-    #         # response.raise_for_status()  # ถ้าโหลดไม่สำเร็จจะ raise error
-    #     except requests.exceptions.RequestException as e:
-    #         log.debug("Cannot download file ----:", e)
- 
-    #     if self.is_url_file(filepath,timeout) and response.status_code == 200 :
-    #         log.debug('----read temp file-----')
-    #         log.debug(mimetype)
-    #         filename = url.split('/')[-1].split('#')[0].split('?')[0]
-    #         tmp_file = tempfile.NamedTemporaryFile(suffix=filename)
-
-    #         length = 0
-    #         m = hashlib.md5()
-    #         raw_data = b''
-
-    #         for chunk in response.iter_content(CHUNK_SIZE):
-    #             length += len(chunk)
-    #             if length > MAX_CONTENT_LENGTH:
-    #                 response.close()
-    #                 raise DataTooBigError("File too large")
-    #             tmp_file.write(chunk)
-    #             raw_data += chunk
-    #             m.update(chunk)
-
-    #         response.close()
-    #         tmp_file.seek(0)
-
-    #         # --- Detect encoding ---
-    #         result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
-    #         encoding = result['encoding'] or 'utf-8'
-    #         log.debug(f"Detected encoding: {encoding}")
-    #         # response = self.get_response(url, {})
-    #         # length = 0
-    #         # m = hashlib.md5()
-    #         # cl = None
-    #         # for chunk in response.iter_content(CHUNK_SIZE):
-    #         #     length += len(chunk)
-    #         #     if length > MAX_CONTENT_LENGTH:
-    #         #         raise DataTooBigError
-    #         #     tmp_file.write(chunk)
-    #         #     m.update(chunk)
-    #         # response.close()
-    #         # tmp_file.seek(0)
-
-
-    #         if(mimetype == 'text/csv'): #(resource_format =='CSV'):
-    #             log.debug('----csv----')     
-    #             # log.debug(filepath)
-    #             #-----------------------------------      
-    #             try:
-    #                 log.debug('--Reading CSV from temp--')
-    #                 reader = csv.reader(io.TextIOWrapper(tmp_file, encoding=encoding, newline='')) #'utf-8'
-    #                 records_read = 0
-    #                 for row in reader:
-    #                     data.append(row)
-    #                     records_read += 1
-    #                     if records_read >= n_rows:
-    #                         break
-    #                 # log.debug(data)
-    #             except UnicodeDecodeError:
-    #                 log.debug("An UnicodeDecodeError occurred")
-    #                 data = self._fetch_data_datastore_defined_row(self.resource) 
-    #             except Exception as e:
-    #                 log.debug("An error occurred, use CKAN datastore to readfile: %s", e)
-    #                 data = self._fetch_data_datastore_defined_row(self.resource) 
-       
-                
-    #         elif(mimetype == 'application/json'): #elif(resource_format == 'JSON'):
-    #             # log.debug('--Read JSON data--')
-    #             # try:
-    #             #     data_chunks = []
-    #             #     log.debug('--chank--')
-    #             #     for chunk in pd.read_json(filepath, lines=True, chunksize=n_rows):
-    #             #         data_chunks.append(chunk)
-    #             #         # Break the loop if the specified number of rows have been read
-    #             #         if len(data_chunks) * n_rows >= n_rows:
-    #             #             break
-    #             #     # Concatenate the data chunks into a single DataFrame
-    #             #     data_df = pd.concat(data_chunks, ignore_index=True)
-    #             #     data = data_df.values.tolist()
-    #             #     log.debug('--chank2--')  
-    #             #     log.debug(data)            
-    #             # except ValueError as e:
-    #             #     log.debug("Error parsing JSON")
-    #             #     log.debug(e)
-    #             #     log.debug("Response content")
-    #             #     log.debug(response.content)
-    #             #     data = []
-    #             #-------------\
-    #             # data = []
-    #             # try:
-    #             #     # Read the entire JSON file into a DataFrame
-    #             #     log.debug('--Reading JSON file--')
-    #             #     data_df = pd.read_json(filepath)  # Read the entire JSON content into a DataFrame
-                    
-    #             #     # Convert DataFrame to list of lists
-    #             #     data = data_df.values.tolist()
-                    
-    #             #     log.debug('--Data successfully read--')
-    #             #     log.debug(data)
-    #             data = []
-    #             try:
-    #                 log.debug('--Reading JSON data--')
-                    
-    #                 # Check if the filepath is a URL or a file path
-    #                 if filepath.startswith('http'):  # If it's a URL
-    #                     response = requests.get(filepath)
-    #                     response.encoding = 'utf-8'  # Ensure correct encoding
-    #                     content_type = response.headers.get('Content-Type', '')
-    #                     log.debug(content_type)
-    #                     # Ensure content type is JSON
-    #                     if 'application/json' in content_type or 'application/octet-stream' in content_type:
-    #                     # if 'application/json' in response.headers.get('Content-Type', ''):
-    #                         # Use `pd.read_json` with a StringIO object for URL content
-    #                         json_data = StringIO(response.text)
-    #                         data_df = pd.read_json(json_data)
-    #                     else:
-    #                         try:
-    #                             json_obj = json.loads(response.text)
-    #                             data_df = pd.json_normalize(json_obj)
-    #                             log.debug("Parsed as JSON despite invalid Content-Type")
-    #                         except json.JSONDecodeError:
-    #                             log.debug("Expected JSON but received:")
-    #                             log.debug("Response content preview:")
-    #                             raise ValueError("Unsupported Content-Type and invalid JSON")                                
-    #                 else:  # If it's a file path
-    #                     data_df = pd.read_json(filepath)
-
-    #                 # Convert DataFrame to list of lists
-    #                 data = data_df.values.tolist()                  
-    #                 log.debug('--Data successfully read--')
-    #                 # log.debug(data)
-    #             except ValueError as e:
-    #                 log.debug("Error parsing JSON")
-    #                 data = []
-    #             except json.JSONDecodeError as e:
-    #                 log.debug("Error decoding JSON")
-    #                 log.debug(e)
-    #                 log.debug("Response content")
-    #                 log.debug(response.content)
-    #                 data = []
-    #             except Exception as e:
-    #                 log.debug("Unexpected error occurred")
-    #                 log.debug(e)
-    #                 data = []
-    #         elif(mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
-    #             log.debug('--Reading XLSX data--')
-    #             try:
-    #                 wb = load_workbook(filename=tmp_file)
-    #                 # Get the last worksheet instead of the active one
-    #                 last_sheet_name = wb.sheetnames[-1]
-    #                 ws = wb[last_sheet_name]  # Get the last worksheet
-    #                 # Iterate over rows and cells to read the data
-    #                 records_read = 0
-    #                 for row in ws.iter_rows(values_only=True):
-    #                     data.append(row)
-    #                     records_read += 1
-    #                     if records_read >= n_rows:
-    #                         break
-    #                 # if  ResourceFetchData2.has_valid_filename(filepath,'.xlsx'):
-    #                 #     log.debug('--load_workbook--')
-    #                 #     # Load the workbook from the temporary file
-    #                     # wb = load_workbook(filename=BytesIO(response.content), read_only=True)
-
-    #                     # # Get the last worksheet instead of the active one
-    #                     # last_sheet_name = wb.sheetnames[-1]
-    #                     # ws = wb[last_sheet_name]  # Get the last worksheet
-    #                     # # Iterate over rows and cells to read the data
-    #                     # records_read = 0
-    #                     # for row in ws.iter_rows(values_only=True):
-    #                     #     data.append(row)
-    #                     #     records_read += 1
-    #                     #     if records_read >= n_rows:
-    #                     #         break
-    #                     # # log.debug(data)
-    #                     # # log.debug("end readfile--")
-    #                     # wb.close()
-    #                 # else:
-    #                 #     log.debug('--data store--')
-    #                 #     data = self._fetch_data_datastore_defined_row(self.resource)           
-                       
-    #             except Exception as e:
-    #                 log.debug("An error occurred, use CKAN datastore to readfile", e)
-    #                 data = self._fetch_data_datastore_defined_row(self.resource)
-    #                 # try:
-    #                 #     data_df = pd.read_excel(filepath) 
-    #                 #     if data_df is not None:
-    #                 #         data = data_df.values.tolist()
-    #                 #         data[:0] = [list(data_df.keys())]
-    #                 # except Exception as e:
-    #                 #     log.debug("An error occurred:", e)
-    #                 #     data = []
-    #         elif(mimetype == 'application/vnd.ms-excel'):
-    #             log.debug('--Reading XLS data--')
-    #             try:
-    #                 file_bytes = tmp_file.read()
-    #                 book = xlrd.open_workbook(file_contents=file_bytes)
-    #                 # book = xlrd.open_workbook(filename=BytesIO(tmp_file))
-    #                 # เลือก sheet สุดท้าย
-    #                 last_sheet_index = book.nsheets - 1
-    #                 sheet = book.sheet_by_index(last_sheet_index)
-    #                 # sheet = book.sheet_by_index(0)
-    #                 data = [sheet.row_values(i) for i in range(sheet.nrows)]
-
-    #                 # if  ResourceFetchData2.has_valid_filename(filepath,'.xls'):
-    #                 #     book = xlrd.open_workbook(file_contents=response.content)
-    #                 #     # เลือก sheet สุดท้าย
-    #                 #     last_sheet_index = book.nsheets - 1
-    #                 #     sheet = book.sheet_by_index(last_sheet_index)
-    #                 #     # sheet = book.sheet_by_index(0)
-    #                 #     data = [sheet.row_values(i) for i in range(sheet.nrows)]
-    #                 # else: 
-    #                 #     log.debug('--data store--')
-    #                 #     data = self._fetch_data_datastore_defined_row(self.resource)
-    #             except Exception as e:
-    #                 log.debug("An error occurred, use CKAN datastore to readfile", e)
-    #                 data = self._fetch_data_datastore_defined_row(self.resource)
-    #         else:
-    #             data = []
-    #     else:
-    #         log.debug('----is_not_url_file-----')
-    #         data = []
-    #     return data
 
     def is_url_file(self,url,timeout=5):
         try:
@@ -2285,21 +1975,6 @@ class ResourceFetchData2(object):
             }
             ext = os.path.splitext(filename_to_check)[1].lower()
             mimetype = mimetype_map.get(ext, 'application/octet-stream') #'application/octet-stream'
-            # ext = os.path.splitext(filename_to_check)[1].lower()
-            # if ext == '.xls':
-            #     mimetype = 'application/vnd.ms-excel'
-            # elif ext == '.xlsx':
-            #     mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            # elif ext == '.csv':
-            #     mimetype = 'text/csv'
-            # elif ext == '.json':
-            #     mimetype = 'application/json'
-            # elif ext == '.pdf':
-            #     mimetype = 'application/pdf'
-            # else:
-            #     mimetype = 'application/octet-stream'  # fallback
-
-            # log.debug(f"Determined mimetype from extension '{ext}': {mimetype}")
 
         except Exception as e:
             log.debug("Error fetching header:")
@@ -2355,48 +2030,7 @@ class ResourceFetchData2(object):
                 else:
                     data = []
                 return data
-            # if self.is_url_file(filepath):
-            #     response = requests.get(filepath)
-            #     response.raise_for_status()  # Raise an exception for bad status codes
-            #     if(resource_format == 'CSV'):
-            #         data = response.content.decode('utf-8')  # Decode content to string
-            #         data_df = pd.read_csv(io.StringIO(data))  # Read CSV data into a DataFrame
-            #         if data_df is not None:
-            #             data = data_df.values.tolist()
-            #             data[:0] = [list(data_df.keys())]
-                        
-            #     elif(resource_format == 'JSON'):
-            #         try:
-            #             data_json = response.json()
-            #             data_json = pd.read_json(filepath)
-            #             if data_json is not None:
-            #                 data_df = pd.DataFrame(data_json)
-            #                 data = data_df.values.tolist()
-            #                 data[:0] = [list(data_df.keys())]
-                                  
-            #         except ValueError as e:
-            #                 print('ValueError = ', e)
-            #                 data = []
-
-            #     elif(resource_format == 'XLSX' or resource_format == 'XLS'): 
-            #         try:
-            #             excel_data = io.BytesIO(response.content)         
-            #             dataframe = openpyxl.load_workbook(excel_data)  # Load Excel file using openpyxl
-            #             # Define variable to read sheet
-            #             dataframe1 = dataframe.active
-            #             # Iterate the loop to read the cell values
-            #             for row in range(0, dataframe1.max_row):
-            #                 data_row = []
-            #                 for col in dataframe1.iter_cols(1, dataframe1.max_column):
-            #                     data_row.append(col[row].value)
-            #                 data.append(data_row)
-
-            #         except Exception as e:
-            #             print("An error occurred:", e)
-            #             data = []
-            #     else:
-            #         data = []
-            #     return data
+        
             else:
                 # The worker is not in the same machine as CKAN, so it cannot
                 # read the resource files from the local file system.
@@ -2764,13 +2398,13 @@ class Openness():#DimensionMetric
             * `total`, `int`, total number of values expected to be populated.
             * `complete`, `int`, number of cells that have value.
         '''
+        log.debug('Openness detected_format')
         data_format = resource['format']
         resource_url = resource['url'] 
         # ใช้ logic กลางในการตรวจจับ format
         mimetype = ResourceFetchData2.detect_mimetype(resource_url)
         data_quality = DataQualityMetrics()
-        detected_format = data_quality.convert_mimetype_to_format(mimetype, data_format, resource_url)
-        log.debug('Openness detected_format')
+        detected_format = data_quality.convert_mimetype_to_format(mimetype, data_format, resource_url)     
         log.debug(mimetype)
         log.debug(detected_format)
         # ถ้า detected_format เป็น None หรือ empty ให้ใช้ logic เดิม
