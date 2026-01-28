@@ -5,7 +5,6 @@ import ckan.plugins.toolkit as toolkit, os
 import ckan.lib.jobs as jobs, uuid, time
 from logging import getLogger
 from datetime import datetime, date
-# from ckan.common import config
 from ckan.model import package_table, Session, Package, Group, Resource
 from ckanext.opendquality.model import DataQualityMetrics as DQM , JobDQ
 import ckanext.opendquality.quality as quality_lib
@@ -13,22 +12,14 @@ import ckan.lib.helpers as h
 from sqlalchemy import and_, literal, case, func, Date, cast, desc
 from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top, get_openness_score, get_openness_counts, get_validity_counts, get_quality_counts, get_resource_format_counts
 from ckanext.opendquality.cli.quality import calculate as quality_cli, get_parent_organization, get_org_id_from_name
-# from ckanext.myorg import helpers as myh
-# from ckanext.opendquality.quality import (
-#     Completeness,
-#     DataQualityMetrics
-# )
+
 log = getLogger(__name__)
 qa = Blueprint('opendquality', __name__, url_prefix="/qa")
 dquality = quality_lib.OpendQuality()
-# metrics  = quality_lib.DataQualityMetrics()#metrics=calculators
+
+
 as_agency = toolkit.asbool(os.environ.get('CKANEXT__OPENDQUALITY__AGENT', toolkit.config.get('ckanext.opendquality.agent', True)))
 enpoint_public = os.environ.get('CKANEXT__OPENDQUALITY__PUBLIC_ENDPOINTS', toolkit.config.get('ckanext.opendquality.public_endpoints', ''))
-# EXEMPT_ENDPOINTS = {
-#     # 'opendquality.index',
-#     'opendquality.admin_report',
-#     'opendquality.dashboard',
-# }
 EXEMPT_ENDPOINTS = set(enpoint_public.split(' ') if enpoint_public else [])
 EXEMPT_ENDPOINTS.add('opendquality.index')
 
@@ -110,7 +101,7 @@ def build_agency_orgs():
     return rows
 
 def build_hierachy_with_orgs():
-    # 1) เลือกลำดับคอลัมน์ให้ถูก: ... org_id, org_name
+    
     rows = (
         Session.query(
             JobDQ.org_parent_id,
@@ -128,7 +119,7 @@ def build_hierachy_with_orgs():
     pairs = [] 
 
     for pid, pname, cid, cname in rows:
-        # 2) sanitize กัน None/ช่องว่าง และบังคับเป็น str
+        
         pid_s = str(pid).strip() if pid is not None else ""
         cid_s = str(cid).strip() if cid is not None else ""
         pname_s = (pname or "").strip()
@@ -144,7 +135,6 @@ def build_hierachy_with_orgs():
     if not parent_ids:
         return [], {}
 
-    # 3) ดึงชื่อไทยจากตาราง group ทีเดียว
     all_ids = list(parent_ids | child_ids)
     groups = (
         Session.query(Group)
@@ -162,7 +152,6 @@ def build_hierachy_with_orgs():
             return (g.title or g.name or fallback_name or fallback_id)
         return (fallback_name or fallback_id)
 
-    # 4) parents
     parents = []
     for pid in sorted(parent_ids):  # ทุกอย่างเป็น str แล้ว sort ได้
         g = gmap.get(pid)
@@ -185,7 +174,6 @@ def build_hierachy_with_orgs():
         }
         children_by_parent.setdefault(pid, []).append(item)
 
-    # 6) dedup + sort
     parents.sort(key=lambda x: (x['title'] or '').lower())
     for pid, lst in list(children_by_parent.items()):
         dedup = {it['id']: it for it in lst}   # ← แก้ชื่อให้ถูก
@@ -226,15 +214,11 @@ def make_group_query_main():
 #---------------------Call calculate---------------------------------
 #--------------------------------------------------------------------
 def calculate(dataset, dimension):
-    # _register_mock_translator()
-    # dimensions = ['completeness','uniqueness','timeliness','validity','accuracy','consistency']
     dimensions = ['completeness','uniqueness','validity','consistency','openness','downloadable']
     dimension_calculators = {
         'completeness': quality_lib.Completeness(),
         'uniqueness'  : quality_lib.Uniqueness(),
-        # 'timeliness'  : quality_lib.Timeliness(),
         'validity'    : quality_lib.Validity(),
-        # 'accuracy'    : quality_lib.Accuracy(),
         'consistency' : quality_lib.Consistency(),
         'openness'    : quality_lib.Openness(),
         'downloadable' : quality_lib.Downloadable(),
@@ -343,28 +327,12 @@ def cancel_job():
             return toolkit.redirect_to('opendquality.index')
     
         return toolkit.redirect_to('opendquality.index')
-    # job = Session.query(JobDQ).filter(JobDQ.job_id == job_id).first()
-    # if job and job.status in ['queued', 'running']:
-    #     job.status = 'cancelled'
-    #     Session.commit()
-    #     return True
-    # return False
-    # request.form.get('job_id')
     return toolkit.redirect_to('opendquality.index')
-    # return {'msg': 'Cancel Job', 'data': request.form.get('job_id')}
 
 def delete_job():
     if h.check_access('sysadmin') is False:
         # return toolkit.redirect_to('opendquality.dashboard')
         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
-    # job = Session.query(JobDQ).filter(JobDQ.job_id == job_id).first()
-    # if job:
-    #     # delete associated DQM records
-    #     Session.query(DQM).filter(DQM.job_id == job_id).delete()
-    #     Session.delete(job)
-    #     Session.commit()
-    #     return True
-    # return False
     if request.method == 'POST':
         if request.form.get('job_id') is not None:
             from ckanext.opendquality.cli.quality import _del_metrict as del_metric
@@ -444,7 +412,6 @@ def home():
         'enpoint_public': EXEMPT_ENDPOINTS,
         'calc_orgs': orgs_cal,
         'qa_jobs': qa_jobs,
-        # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/index.html', extra_vars)
 
@@ -769,31 +736,17 @@ def dashboard(org_id=None):
         'ckan_version': toolkit.config.get('ckan.version'),
         'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
         'enpoint_public': EXEMPT_ENDPOINTS,
-        # 'external_dashboard': external_stats
     }
     return toolkit.render('ckanext/opendquality/dashboard.html', extra_vars)
 
 def calculate_quality(): #completeness
     return {'msg': 'calculate quality score',
             'score': dquality.get_last_modified_datasets(),
-            'metric': calculate('all','all')
-            # 'metric': calculate('bird','all')
-            # metrics.calculate('bird','completeness')
-            #metrics.calculate_metrics_for_dataset('bird')  
+            'metric': calculate('all','all') 
     }
-
-def quality_reports():
-    return {'msg': 'quality reports'}
-# def top_package_owners(limit=100, page=1):
-#     return {
-#         u'opendstats_data': stats.top_package_owners(),
-#         u'opendstats_page': 'top_package_owners'
-#     }
 
 qa.add_url_rule('/', endpoint="index", view_func=home, methods=['GET', 'POST'])
 qa.add_url_rule('/calculate', endpoint="index", view_func=home, methods=['GET', 'POST'])
-# qa.add_url_rule('/calculate_quality', view_func=calculate_quality)
-# qa.add_url_rule('/reports', endpoint="reports", view_func=quality_reports)
 qa.add_url_rule('/admin_report', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/admin_report/<org_id>', endpoint="admin_report", view_func=admin_report)
 qa.add_url_rule('/dashboard', endpoint="dashboard", view_func=dashboard)
