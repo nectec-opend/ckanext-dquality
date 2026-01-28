@@ -10,15 +10,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) Checkout (ใช้ของ GitHub Actions ให้ตรง branch ที่ push)
       - name: Checkout repository
-        run: |
-          git clone -b dev_qualityv2 https://github.com/nectec-opend/ckanext-opendquality.git .
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # สำคัญกับ SonarQube
 
+      # 2) Install Java
       - name: Install Java
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk
 
+      # 3) Install SonarScanner
       - name: Install SonarScanner
         run: |
           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
@@ -26,6 +30,13 @@ jobs:
           SONAR_DIR=$(ls -d sonar-scanner-*)
           echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
 
+      # 4) Check sonar-scanner
+      - name: Check sonar-scanner
+        run: |
+          which sonar-scanner
+          sonar-scanner --version
+
+      # 5) Run SonarQube Scan (ผูก branch ให้ชัด)
       - name: Run SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -33,9 +44,9 @@ jobs:
           sonar-scanner \
             -Dsonar.projectKey=ckanext-opendquality2 \
             -Dsonar.sources=. \
-            -Dsonar.branch.name=dev_qualityv2 \
             -Dsonar.host.url=http://164.115.20.162:9000 \
-            -Dsonar.token=$SONAR_TOKEN
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.branch.name=dev_qualityv2
 
 #---------
 # name: Build
