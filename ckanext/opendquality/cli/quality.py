@@ -817,7 +817,7 @@ def _stop_job(job_id):
 
     log.info(f"[STOP] Request to stop job_id={job_id}")
 
-    # 1) หา job record จาก DB -----------------------------------------
+    # 1) หา job ปัจจุบัน ----------------------------------------------
     job_record = (
         Session.query(job_table)
         .filter(job_table.job_id == job_id)
@@ -825,35 +825,76 @@ def _stop_job(job_id):
     )
 
     if not job_record:
-        click.echo(f"Job '{job_id}' not found in job_table.")
+        click.echo(f"Job '{job_id}' not found.")
         return
 
     if job_record.status in ["finish", "fail", "cancel"]:
-        click.echo(f"Job '{job_id}' already {job_record.status}. Nothing to stop.")
+        click.echo(
+            f"Job '{job_id}' already {job_record.status}. Nothing to stop."
+        )
         return
 
-    # 2) Update DB - เปลี่ยนแค่ status
-    if job_record.status in ["running", "pending"]:
-        try:
-            #  เปลี่ยนแค่ status เป็น cancel_requested
-            # ไม่ต้องตั้ง finish_timestamp และ active ตอนนี้
-            # ให้ worker เป็นคนตั้งเอง
-            old_status = job_record.status
-            job_record.status = "cancel_requested"
-            Session.commit()
-            
-            log.info(f"[STOP] Job {job_id} status changed: {old_status} -> cancel_requested")
-            click.echo(f"  Stop request sent for job '{job_id}'")
-            click.echo(f"  Status: {old_status} -> cancel_requested")
-            click.echo(f"  The worker will stop processing and update the final status.")
-            
-        except Exception as e:
-            Session.rollback()
-            log.error(f"[STOP] DB update failed: {e}")
-            click.echo(f"✗ DB update failed: {e}")
-            return
-    else:
-        click.echo(f"Job '{job_id}' has status '{job_record.status}' - cannot stop.")
+    if job_record.status not in ["running", "pending"]:
+        click.echo(
+            f"Job '{job_id}' has status '{job_record.status}' - cannot stop."
+        )
+        return
+
+    try:
+        old_status = job_record.status
+
+        # 2) cancel job ปัจจุบัน ---------------------------------------
+        job_record.status = "cancel_requested"
+        job_record.active = False
+        Session.flush()
+
+        log.info(
+            f"[STOP] Job {job_id} status changed: "
+            f"{old_status} -> cancel_requested"
+        )
+
+        # 3) หา job ก่อนหน้าที่ finish --------------------------------
+        prev_finished_job = (
+            Session.query(job_table)
+            .filter(
+                job_table.org_name == job_record.org_name,
+                job_table.run_type == job_record.run_type,
+                job_table.status == "finish",
+                job_table.job_id != job_record.job_id
+            )
+            .order_by(job_table.requested_timestamp.desc())
+            .first()
+        )
+
+        if prev_finished_job:
+            prev_finished_job.active = True
+            log.info(
+                f"[STOP] Rollback active job to "
+                f"job_id={prev_finished_job.job_id}, "
+                f"org_name={prev_finished_job.org_name}"
+            )
+            click.echo(
+                f"  Active reverted to job '{prev_finished_job.job_id}' "
+                f"(finish)"
+            )
+        else:
+            log.warning(
+                f"[STOP] No previous finished job found "
+                f"for org_name={job_record.org_name}"
+            )
+            click.echo(
+                "  Warning: no previous finished job to activate."
+            )
+
+        Session.commit()
+
+        click.echo(f" Stop request sent for job '{job_id}'")
+        click.echo(f" Status: {old_status} -> cancel_requested")
+
+    except Exception as e:
+        Session.rollback()
+        log.error(f"[STOP] DB update failed: {e}")
+        click.echo(f" DB update failed: {e}")
 
 def _calculate(job_id=None, dataset=None, organization=None, dimension='all'):
     log.debug('Starting data quality metrics calculation')
