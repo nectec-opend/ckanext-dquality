@@ -1,0 +1,222 @@
+{% extends "my_page.html" %}
+{% import 'macros/form.html' as form %}
+
+{% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+{% asset "dquality/datatables-css" %}
+{% asset "dquality/dquality-css" %}
+{% endblock %}
+
+{% block breadcrumb_content %}
+<li class="active">{{ _('Data Quality') }}</li>
+{% endblock %}
+
+{% block secondary_content %}
+{% include "ckanext/dquality/left_side.html" %}
+{% endblock %}
+
+{% block page_header %}
+{% endblock %}
+{% block primary_content_inner %}
+<h1>{{ title }}</h1>
+<div class="row table-responsive">
+  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('dquality.admin_report') }}">
+    {% include "ckanext/dquality/qa_filter_form.html" %}
+    <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
+    <button type="button" id="export-btn" class="btn btn-success">Export</button>
+    <button type="button" id="export-all-btn" class="btn btn-warning" alt="export data quality result package and resouce">Export All
+    </button>
+  </form>
+</div>
+<hr>
+<div class="row table-responsive" style="position: relative; z-index: 2;">
+  <table id="tb-qa-result" class="table table-bordered table-striped" data-module="qa-datatables">
+    <thead>
+      <tr>
+        <th>{{_("#")}}</th>
+        <th>{{ _("รหัสชุดข้อมูล") }}</th>
+        <th>{{ _("ชื่อชุดข้อมูล") }}</th>
+        {%if quality_type == 'resource'%}
+        <th>{{ _("รหัสทรัพยากร") }}</th>
+        <th>{{ _("ชื่อทรัพยากร") }}</th>
+        {% endif %}
+        <th>{{ _("ชื่อหน่วยงาน") }}</th>
+        <th>{{ _("openess") }}</th>
+        <th>{{ _("timeliness") }}</th>
+        <th>{{ _("acc_latency") }}</th>
+        <th>{{ _("freshness") }}</th>
+        <th>{{ _("availability") }}</th>
+        <th>{{ _("downloadable") }}</th>
+        <th>{{ _("access_api") }}</th>
+        <th>{{ _("relevance") }}</th>
+        <th>{{ _("utf8") }}</th>
+        <th>{{ _("preview") }}</th>
+        <th>{{ _("completeness") }}</th>
+        <th>{{ _("uniqueness") }}</th>
+        <th>{{ _("validity") }}</th>
+        <th>{{ _("consistency") }}</th>
+        <th>{{ _("error") }}</th>
+        <th>{{ _("url") }}</th>
+        <th>{{ _("metrics") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for report in reports %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ report.package_id }}</td>
+        <td><a href="{{ h.url_for('dquality.admin_report',org_id=report.org_id, package_id=report.package_id, org_main=report.org_parent_id, org_sub=report.org_id, ver_selected=selected_version) }}"
+            target="qa-link">{{ report.package_title }}</a></td>
+        {%if quality_type == 'resource'%}
+        <td>{{ report.resource_id }}</td>
+        <td>{{ report.resource_name }}</td>
+        {% endif %}
+        <td>{{ report.org_title }}</td>
+        <td>{{ report.openness }}</td>
+        <td>{{ report.timeliness }}</td>
+        <td>{{ report.acc_latency }}</td>
+        <td>{{ report.freshness }}</td>
+        <td>{{ report.availability }}</td>
+        <td>{{ report.downloadable }}</td>
+        <td>{{ report.access_api }}</td>
+        <td>{{ report.relevance }}</td>
+        <td>{{ report.utf8 }}</td>
+        <td>{{ report.preview }}</td>
+        <td>{{ report.completeness }}</td>
+        <td>{{ report.uniqueness }}</td>
+        <td>{{ report.validity }}</td>
+        <td>{{ report.consistency }}</td>
+        <td>
+          {% if report.error %}
+            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#errorModal"
+              data-error='{{ report.error | safe }}'>
+              Show Error
+            </button>
+          {% else %}
+            No Error
+          {% endif %}
+        </td>
+        <td>
+          {% if report.url %}
+            <a href="{{ report.url | safe }}">Resource URL</a>
+          {% endif %}
+        </td>
+        <td>
+          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#jsonModal"
+            data-json='{{ report.metrics |tojson | safe }}'>
+            Show Metrics
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+  </table>
+</div>
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="errorModalLabel">Error</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="error-content" class="bg-light p-3 rounded small text-break"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="jsonModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="jsonModalLabel">Metrics Data</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="json-content" class="bg-light p-3 rounded small text-break"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% asset "dquality/datatables-js" %}
+<!-- <script>
+  new DataTable('#tb-qa-result', {
+    responsive: true,
+    language: {
+      url: "//cdn.datatables.net/plug-ins/2.0.0/i18n/th.json"
+    }
+  });
+</script> -->
+<script>
+  {% if parents is not none %}
+    window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};
+  {% endif %}
+  window.SUB_DEFAULT_LABEL  = {{ _('-- เลือกหน่วยงาน --') | tojson }};
+  window.SUB_SELECTED       = "{{ selected_sub }}";
+  const versions = {{ versions | tojson | safe }};
+  var selected_version = "{{ selected_version }}";
+</script>
+
+<script>
+  // ✅ Modal JSON Preview
+  document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('jsonModal');
+    modal.addEventListener('show.bs.modal', function (event) {
+      var button = event.relatedTarget;
+      var rawJson = button.getAttribute('data-json');
+      try {
+        var jsonObj = JSON.parse(rawJson);
+        var formatted = JSON.stringify(jsonObj, null, 2);
+        document.getElementById('json-content').textContent = formatted;
+      } catch (e) {
+        document.getElementById('json-content').textContent = 'Invalid JSON';
+      }
+    });
+  });
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('errorModal');
+    modal.addEventListener('show.bs.modal', function (event) {
+      var button = event.relatedTarget;
+      var textError = button.getAttribute('data-error');
+      try {
+        // var jsonObj = JSON.parse(rawJson);
+        // var formatted = JSON.stringify(jsonObj, null, 2);
+        document.getElementById('error-content').textContent = textError;
+      } catch (e) {
+        document.getElementById('error-content').textContent = 'Invalid JSON';
+      }
+    });
+  });
+
+  // ✅ ปุ่ม Export ให้ใช้ id จริง ๆ ของ org_main/org_sub
+  // document.getElementById('export-btn').addEventListener('click', function () {
+  document.querySelectorAll('#export-btn, #export-all-btn').forEach( btn => {
+    btn.addEventListener('click', function () {
+    const orgSub = document.getElementById('org_sub').value;
+    const verSel = document.getElementById('ver_selected').value;
+    const params = new URLSearchParams(window.location.search);
+    const packageId = params.get('package_id');
+
+    let url = '/qa/admin_report';
+    // if (orgMain) url += `/${encodeURIComponent(orgMain)}`;
+    if (orgSub) url += `/${encodeURIComponent(orgSub)}`;
+
+    const query = [];
+    if (packageId) query.push(`package_id=${encodeURIComponent(packageId)}`);
+    if (verSel) query.push(`ver_selected=${encodeURIComponent(verSel)}`)
+    query.push('export=1');
+    if (this.id === 'export-all-btn') {
+      query.push('export_all=1');
+    }
+
+    window.location.href = url + '?' + query.join('&');
+    });
+  });
+</script>
+{% endblock %}

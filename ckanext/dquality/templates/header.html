@@ -1,0 +1,12 @@
+{% ckan_extends %}
+
+{% block header_account_logged %} {% if c.user %}
+<li>
+  <a href="{{ h.url_for('dquality.index') }}" title="{{ _('Data Quality') }}">
+    <i class="fa fa-bank" aria-hidden="true"></i>
+    <span class="text">{{ _('Data Quality') }}</span>
+  </a>
+</li>
+{% endif %}
+{{ super() }}
+{% endblock %}

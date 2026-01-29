@@ -1,0 +1,62 @@
+{{ h.csrf_input() }}
+    {% if parents is not none %}
+      {%- set options=[] -%}
+      {% if not admin_report %}
+        {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงานหลัก --')}) -%}
+      {% endif %}
+      {%- for p in parents -%}
+        {%- do options.append({'value': p.id|string, 'text': p.title}) -%}
+      {%- endfor -%}
+      {{ form.select(
+      'org_main',
+      label=_('หน่วยงานหลัก'),
+      selected=selected_main,
+      options=options,
+      classes=["col-3"],
+      id='org_main',
+      attrs={'data-module': 'autocomplete'},
+      error={}
+      )}}
+    {% endif %}
+    
+
+    {%- set options=[] -%}
+    {%- do options.append({'value': '', 'text': _('-- เลือกหน่วยงาน --')}) -%}
+    {% if sub_options %}
+    {%- for c in sub_options -%}
+    {%- do options.append({'value': c.id|string, 'text': c.title}) -%}
+    {%- endfor -%}
+    {% endif %}
+    {{ form.select(
+    'org_sub',
+    label=_('หน่วยงาน'),
+    selected=selected_sub,
+    options=options,
+    classes=["col-3"],
+    id='org_sub',
+    attrs={'data-module': 'autocomplete'},
+    error={}
+    )}}
+
+    {%- set options=[] -%}
+    {% if sub_options %}
+    {%- for vs in version_options -%}
+    {%- do options.append({'value': vs.value|string, 'text': vs.label}) -%}
+    {%- endfor -%}
+    {% endif %}
+    {{ form.select(
+    'ver_selected',
+    label=_('วันที่ตรวจ'),
+    selected=selected_version,
+    options=options,
+    classes=["col-3"],
+    id='ver_selected',
+    attrs={'style': 'display: none' if selected_sub is none else '', 'data-module': 'autocomplete'},
+    error={}
+    )}}
+
+    {% if selected_sub is none %}
+      <style>
+        label[for="ver_selected"] { display: none; }
+      </style>
+    {% endif %}

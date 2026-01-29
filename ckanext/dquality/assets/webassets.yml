@@ -1,0 +1,29 @@
+dquality-js:
+  filter: rjsmin
+  output: ckanext-dquality/%(version)s-dquality.js
+  contents:
+    - js/chart.min.js
+    - js/qa_radar.js
+    - js/dquality.js
+#   extra:
+#     preload:
+#       - base/main
+datatables-js:
+  filter: rjsmin
+  output: ckanext-dquality/%(version)s-datatables.js
+  contents:
+    - datatables/datatables.js
+    - datatables/datatables-bs5.js
+    - js/dquality.js
+
+dquality-css:
+  filter: cssrewrite
+  output: ckanext-dquality/%(version)s-dquality.css
+  contents:
+    - css/dquality.css
+
+datatables-css:
+  filter: cssrewrite
+  output: ckanext-dquality/%(version)s-datatables.css
+  contents:
+    - datatables/datatables.css

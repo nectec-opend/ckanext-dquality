@@ -1,0 +1,365 @@
+{% extends "my_page.html" %}
+{% import 'macros/form.html' as form %}
+
+{% block subtitle %}{{ _("Data Quality") }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+{% asset "dquality/dquality-css" %}
+{% endblock %}
+
+{% block breadcrumb_content %}
+<li class="active">{{ _('Data Quality') }}</li>
+{% endblock %}
+
+{% block secondary_content %}
+{% include "ckanext/dquality/left_side.html" %}
+{% endblock %}
+
+{% block page_header %}
+{% endblock %}
+{% block primary_content_inner %}
+<h1>{{ title }}</h1>
+<div class="row table-responsive">
+  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('dquality.dashboard') }}">
+    {% include "ckanext/dquality/qa_filter_form.html" %}
+    <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
+  </form>
+</div>
+<hr>
+<div class="row" style="z-index: 2;">
+  <div class="panel panel-default qa-stats">
+    <div class="panel-body">
+      <div class="qa-stats-list">
+        <div class="qa-stat qa-stat--org">
+          <span class="qa-stat-label">หน่วยงาน</span>
+          <span class="qa-stat-value">{{ counts.organizations }}</span>
+        </div>
+        <div class="qa-stat qa-stat--ds">
+          <span class="qa-stat-label">ชุดข้อมูล</span>
+          <span class="qa-stat-value">{{ counts.datasets }}</span>
+        </div>
+        <div class="qa-stat qa-stat--res">
+          <span class="qa-stat-label">ทรัพยากร</span>
+          <span class="qa-stat-value">{{ counts.resources }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row qa-radar-row" style="z-index: 2;">
+  <div class="col col-lg-8">
+    <div>
+        <h3 class="section-title">
+          <span class="me-2">🧩</span> โครงสร้างของข้อมูล
+        </h3>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="structure-box dataset">
+              <div class="structure-header">
+                ชุดข้อมูล
+              </div>
+              <div class="row text-center">
+                <div class="col-6">
+                  <div class="metric-label">Structured Data</div>
+                  <div class="metric-value green">
+                    {{ openness_count.structured_packages}}
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="metric-label">Unstructured Data</div>
+                  <div class="metric-value red">
+                    {{ openness_count.unstructured_packages}}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="structure-box resource">
+              <div class="structure-header">
+                ทรัพยากร
+              </div>
+              <div class="row text-center">
+                <div class="col-6">
+                  <div class="metric-label">Structured Data</div>
+                  <div class="metric-value green">
+                    {{ openness_count.structured_resources}}
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="metric-label">Unstructured Data</div>
+                  <div class="metric-value red">
+                    {{ openness_count.unstructured_resources}}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      <h3 class="section-title mt-3">
+        <span class="me-2">🤖</span> ความสามารถในการอ่านด้วยเครื่อง
+      </h3>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="structure-box dataset">
+            <div class="structure-header">
+              ชุดข้อมูล
+            </div>
+
+            <div class="row text-center">
+              <div class="col-6">
+                <div class="metric-label">Machine-Readable</div>
+                <div class="metric-value green">
+                  {{ validity_count.validity_packages }}
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="metric-label">Not Machine-Readable</div>
+                <div class="metric-value red">
+                  {{ validity_count.un_validity_packages }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="structure-box resource">
+            <div class="structure-header">
+              ทรัพยากร
+            </div>
+            <div class="row text-center">
+              <div class="col-6">
+                <div class="metric-label">Machine-Readable</div>
+                <div class="metric-value green">
+                  {{ validity_count.validity_resources }}
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="metric-label">Not Machine-Readable</div>
+                <div class="metric-value red">
+                  {{ validity_count.un_validity_resources }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="primary col-md-4 col-xs-12">
+    <div class="panel panel-default">
+      <h3 class="section-title mb-3">มิติด้าน Openness (ชุดข้อมูล)</h3>
+      <div class="panel-body">
+        <div class="openness-card">
+          <table class="table table-borderless table-striped openness-table mb-0">
+            <tbody>
+              <tr>
+                <td class="stars">★★★★★</td>
+                <td class="text-center">{{ openness_score.get('5 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★★★</td>
+                <td class="text-center">{{ openness_score.get('4 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★★</td>
+                <td class="text-center">{{ openness_score.get('3 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★★</td>
+                <td class="text-center">{{ openness_score.get('2 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="stars">★</td>
+                <td class="text-center">{{ openness_score.get('1 Star', 0) }}</td>
+              </tr>
+              <tr>
+                <td class="h4 fw-bold">Other</td>
+                <td class="text-center">{{ openness_score.Other }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
+  <div class="col col-lg-6 col-xs-12">
+    <canvas id="radar_chart" data-module="dquality-radar-chart"></canvas>
+  </div>
+  
+  <div class="col col-lg-6">
+    <div class="card">
+      <div class="card-header fw-semibold bg-light">
+        <h4 class="mb-0">จำนวนไฟล์แบ่งตามประเภท (ทรัพยากร)</h4>
+      </div>
+      <div class="card-body" style="height:260px">
+        <canvas id="dqmFormatBar"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3" style="z-index: 2;">
+  <div class="card-header text-center">
+    <div class="h5 mb-0">มิติด้าน</div>
+    <div class="h4 fw-bold">Timeliness (ชุดข้อมูล)</div>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-stretch">
+
+      <!-- Freshness panel -->
+      <div class="col-lg-4">
+        <div class="border rounded h-100 p-3 position-relative">
+          <div class="fw-bold mb-2">ข้อมูลที่เป็นปัจจุบัน (ชุดข้อมูล)</div>
+          <canvas id="chart-freshness"></canvas>
+          <!-- <div class="text-center mt-2 text-muted">ความสดใหม่ของข้อมูล</div> -->
+        </div>
+      </div>
+
+      <!-- Acceptable Latency + Outdated -->
+      <div class="col-lg-5">
+        <div class="border rounded h-100 p-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-bold">ข้อมูลที่อยู่ในรอบการปรับปรุง (ชุดข้อมูล)</div>
+          </div>
+          <div class="col-12">
+            <canvas id="cart-total-late-update"></canvas>
+          </div>
+          <div class="col-12">
+            <canvas id="chart-latency"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-3">
+        <div class="border rounded h-100 p-3">
+          <div class="row" style="margin-top: 3rem">
+            <!-- <div class="d-flex justify-content-between align-items-center mb-2">
+              <div><h6>ข้อมูลที่ต้องได้รับการปรับปรุง (ชุดข้อมูล)</h6></div>
+            </div> -->
+            <div class="border-start">
+              <canvas id="chart-outdated"></canvas>
+            </div>
+          </div>
+          <div class="row" style="margin-top: 3rem;">
+            <!-- <div class="d-flex justify-content-between align-items-center mb-2">
+              <div><h6>ข้อมูลที่ระบุความเป็นปัจจุบันไม่ได้ (ชุดข้อมูล)</h6></div>
+            </div> -->
+            <div class="border-start">
+              <canvas id="chart-noschedules"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
+  <!-- 2) Relevancy -->
+  <div class="col col-lg-8 d-flex">
+    <div class="card flex-fill">
+      <div class="card-header fw-semibold">5 อันดับ ชุดข้อมูลที่ตรงตามความต้องการของผู้ใช้ (Relevancy) (ชุดข้อมูล)</div>
+      <div class="card-body">
+        <div class="row table-responsive" style="position: relative;">
+          <table id="tb-relevance-result" class="table table-borderless table-striped">
+            <thead>
+              <tr>
+                <th width="10%">{{ _("หน่วยงาน") }}</th>
+                <th width="30%">{{ _("ชื่อชุดข้อมูล") }}</th>
+                <th width="70%">{{ _(" ") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rev in top_relevance %}
+              <tr>
+                <td><a
+                    href="{{ h.url_for('dquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}">
+                    {{ rev.org.title }}</a></td>
+                <td><a
+                    href="{{ h.url_for('dquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}"
+                    target="qa-link">{{ rev.title }}</a></td>
+                <td>
+                  <div class="progress">
+                    <div class="progress-bar bg-info" role="progressbar" style="width: {{_(rev.relevance)}}%;"
+                      aria-valuenow="{{_(rev.relevance)}}" aria-valuemin="0" aria-valuemax="100">{{_(rev.relevance)}}%
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3) Availability -->
+  <div class="col col-lg-4 d-flex">
+    <div class="card flex-fill">
+      <div class="card-header fw-semibold">มิติด้าน Availability (ทรัพยากร)</div>
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-4 mb-3 qa-donut">
+          <div class="fw-semibold text-muted" style="width:10rem;">Downloadable</div>
+          <div class="qa-donut-wrap">
+            <canvas id="chart-dl"></canvas>
+            <div class="qa-donut-center" id="center-dl"></div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-4 qa-donut">
+          <div class="fw-semibold text-muted" style="width:10rem;">API Accessible</div>
+          <div class="qa-donut-wrap">
+            <canvas id="chart-api"></canvas>
+            <div class="qa-donut-center" id="center-api"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+{{ super() }}
+{% asset "dquality/dquality-js" %}
+<script>
+  {% if parents is not none %}
+  window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};
+  {% endif %}
+  window.SUB_DEFAULT_LABEL = {{ _('-- เลือกหน่วยงาน --') | tojson }};
+  window.SUB_SELECTED = "{{ selected_sub }}";
+</script>
+<script>
+  const radar_chart_config = {
+    labels: {{ radar_data.labels | tojson }},
+  datasets: [
+    {
+      label: '{{ _("คะแนนคุณภาพชุดข้อมูล") }}',
+      data: {{ radar_data.data | tojson }},
+    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+    borderColor: 'rgba(255, 99, 132, 1)',
+    borderWidth: 1
+        }
+  ]
+  }
+
+  var M = {{ metrics | tojson | safe}};
+  var T = {{ timeliness_summary | tojson | safe}};
+  const { labels, data } = {{ resource_format_count | tojson | safe }};
+  const versions = {{ versions | tojson | safe }};
+  var selected_version = "{{ selected_version }}";
+</script>
+{%endblock %}

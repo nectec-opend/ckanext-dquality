@@ -1,0 +1,24 @@
+<section class="module module-narrow module-shallow">
+  <h2 class="module-heading"><i class="fa fa-info-circle"></i> {{ _("คุณภาพชุดข้อมูล") }}</h2>
+  <nav aria-label="{{ _(" คุณภาพชุดข้อมูล") }}">
+    <ul class="list-unstyled nav nav-simple nav-facet">
+      {% if h.check_access('sysadmin') %}
+      <li class="nav-item{% if home %} active{% endif %}"><a href="{{ h.url_for('dquality.index') }}">
+          <span class="item-label">{{ _("วัดผลคุณภาพชุดข้อมูล") }}</span>
+        </a></li>
+      {% endif %}
+      {% if 'dquality.admin_report' in enpoint_public or c.user %}
+      <li class="nav-item{% if admin_report %} active{% endif %}"><a
+          href="{{ h.url_for('dquality.admin_report') }}">
+          <span class="item-label">{{ _("รายงานผลการตรวจวัดคุณภาพข้อมูล") }}</span>
+        </a></li>
+      {% endif %}
+      {% if 'dquality.dashboard' in enpoint_public or c.user %}
+      <li class="nav-item{% if dashboard %} active{% endif %}"><a href="{{ h.url_for('dquality.dashboard') }}">
+          <span class="item-label">{{ _("รายงานและติดตามคุณภาพข้อมูล (Dashboard)") }}</span>
+        </a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  <p class="module-footer"></p>
+</section>

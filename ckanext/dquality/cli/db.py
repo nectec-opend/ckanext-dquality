@@ -20,24 +20,24 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import click
 import logging
 
-from ckanext.opendquality.cli import error_shout
-from ckanext.opendquality.model.data_quality import setup as data_quality_setup
+from ckanext.dquality.cli import error_shout
+from ckanext.dquality.model.data_quality import setup as data_quality_setup
 
 log = logging.getLogger(__name__)
 
 
 @click.group()
-def opendquality():
+def dquality():
     pass
 
 
-@opendquality.command(u'init', short_help=u'Initialize opendquality tables')
+@dquality.command(u'init', short_help=u'Initialize dquality tables')
 def init():
     init_db()
 
 def init_db():
-    u'''Initialising the Opendquality tables'''
-    log.info(u"Initialize Opendquality tables")
+    u'''Initialising the dquality tables'''
+    log.info(u"Initialize dquality tables")
     try:
         data_quality_setup()
 
@@ -45,9 +45,9 @@ def init_db():
         error_shout(e)
     else:
         click.secho(
-            u'Initialising Opendquality tables: SUCCESS',
+            u'Initialising dquality tables: SUCCESS',
             fg=u'green',
             bold=True)
 
 def get_commands():
-    return [opendquality]
+    return [dquality]

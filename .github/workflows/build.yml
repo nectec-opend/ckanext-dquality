@@ -1,0 +1,91 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - dev_qualityv2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        run: |
+          git clone https://github.com/nectec-opend/ckanext-dquality.git .
+          git fetch --all
+          git checkout dev_qualityv2
+
+      - name: Install Java
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk
+
+      - name: Install SonarScanner
+        run: |
+          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip sonar-scanner.zip
+          SONAR_DIR=$(ls -d sonar-scanner-*)
+          echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
+
+      - name: Run SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=ckanext-dquality2 \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=http://164.115.20.162:9000 \
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.coverage.exclusions=**/*.py
+
+#---------
+# name: Build
+
+# on:
+#   push:
+#     branches:
+#       - dev_qualityv2
+
+# jobs:
+#   build:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # 1) Checkout (ไม่ใช้ external action)
+#       - name: Checkout repository
+#         run: |
+#           git clone https://github.com/nectec-opend/ckanext-dquality.git .
+#           git fetch --all
+
+#       # 2) Install Java
+#       - name: Install Java
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y openjdk-17-jdk
+
+#       # 3) Install SonarScanner (FIX PATH ตรงนี้)
+#       - name: Install SonarScanner
+#         run: |
+#           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+#           unzip sonar-scanner.zip
+#           SONAR_DIR=$(ls -d sonar-scanner-*)
+#           echo "$PWD/$SONAR_DIR/bin" >> $GITHUB_PATH
+
+#       # 4) Debug: เช็กว่ามี sonar-scanner จริง
+#       - name: Check sonar-scanner
+#         run: |
+#           which sonar-scanner
+#           sonar-scanner --version
+
+#       # 5) Run SonarQube Scan
+#       - name: Run SonarQube Scan
+#         env:
+#           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+#         run: |
+#           sonar-scanner \
+#             -Dsonar.projectKey=ckanext-dquality2 \
+#             -Dsonar.sources=. \
+#             -Dsonar.host.url=http://164.115.20.162:9000 \
+#             -Dsonar.login=$SONAR_TOKEN
+

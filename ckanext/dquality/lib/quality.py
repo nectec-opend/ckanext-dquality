@@ -14,7 +14,7 @@ import re
 import csv
 from goodtables import validate
 # import db, re
-from ckanext.opendquality.model import (
+from ckanext.dquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
 
@@ -380,7 +380,7 @@ class DataQualityMetrics(object):
         data_quality.save()
         self.logger.debug('Cumulative metrics calculated for: %s', package_id)
 
-class OpendQuality(object):
+class dquality(object):
     
     # @classmethod
     # def top_pageckage_view(cls, limit=3, page_no=0):
