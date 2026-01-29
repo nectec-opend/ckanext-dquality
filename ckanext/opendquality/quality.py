@@ -711,11 +711,6 @@ class DataQualityMetrics(object):
         mimetype_format = mimetype_map.get(mimetype, None)
 
         # 4. เปรียบเทียบ (normalize ทั้งสองข้างก่อนเทียบ)
-        # log.debug('--inspect file ---')
-        # log.debug(file_format)
-        # log.debug('--mimetype_format ---')
-        # log.debug(mimetype_format)
-        # log.debug(result)
         if file_format in ['XLS','XLSX','CSV','JSON','GEOJSON','PDF','DOC','PPT','PPTX',
                            'JPEG','PNG','GIF','TIFF','SVG','TXT','XML','RDF']:
             if file_format and mimetype_format:
@@ -727,7 +722,13 @@ class DataQualityMetrics(object):
                 result = None  # ถ้าอย่างใดอย่างหนึ่งไม่มีค่า
 
         return result
-
+    def _rewind_if_needed(self, data_stream2):
+        if (
+            data_stream2 and
+            data_stream2.get('records') and
+            hasattr(data_stream2['records'], 'rewind')
+        ):
+            data_stream2['records'].rewind()
     def calculate_metrics_for_resource(self, resource, job_id=None):
         # log.debug('calculate_metrics_for_resource')
         if resource.get('last_modified') is not None:
@@ -817,217 +818,328 @@ class DataQualityMetrics(object):
                 data_quality.ref_id = resource_id                   
                 data_quality.resource_last_modified = last_modified
                 data_quality.job_id = job_id  # เก็บ job_id ลง DB
-                #----------------------------------------------------
                 #----------------Calculate Metrics--------------------
                 data_stream2 = None
+                timeliness_val = None
+                error_fetching_resource = None
                 if self.force_recalculate:
                     log.info('Forcing recalculation of the data metrics '
                             'has been set. All except the manually set metric data '
                             'will be recalculated.')
                 self.logger.debug('******Calculate Metrics *****')
                 self.logger.debug(self.metrics)
-                # self.logger.debug(resource)
-                consistency_val = 0
-                # encoding = ''
-                validity_report = {}
+                consistency_val = 0            
+                validity_report = {}      
+                # ---- prepare data once ----
+                file_size_limit_mb =  int(file_size_limit)
+                # ==============================
+                # 1. PREPARE DATA 
+                # ==============================
+                if file_size_mb <= file_size_limit_mb and connection_url:
+                    data_stream2 = self._fetch_resource_data2(resource)
+
+                    if data_stream2.get('error'):
+                        error_fetching_resource = data_stream2.get('error')
+                # ==============================
+                # 2. เข้า LOOP METRICS
+                # ==============================
                 for metric in self.metrics:
-                    self.logger.debug(metric)      
+                    self.logger.debug(metric)
                     try:
-                        if cached_calculation and getattr(data_quality,
-                                                        metric.name) is not None:
+                        # ---------- cached ----------
+                        if cached_calculation and getattr(data_quality, metric.name) is not None:
                             cached = data_quality.metrics[metric.name]
                             if not self.force_recalculate and not cached.get('failed'):
-                                self.logger.debug('Dimension %s already calculated. '
-                                                'Skipping...', metric.name)
                                 results[metric.name] = cached
                                 continue
                             if cached.get('manual'):
-                                self.logger.debug('Calculation has been performed '
-                                                'manually. Skipping...', metric.name)
                                 results[metric.name] = cached
                                 continue
-                        
+
                         self.logger.debug('Calculating dimension: %s...', metric)
-                    #    #-----Fetch DATA------------------------------------------------
-                    #     if not data_stream2:
-                    #         data_stream2 = self._fetch_resource_data2(resource)
-                    #     else:
-                    #         if data_stream2.get('records') and \
-                    #                 hasattr(data_stream2['records'], 'rewind'):
-                    #             data_stream2['records'].rewind()
-                    #         else:
-                    #             data_stream2 = self._fetch_resource_data2(resource)                   
-                    #     # log.debug(data_stream2)
-                    #     if data_stream2.get('error'):
-                    #         error_fetching_resource = data_stream2.get('error')
-                    #     log.debug('------ End call Data Stream2-----')
-                        #-------------------------------------------------------------
-                        #using metadata for calculate metrics    
-                        file_size_limit_mb =  int(file_size_limit)                                                
-                        if (file_size_mb <= file_size_limit_mb and connection_url):
-                            #-----Fetch DATA------------------------------------------------
-                            if not data_stream2:
-                                data_stream2 = self._fetch_resource_data2(resource)
-                            else:
-                                if data_stream2.get('records') and \
-                                        hasattr(data_stream2['records'], 'rewind'):
-                                    data_stream2['records'].rewind()
-                                else:
-                                    data_stream2 = self._fetch_resource_data2(resource) 
 
-                            if data_stream2.get('error'):
-                                error_fetching_resource = data_stream2.get('error')
-                            # log.debug('------ End call Data Stream2-----')               
-                            # #-------------------------------------------------------------
-                            if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
-                                results[metric.name] = metric.calculate_metric(resource)                            
-                            elif metric.name == 'timeliness':                                           
-                                results[metric.name] = metric.calculate_metric(resource)
-                                timeliness_val = results[metric.name] 
+                        # =========================================================
+                        # SMALL FILE (ใช้ data)
+                        # =========================================================
+                        if file_size_mb <= file_size_limit_mb and connection_url:
 
-                            elif metric.name in ['acc_latency', 'freshness']:   
-                                if timeliness_val:                                        
-                                    results[metric.name] = metric.calculate_metric(resource, timeliness_val)
-                                else:
-                                    continue
-                            elif( metric.name == 'relevance'):
-                                # log.debug('------relevance-----')
-                                #ถ้าตรวจแบบ organization
-                                level_name = 'nectec'
-                                execute_type = 'organization'
-                                results[metric.name] = metric.calculate_metric(resource,level_name,execute_type)
-                            # elif(metric.name == 'machine_readable'):
-                            #     log.debug('----machine_readable_val------')       
-                            #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
-                            tabular_format = self.is_tabular(resource,detected_format)
-                            openness_5_star_format = self.is_openness_5_star_format(resource['format'])
-                            # log.debug(f"[check tabular_format] => {tabular_format}")
-                            if(tabular_format):
-                                if(metric.name == 'consistency'):
-                                    # log.debug('------Call consistency -----')                           
-                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)
-                                    consistency_val = results[metric.name].get('value')
-                                    # log.debug(consistency_val)
-                                elif(metric.name == 'validity'):
-                                    # log.debug('----check validity------')
-                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
-                                    validity_report = results[metric.name].get('report')
-                                elif(metric.name == 'completeness'):                           
-                                    # log.debug('----check completeness------')
-                                    # log.debug(data_stream2['total'])
-                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
-                                    completeness_report = results[metric.name].get('report')
-                                    # log.debug('-----after calculate completeness--')
-                                    # log.debug("---dir tempfile----")
-                                    # log.debug(os.listdir(tempfile.gettempdir()))
-                                elif(metric.name == 'uniqueness'):                           
-                                    # log.debug('----check uniqueness------')
-                                    # log.debug(data_stream2['total'])
-                                    results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
-                                    uniqueness_report = results[metric.name].get('report')
-                                elif(metric.name == 'utf8'):
-                                    # log.debug('----utf8_val------')       
-                                    results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
-                            elif (openness_5_star_format):
-                                results['consistency'] = { 'value': 100 }
-                                results['validity']    =    { 'value': 100 }
-                                results['completeness'] = { 'value': None }
-                                results['uniqueness'] = { 'value': None }
-                            else:
-                                results['consistency'] = { 'value': None }
-                                results['validity']    =    { 'value': None }
-                                results['completeness'] = { 'value': None }
-                                results['uniqueness'] = { 'value': None }
-                                
-                            # else:
-                            #     log.debug('----else----')    
-                            #     log.debug(metric.name)                                         
-                            #     results[metric.name] = metric.calculate_metric(resource) #,data_stream
-                        #file_size > 10 MB
-                        else:
-                            log.debug('file_size > 10 MB')
-                            error_file_size = 'file_size > 10 MB'
-                            openness_5_star_format = self.is_openness_5_star_format(resource['format'])
-                            
-                            if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
+                            # rewind ก่อน metric ที่ใช้ data
+                            if metric.name in [
+                                'consistency', 'validity',
+                                'completeness', 'uniqueness'
+                            ]:
+                                self._rewind_if_needed(data_stream2)
+
+                            # ---------- no data metrics ----------
+                            if metric.name in [
+                                'openness', 'availability',
+                                'downloadable', 'access_api', 'preview'
+                            ]:
                                 results[metric.name] = metric.calculate_metric(resource)
-                            # elif(metric.name == 'utf8'):
-                            #     log.debug('----utf8_val------')       
-                            #     results[metric.name] = metric.calculate_metric_utf8(resource,{})
-                            elif (metric.name == 'timeliness'):     
-                                # log.debug('----timeliness------')                                         
+
+                            elif metric.name == 'timeliness':
                                 results[metric.name] = metric.calculate_metric(resource)
                                 timeliness_val = results[metric.name]
-                            elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
-                                # log.debug('----acc_latency------')                                         
-                                results[metric.name] = metric.calculate_metric(resource,timeliness_val)
-                            elif( metric.name == 'relevance'):
-                                # log.debug('------relevance-----')
-                                #ถ้าตรวจแบบ organization
-                                org_name = 'nectec'
-                                execute_type = 'organization'
-                                results[metric.name] = metric.calculate_metric(resource,org_name,execute_type)
- 
-                            #do not execute big file for consistency and validty
-                            results['consistency'] = { 'value': None }
-                            results['validity']    =    { 'value': None }
-                            results['completeness'] = { 'value': None }
-                            results['uniqueness'] = { 'value': None }
-                            results['utf8'] = { 'value': None }
-                            #except openness_5_star_format
-                            if (openness_5_star_format):
-                                results['consistency'] = { 'value': 100 }
-                                results['validity']    =    { 'value': 100 }
-                                results['completeness'] = { 'value': None }
-                                results['uniqueness'] = { 'value': None }
+
+                            elif metric.name in ['acc_latency', 'freshness']:
+                                if timeliness_val:
+                                    results[metric.name] = metric.calculate_metric(
+                                        resource, timeliness_val
+                                    )
+
+                            elif metric.name == 'relevance':
+                                results[metric.name] = metric.calculate_metric(
+                                    resource, 'nectec', 'organization'
+                                )
+
+                            # ---------- tabular metrics ----------
+                            tabular_format = self.is_tabular(resource, detected_format)
+                            openness_5_star_format = self.is_openness_5_star_format(resource['format'])
+
+                            if tabular_format:
+                                if metric.name == 'consistency':
+                                    results[metric.name] = metric.calculate_metric(resource, data_stream2)
+                                    consistency_val = results[metric.name].get('value')
+
+                                elif metric.name == 'validity':
+                                    results[metric.name] = metric.calculate_metric(resource, data_stream2)
+                                    validity_report = results[metric.name].get('report')
+
+                                elif metric.name == 'completeness':
+                                    results[metric.name] = metric.calculate_metric(resource, data_stream2)
+
+                                elif metric.name == 'uniqueness':
+                                    results[metric.name] = metric.calculate_metric(resource, data_stream2)
+
+                                elif metric.name == 'utf8':
+                                    results[metric.name] = metric.calculate_metric_utf8(
+                                        resource, validity_report
+                                    )
+
+                            elif openness_5_star_format:
+                                results.update({
+                                    'consistency': {'value': 100},
+                                    'validity': {'value': 100},
+                                    'completeness': {'value': None},
+                                    'uniqueness': {'value': None},
+                                })
+
+                        # =========================================================
+                        # BIG FILE (ไม่ใช้ data)
+                        # =========================================================
+                        else:
+                            openness_5_star_format = self.is_openness_5_star_format(resource['format'])
+
+                            if metric.name in [
+                                'openness', 'availability',
+                                'downloadable', 'access_api', 'preview'
+                            ]:
+                                results[metric.name] = metric.calculate_metric(resource)
+
+                            elif metric.name == 'timeliness':
+                                results[metric.name] = metric.calculate_metric(resource)
+                                timeliness_val = results[metric.name]
+
+                            elif metric.name in ['acc_latency', 'freshness']:
+                                results[metric.name] = metric.calculate_metric(
+                                    resource, timeliness_val
+                                )
+
+                            elif metric.name == 'relevance':
+                                results[metric.name] = metric.calculate_metric(
+                                    resource, 'nectec', 'organization'
+                                )
+
+                            results.update({
+                                'consistency': {'value': None},
+                                'validity': {'value': None},
+                                'completeness': {'value': None},
+                                'uniqueness': {'value': None},
+                                'utf8': {'value': None},
+                            })
+
+                            if openness_5_star_format:
+                                results['consistency'] = {'value': 100}
+                                results['validity'] = {'value': 100}
+
                             if not connection_url:
-                                results['connection_url'] = { 'error': True}
-                        
+                                results['connection_url'] = {'error': True}
+
                     except Exception as e:
-                        self.logger.error('Failed to calculate: %s. Error: %s',
-                                        metric, str(e))
                         self.logger.exception(e)
                         results['error'] = "Failed to calculate:"+metric.name
                         results[metric.name] = {
                             'failed': True,
                             'error': str(e),
                         }
-                # set results -- old version
-                # for metric, result in results.items():
-                #     if result.get('value') is not None:
-                #         setattr(data_quality, metric, result['value'])
-                # set results -- new version-----
-                # ตรวจสอบและจัดรูปแบบผลลัพธ์ ให้เป็น dict ที่มีโครงสร้างเดียวกัน ({'value': ..., 'error': ...})
-                # หลังจากได้ results มา
+
+                # for metric in self.metrics:
+                #     self.logger.debug(metric)      
+                #     try:
+                #         if cached_calculation and getattr(data_quality,
+                #                                         metric.name) is not None:
+                #             cached = data_quality.metrics[metric.name]
+                #             if not self.force_recalculate and not cached.get('failed'):
+                #                 self.logger.debug('Dimension %s already calculated. '
+                #                                 'Skipping...', metric.name)
+                #                 results[metric.name] = cached
+                #                 continue
+                #             if cached.get('manual'):
+                #                 self.logger.debug('Calculation has been performed '
+                #                                 'manually. Skipping...', metric.name)
+                #                 results[metric.name] = cached
+                #                 continue
+                        
+                #         self.logger.debug('Calculating dimension: %s...', metric)
+                                               
+                #         if (file_size_mb <= file_size_limit_mb and connection_url):
+                #             #-----Fetch DATA------------------------------------------------
+                #             if not data_stream2:
+                #                 data_stream2 = self._fetch_resource_data2(resource)
+                #             else:
+                #                 if data_stream2.get('records') and \
+                #                         hasattr(data_stream2['records'], 'rewind'):
+                #                     data_stream2['records'].rewind()
+                #                 else:
+                #                     data_stream2 = self._fetch_resource_data2(resource) 
+
+                #             if data_stream2.get('error'):
+                #                 error_fetching_resource = data_stream2.get('error')
+                #             # log.debug('------ End call Data Stream2-----')               
+                #             # #-------------------------------------------------------------
+                #             if(metric.name == 'openness' or metric.name == 'availability' or  metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
+                #                 results[metric.name] = metric.calculate_metric(resource)                            
+                #             elif metric.name == 'timeliness':                                           
+                #                 results[metric.name] = metric.calculate_metric(resource)
+                #                 timeliness_val = results[metric.name] 
+
+                #             elif metric.name in ['acc_latency', 'freshness']:   
+                #                 if timeliness_val:                                        
+                #                     results[metric.name] = metric.calculate_metric(resource, timeliness_val)
+                #                 else:
+                #                     continue
+                #             elif( metric.name == 'relevance'):
+                #                 # log.debug('------relevance-----')
+                #                 #ถ้าตรวจแบบ organization
+                #                 level_name = 'nectec'
+                #                 execute_type = 'organization'
+                #                 results[metric.name] = metric.calculate_metric(resource,level_name,execute_type)
+                #             # elif(metric.name == 'machine_readable'):
+                #             #     log.debug('----machine_readable_val------')       
+                #             #     results[metric.name] = metric.calculate_metric_machine(resource,consistency_val,validity_report)
+                #             tabular_format = self.is_tabular(resource,detected_format)
+                #             openness_5_star_format = self.is_openness_5_star_format(resource['format'])
+                #             # log.debug(f"[check tabular_format] => {tabular_format}")
+                #             if(tabular_format):
+                #                 if(metric.name == 'consistency'):
+                #                     # log.debug('------Call consistency -----')                           
+                #                     results[metric.name] = metric.calculate_metric(resource,data_stream2)
+                #                     consistency_val = results[metric.name].get('value')
+                #                     # log.debug(consistency_val)
+                #                 elif(metric.name == 'validity'):
+                #                     # log.debug('----check validity------')
+                #                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                           
+                #                     validity_report = results[metric.name].get('report')
+                #                 elif(metric.name == 'completeness'):                           
+                #                     # log.debug('----check completeness------')
+                #                     # log.debug(data_stream2['total'])
+                #                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
+                #                     completeness_report = results[metric.name].get('report')
+                #                     # log.debug('-----after calculate completeness--')
+                #                     # log.debug("---dir tempfile----")
+                #                     # log.debug(os.listdir(tempfile.gettempdir()))
+                #                 elif(metric.name == 'uniqueness'):                           
+                #                     # log.debug('----check uniqueness------')
+                #                     # log.debug(data_stream2['total'])
+                #                     results[metric.name] = metric.calculate_metric(resource,data_stream2)                                   
+                #                     uniqueness_report = results[metric.name].get('report')
+                #                 elif(metric.name == 'utf8'):
+                #                     # log.debug('----utf8_val------')       
+                #                     results[metric.name] = metric.calculate_metric_utf8(resource,validity_report)
+                #             elif (openness_5_star_format):
+                #                 results['consistency'] = { 'value': 100 }
+                #                 results['validity']    =    { 'value': 100 }
+                #                 results['completeness'] = { 'value': None }
+                #                 results['uniqueness'] = { 'value': None }
+                #             else:
+                #                 results['consistency'] = { 'value': None }
+                #                 results['validity']    =    { 'value': None }
+                #                 results['completeness'] = { 'value': None }
+                #                 results['uniqueness'] = { 'value': None }
+                                
+                #         #file_size > 10 MB
+                #         else:
+                #             log.debug('file_size > 10 MB')
+                #             error_file_size = 'file_size > 10 MB'
+                #             openness_5_star_format = self.is_openness_5_star_format(resource['format'])
+                            
+                #             if(metric.name == 'openness' or metric.name == 'availability' or metric.name == 'downloadable' or metric.name == 'access_api' or metric.name == 'preview'):
+                #                 results[metric.name] = metric.calculate_metric(resource)
+                #             # elif(metric.name == 'utf8'):
+                #             #     log.debug('----utf8_val------')       
+                #             #     results[metric.name] = metric.calculate_metric_utf8(resource,{})
+                #             elif (metric.name == 'timeliness'):     
+                #                 # log.debug('----timeliness------')                                         
+                #                 results[metric.name] = metric.calculate_metric(resource)
+                #                 timeliness_val = results[metric.name]
+                #             elif (metric.name == 'acc_latency' or metric.name == 'freshness'):     
+                #                 # log.debug('----acc_latency------')                                         
+                #                 results[metric.name] = metric.calculate_metric(resource,timeliness_val)
+                #             elif( metric.name == 'relevance'):
+                #                 # log.debug('------relevance-----')
+                #                 #ถ้าตรวจแบบ organization
+                #                 org_name = 'nectec'
+                #                 execute_type = 'organization'
+                #                 results[metric.name] = metric.calculate_metric(resource,org_name,execute_type)
+ 
+                #             #do not execute big file for consistency and validty
+                #             results['consistency'] = { 'value': None }
+                #             results['validity']    =    { 'value': None }
+                #             results['completeness'] = { 'value': None }
+                #             results['uniqueness'] = { 'value': None }
+                #             results['utf8'] = { 'value': None }
+                #             #except openness_5_star_format
+                #             if (openness_5_star_format):
+                #                 results['consistency'] = { 'value': 100 }
+                #                 results['validity']    =    { 'value': 100 }
+                #                 results['completeness'] = { 'value': None }
+                #                 results['uniqueness'] = { 'value': None }
+                #             if not connection_url:
+                #                 results['connection_url'] = { 'error': True}
+                        
+                #     except Exception as e:
+                #         self.logger.error('Failed to calculate: %s. Error: %s',
+                #                         metric, str(e))
+                #         self.logger.exception(e)
+                #         results['error'] = "Failed to calculate:"+metric.name
+                #         results[metric.name] = {
+                #             'failed': True,
+                #             'error': str(e),
+                #         }
+                
+                # =========================================
+                # 3. Keep Results - ตรวจสอบและจัดรูปแบบผลลัพธ์ ให้เป็น dict ที่มีโครงสร้างเดียวกัน ({'value': ..., 'error': ...})
+                # =========================================
                 for metric, result in list(results.items()):
                     if not isinstance(result, dict):
-                        # ห่อข้อความผิดพลาดไว้ใน dict
                         results[metric] = {'value': None, 'error': str(result)}
 
-                # จากนั้นจึงตั้ง attribute ได้อย่างปลอดภัย
                 for metric, result in results.items():
                     value = result.get('value')
                     setattr(data_quality, metric, value)
 
-                
                 data_quality.modified_at = datetime.now()
                 #---- add execute time--
                 end_time = time.time()   
                 # Calculate the time taken
                 execute_time = end_time - start_time
-                # log.debug("----execute_time----")
-                # log.debug(execute_time)    
-                # if 'error' in results and results['error']:
-                #     data_quality.error = results['error'].get('error')
-                # else:
-                #     data_quality.error = ''
-                #รวม error จากหลาย metric ไว้ใน list:
+                # รวม error จากหลาย metric ไว้ใน list:
                 error_list = []
                 if error_file_size != '':
                     error_list.append(error_file_size)
                 # if error_file_not_match != '':
                 #     error_list.append(error_file_not_match)
-                if error_fetching_resource != '':
+                if error_fetching_resource and error_fetching_resource not in error_list:
                     error_list.append(error_fetching_resource)  # ถ้า error จาก fetch มีค่า → เพิ่มเข้าไป
                 for metric, result in results.items():
                     if isinstance(result, dict) and result.get('error'):
@@ -1038,7 +1150,7 @@ class DataQualityMetrics(object):
                     data_quality.error = results['error']['error']
                 else:
                     data_quality.error = ''
-                # data_quality.version = today
+
                 data_quality.format  = detected_format #resource['format']
                 data_quality.url = resource_url
                 data_quality.metrics = results
@@ -2539,13 +2651,7 @@ class Downloadable():#DimensionMetric
         resource_url    = resource['url']
         
         if self.is_downloadable(resource_url):
-            downloadable_score = 1 # 2 can download
-            #ตรวจสอบ format ไม่ตรงตามที่กำหนด แต่เว้นว่างได้ เลยตรวจยาก เพราะเค้าอาจจะไม่กำหนดก็ได้
-            # if(pd.notna(resource_url) and resource_data_format != ""): 
-            #     format_url = resource_url.split(".")[-1]
-            #     lower_format = resource_data_format.lower()
-            #     if(format_url != lower_format): # set wrong format type
-            #         downloadable_score = 0
+            downloadable_score = 1 
         else: 
             downloadable_score = 0 # 1 cannot download such as HTML.
 
