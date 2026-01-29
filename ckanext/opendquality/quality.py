@@ -56,7 +56,7 @@ tz = timezone(timedelta(hours=7))
 #     )
 
 DATE_FORMAT = '%Y-%m-%d'
-MAX_CONTENT_LENGTH = 15 * 1024 * 1024   # 30 MB
+MAX_CONTENT_LENGTH = 10 * 1024 * 1024   # 10 MB
 CHUNK_SIZE = 256 * 1024    # 256 KB
 DOWNLOAD_TIMEOUT = 60      # 60 seconds
 SSL_VERIFY = True
@@ -727,32 +727,6 @@ class DataQualityMetrics(object):
                 result = None  # ถ้าอย่างใดอย่างหนึ่งไม่มีค่า
 
         return result
-    # def _handle_existing_record(self, data_quality, last_modified, resource):
-    #     """Handle logic when a previous metric record exists."""
-    #     self.logger.debug("Found previous metric record.")
-
-    #     if data_quality.resource_last_modified < last_modified:
-    #         self.logger.debug("Resource has been updated. Recalculating metrics.")
-    #         self._delete_metrics_record('resource', resource['id'])
-    #         updated = self._new_metrics_record('resource', resource['id'])
-    #         updated.resource_last_modified = last_modified
-    #         return False  # recalculate
-
-    #     if data_quality.resource_last_modified == last_modified:
-    #         all_calculated = all(
-    #             data_quality.metrics.get(m.name) is not None for m in self.metrics
-    #         )
-    #         if all_calculated:
-    #             self.logger.debug("All metrics already calculated. Using cache.")
-    #             return True
-    #         else:
-    #             self.logger.debug("Partial metrics found. Will recalculate missing.")
-    #             return True
-
-    #     self.logger.debug("No valid condition met. Creating new record.")
-    #     data_quality = self._new_metrics_record('resource', resource['id'])
-    #     data_quality.resource_last_modified = last_modified
-    #     return False
 
     def calculate_metrics_for_resource(self, resource, job_id=None):
         # log.debug('calculate_metrics_for_resource')
@@ -1489,7 +1463,7 @@ class ResourceFetchData2(object):
     def _fetch_data_datastore_defined_row(self, resource):
         # log.debug('--data store--')
         page = 0
-        limit = int(ecord_limit)
+        limit = int(record_limit)
         # log.debug("resource_id")
         # log.debug(resource.get('id'))
         data = []
@@ -1549,18 +1523,7 @@ class ResourceFetchData2(object):
             log.error(f"Request failed: {e} - {url}")
             raise
 
-    # def get_response(self, url, headers):
-    #     response = self.get_url(url, headers)
-    #     if response.status_code == 202:
-    #         wait = 1
-    #         while wait < 120 and response.status_code == 202:
-    #             time.sleep(wait)
-    #             response = self.get_url(url,headers)  # แก้ให้ส่ง url
-    #             wait *= 3
-    #     response.raise_for_status()
-    #     return response
     def get_response(self, url, headers):
-        # เรียกครั้งเดียว ไม่วนรอ
         response = self.get_url(url, headers)
         response.raise_for_status()
         return response
@@ -1634,23 +1597,57 @@ class ResourceFetchData2(object):
         try:
             length = 0
             m = hashlib.md5()  # NOSONAR
-            raw_data = b''     
+
+            MAX_RAW_BYTES = 100_000  # 100 KB สำหรับ detect encoding
+            raw_data = b''
 
             for chunk in response.iter_content(CHUNK_SIZE):
+                if not chunk:
+                    continue
+
                 length += len(chunk)
                 if length > MAX_CONTENT_LENGTH:
                     response.close()
                     raise DataTooBigError("File too large")
+
                 tmp_file.write(chunk)
-                raw_data += chunk
+
+                # เก็บ raw_data แค่ช่วงต้นไว้ detect encoding
+                if len(raw_data) < MAX_RAW_BYTES:
+                    remaining = MAX_RAW_BYTES - len(raw_data)
+                    raw_data += chunk[:remaining]
+
                 m.update(chunk)
 
             response.close()
             tmp_file.flush()
             tmp_file.seek(0)
-            # --- Detect encoding ---
-            result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
-            encoding = result['encoding'] or 'utf-8'
+
+            # --- Detect encoding (ใช้แค่ข้อมูลที่เก็บไว้) ---
+            if raw_data:
+                result = chardet.detect(raw_data)
+                encoding = result.get('encoding') or 'utf-8'
+            else:
+                encoding = 'utf-8'
+            # length = 0
+            # m = hashlib.md5()  # NOSONAR
+            # raw_data = b''     
+
+            # for chunk in response.iter_content(CHUNK_SIZE):
+            #     length += len(chunk)
+            #     if length > MAX_CONTENT_LENGTH:
+            #         response.close()
+            #         raise DataTooBigError("File too large")
+            #     tmp_file.write(chunk)
+            #     raw_data += chunk
+            #     m.update(chunk)
+
+            # response.close()
+            # tmp_file.flush()
+            # tmp_file.seek(0)
+            # # --- Detect encoding ---
+            # result = chardet.detect(raw_data[:100000])  # ใช้แค่ 100KB แรกพอ
+            # encoding = result['encoding'] or 'utf-8'
             # log.debug(f"Detected encoding: {encoding}")
 
             # ใช้ priority: mimetype ก่อน → format ทีหลัง
