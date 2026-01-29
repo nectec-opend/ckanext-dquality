@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Checkout repository
         run: |
-          git clone https://github.com/nectec-opend/ckanext-opendquality.git .
+          git clone https://github.com/nectec-opend/ckanext-dquality.git .
           git fetch --all
           git checkout dev_qualityv2
 
@@ -33,7 +33,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           sonar-scanner \
-            -Dsonar.projectKey=ckanext-opendquality2 \
+            -Dsonar.projectKey=ckanext-dquality2 \
             -Dsonar.sources=. \
             -Dsonar.host.url=http://164.115.20.162:9000 \
             -Dsonar.login=$SONAR_TOKEN \
@@ -55,7 +55,7 @@ jobs:
 #       # 1) Checkout (ไม่ใช้ external action)
 #       - name: Checkout repository
 #         run: |
-#           git clone https://github.com/nectec-opend/ckanext-opendquality.git .
+#           git clone https://github.com/nectec-opend/ckanext-dquality.git .
 #           git fetch --all
 
 #       # 2) Install Java
@@ -84,7 +84,7 @@ jobs:
 #           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 #         run: |
 #           sonar-scanner \
-#             -Dsonar.projectKey=ckanext-opendquality2 \
+#             -Dsonar.projectKey=ckanext-dquality2 \
 #             -Dsonar.sources=. \
 #             -Dsonar.host.url=http://164.115.20.162:9000 \
 #             -Dsonar.login=$SONAR_TOKEN

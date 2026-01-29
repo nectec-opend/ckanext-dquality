@@ -1,6 +1,6 @@
 from sqlalchemy import func, desc, cast, Integer, case, Float, and_, Numeric
 from ckan.model import package_table, Session, Package, Group, Resource
-from ckanext.opendquality.model import DataQualityMetrics as DQM, JobDQ
+from ckanext.dquality.model import DataQualityMetrics as DQM, JobDQ
 from sqlalchemy.dialects import postgresql
 
 

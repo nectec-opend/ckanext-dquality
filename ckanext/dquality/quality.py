@@ -32,17 +32,17 @@ import numpy as np
 from io import StringIO
 from collections import Counter
 from urllib.parse import urlparse
-from ckanext.opendquality.model import (
+from ckanext.dquality.model import (
     DataQualityMetrics as DataQualityMetricsModel
 )
-from ckanext.opendquality.model import JobDQ as job_table
+from ckanext.dquality.model import JobDQ as job_table
 from ckan.plugins.toolkit import config
 from ckan.model import Session, Package, Group
 import ckan.logic as logic
 from ckan import model
 from typing import List, Dict, Any, Tuple
-from ckanext.opendquality.cli.quality import JobCancelledException
-from ckanext.opendquality.cli.quality import restore_previous_active_job
+from ckanext.dquality.cli.quality import JobCancelledException
+from ckanext.dquality.cli.quality import restore_previous_active_job
 
 log = getLogger(__name__)
 tz = timezone(timedelta(hours=7))
@@ -60,8 +60,8 @@ MAX_CONTENT_LENGTH = 10 * 1024 * 1024   # 10 MB
 CHUNK_SIZE = 256 * 1024    # 256 KB
 DOWNLOAD_TIMEOUT = 60      # 60 seconds
 SSL_VERIFY = True
-record_limit = os.environ.get('CKANEXT__OPENDQUALITY__RECORD_LIMIT', toolkit.config.get('ckanext.opendquality.record_limit', 5001))
-file_size_limit = os.environ.get('CKANEXT__OPENDQUALITY__FILE_SIZE_LIMIT', toolkit.config.get('ckanext.opendquality.file_size_limit', 10))
+record_limit = os.environ.get('CKANEXT__dquality__RECORD_LIMIT', toolkit.config.get('ckanext.dquality.record_limit', 5001))
+file_size_limit = os.environ.get('CKANEXT__dquality__FILE_SIZE_LIMIT', toolkit.config.get('ckanext.dquality.file_size_limit', 10))
 
 class LazyStreamingList(object):
     '''Implements a buffered stream that emulates an iterable object.
@@ -1159,7 +1159,7 @@ class DataQualityMetrics(object):
         data_quality.save()
         self.logger.debug('Cumulative metrics calculated for: %s', package_id)
 
-class OpendQuality(object):
+class dquality(object):
     
     # @classmethod
     # def top_pageckage_view(cls, limit=3, page_no=0):

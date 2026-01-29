@@ -6,22 +6,22 @@ import ckan.lib.jobs as jobs, uuid, time
 from logging import getLogger
 from datetime import datetime, date
 from ckan.model import package_table, Session, Package, Group, Resource
-from ckanext.opendquality.model import DataQualityMetrics as DQM , JobDQ
-import ckanext.opendquality.quality as quality_lib
+from ckanext.dquality.model import DataQualityMetrics as DQM , JobDQ
+import ckanext.dquality.quality as quality_lib
 import ckan.lib.helpers as h
 from sqlalchemy import and_, literal, case, func, Date, cast, desc
-from ckanext.opendquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top, get_openness_score, get_openness_counts, get_validity_counts, get_quality_counts, get_resource_format_counts
-from ckanext.opendquality.cli.quality import calculate as quality_cli, get_parent_organization, get_org_id_from_name
+from ckanext.dquality.utils import get_radar_aggregate_all, qa_counts, qa_detail_blocks, get_timeliness_summary, get_relevance_top, get_openness_score, get_openness_counts, get_validity_counts, get_quality_counts, get_resource_format_counts
+from ckanext.dquality.cli.quality import calculate as quality_cli, get_parent_organization, get_org_id_from_name
 
 log = getLogger(__name__)
-qa = Blueprint('opendquality', __name__, url_prefix="/qa")
-dquality = quality_lib.OpendQuality()
+qa = Blueprint('dquality', __name__, url_prefix="/qa")
+dquality = quality_lib.dquality()
 
 
-as_agency = toolkit.asbool(os.environ.get('CKANEXT__OPENDQUALITY__AGENT', toolkit.config.get('ckanext.opendquality.agent', True)))
-enpoint_public = os.environ.get('CKANEXT__OPENDQUALITY__PUBLIC_ENDPOINTS', toolkit.config.get('ckanext.opendquality.public_endpoints', ''))
+as_agency = toolkit.asbool(os.environ.get('CKANEXT__dquality__AGENT', toolkit.config.get('ckanext.dquality.agent', True)))
+enpoint_public = os.environ.get('CKANEXT__dquality__PUBLIC_ENDPOINTS', toolkit.config.get('ckanext.dquality.public_endpoints', ''))
 EXEMPT_ENDPOINTS = set(enpoint_public.split(' ') if enpoint_public else [])
-EXEMPT_ENDPOINTS.add('opendquality.index')
+EXEMPT_ENDPOINTS.add('dquality.index')
 
 @qa.before_request
 def request_before():
@@ -322,31 +322,31 @@ def cancel_job():
 
     if request.method == 'POST':
         if request.form.get('job_id') is not None:
-            from ckanext.opendquality.cli.quality import _stop_job as stop_job
+            from ckanext.dquality.cli.quality import _stop_job as stop_job
             stop_job(request.form.get('job_id'))
-            return toolkit.redirect_to('opendquality.index')
+            return toolkit.redirect_to('dquality.index')
     
-        return toolkit.redirect_to('opendquality.index')
-    return toolkit.redirect_to('opendquality.index')
+        return toolkit.redirect_to('dquality.index')
+    return toolkit.redirect_to('dquality.index')
 
 def delete_job():
     if h.check_access('sysadmin') is False:
-        # return toolkit.redirect_to('opendquality.dashboard')
+        # return toolkit.redirect_to('dquality.dashboard')
         toolkit.abort(403, toolkit._('You do not have permission to access this page.'))
     if request.method == 'POST':
         if request.form.get('job_id') is not None:
-            from ckanext.opendquality.cli.quality import _del_metrict as del_metric
+            from ckanext.dquality.cli.quality import _del_metrict as del_metric
             del_metric(request.form.get('job_id'))
-            return toolkit.redirect_to('opendquality.index')
+            return toolkit.redirect_to('dquality.index')
     
-        return toolkit.redirect_to('opendquality.index')
-    return toolkit.redirect_to('opendquality.index')
+        return toolkit.redirect_to('dquality.index')
+    return toolkit.redirect_to('dquality.index')
     # return {'msg': 'Delete Job', 'data': request.form.get('job_id')}
 
 
 def home():
     if h.check_access('sysadmin') is False:
-        return toolkit.redirect_to('opendquality.dashboard')
+        return toolkit.redirect_to('dquality.dashboard')
 
     if request.method == 'POST':
         selected_org_cal = request.form.get('orgs_calc')
@@ -365,9 +365,9 @@ def home():
             Session.add(job)
             Session.commit()
 
-            jobs.enqueue('ckanext.opendquality.cli.quality._calculate', None, kwargs={'job_id': job.job_id, 'organization': selected_org_cal, 'dimension':'all'})
+            jobs.enqueue('ckanext.dquality.cli.quality._calculate', None, kwargs={'job_id': job.job_id, 'organization': selected_org_cal, 'dimension':'all'})
             return toolkit.redirect_to(
-                'opendquality.index',
+                'dquality.index',
                 pending=1
             )
 
@@ -408,16 +408,16 @@ def home():
         'site_url': toolkit.request.host_url,
         'site_title': toolkit.config.get('ckan.site_title'),
         'ckan_version': toolkit.config.get('ckan.version'),
-        'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        'ckanext_dquality_version': toolkit.config.get('ckanext-dquality.version'),
         'enpoint_public': EXEMPT_ENDPOINTS,
         'calc_orgs': orgs_cal,
         'qa_jobs': qa_jobs,
     }
-    return toolkit.render('ckanext/opendquality/index.html', extra_vars)
+    return toolkit.render('ckanext/dquality/index.html', extra_vars)
 
 def admin_report(org_id=None):
     # if h.check_access('sysadmin') is False:
-    #     return toolkit.redirect_to('opendquality.dashboard')
+    #     return toolkit.redirect_to('dquality.dashboard')
     selected_sub = request.args.get('org_sub', None)
     selected_main = request.args.get('org_main', None)
     package_id = request.args.get('package_id', None)
@@ -673,11 +673,11 @@ def admin_report(org_id=None):
         'site_url': toolkit.request.host_url,
         'site_title': toolkit.config.get('ckan.site_title'),
         'ckan_version': toolkit.config.get('ckan.version'),
-        'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        'ckanext_dquality_version': toolkit.config.get('ckanext-dquality.version'),
         'enpoint_public': EXEMPT_ENDPOINTS,
         # 'external_dashboard': external_stats
     }
-    return toolkit.render('ckanext/opendquality/admin_reports.html', extra_vars)
+    return toolkit.render('ckanext/dquality/admin_reports.html', extra_vars)
 
 def dashboard(org_id=None):
 
@@ -734,10 +734,10 @@ def dashboard(org_id=None):
         'site_url': toolkit.request.host_url,
         'site_title': toolkit.config.get('ckan.site_title'),
         'ckan_version': toolkit.config.get('ckan.version'),
-        'ckanext_opendquality_version': toolkit.config.get('ckanext-opendquality.version'),
+        'ckanext_dquality_version': toolkit.config.get('ckanext-dquality.version'),
         'enpoint_public': EXEMPT_ENDPOINTS,
     }
-    return toolkit.render('ckanext/opendquality/dashboard.html', extra_vars)
+    return toolkit.render('ckanext/dquality/dashboard.html', extra_vars)
 
 def calculate_quality(): #completeness
     return {'msg': 'calculate quality score',

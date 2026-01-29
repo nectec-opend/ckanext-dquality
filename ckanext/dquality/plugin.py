@@ -1,14 +1,14 @@
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 from logging import getLogger
-from ckanext.opendquality import blueprint
-from ckanext.opendquality.cli import cli
+from ckanext.dquality import blueprint
+from ckanext.dquality.cli import cli
 
 
 log = getLogger(__name__)
 
 
-class OpendqualityPlugin(plugins.SingletonPlugin):
+class dqualityPlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurer)
     plugins.implements(plugins.IBlueprint)
     plugins.implements(plugins.IClick)
@@ -22,7 +22,7 @@ class OpendqualityPlugin(plugins.SingletonPlugin):
         toolkit.add_template_directory(config_, 'templates')
         toolkit.add_public_directory(config_, 'public')
         toolkit.add_resource('assets',
-            'opendquality')
+            'dquality')
     
     # IBlueprint
     def get_blueprint(self):

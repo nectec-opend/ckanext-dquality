@@ -19,11 +19,11 @@ import click, six
 
 import ckan.plugins.toolkit as toolkit, os
 from ckan.model import package_table, resource_table, Session
-import ckanext.opendquality.quality as quality_lib
+import ckanext.dquality.quality as quality_lib
 from logging import getLogger
 import ckan.model as model
-from ckanext.opendquality.model import DataQualityMetrics as qa_table
-from ckanext.opendquality.model import JobDQ as job_table
+from ckanext.dquality.model import DataQualityMetrics as qa_table
+from ckanext.dquality.model import JobDQ as job_table
 import uuid
 from datetime import datetime, date, timezone, timedelta
 import requests
@@ -1370,9 +1370,9 @@ def get_all_organizations():
 #     """ดึงรายชื่อ organization จาก CKAN config ถ้ามี; ถ้าไม่มีให้ query จริง"""
 
 #     # อ่านค่าจาก ckan.ini
-#     # config_orgs = toolkit.config.get('ckanext.opendquality.orgs', "").strip()
-#     config_orgs = (os.environ.get('CKANEXT__OPENDQUALITY__ORGS')
-#     or (toolkit.config.get('ckanext.opendquality.orgs') or '').strip())
+#     # config_orgs = toolkit.config.get('ckanext.dquality.orgs', "").strip()
+#     config_orgs = (os.environ.get('CKANEXT__dquality__ORGS')
+#     or (toolkit.config.get('ckanext.dquality.orgs') or '').strip())
 
 #     if config_orgs:
 #         # แปลงเป็น list

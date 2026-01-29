@@ -5,7 +5,7 @@
 
 {% block styles %}
 {{ super() }}
-{% asset "opendquality/opendquality-css" %}
+{% asset "dquality/dquality-css" %}
 {% endblock %}
 
 {% block breadcrumb_content %}
@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block secondary_content %}
-{% include "ckanext/opendquality/left_side.html" %}
+{% include "ckanext/dquality/left_side.html" %}
 {% endblock %}
 
 {% block page_header %}
@@ -21,8 +21,8 @@
 {% block primary_content_inner %}
 <h1>{{ title }}</h1>
 <div class="row table-responsive">
-  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('opendquality.dashboard') }}">
-    {% include "ckanext/opendquality/qa_filter_form.html" %}
+  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('dquality.dashboard') }}">
+    {% include "ckanext/dquality/qa_filter_form.html" %}
     <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
   </form>
 </div>
@@ -192,7 +192,7 @@
 
 <div class="row row-cols-1 row-cols-lg-3 g-3 qa-metrics-row mt-3" style="z-index: 2;">
   <div class="col col-lg-6 col-xs-12">
-    <canvas id="radar_chart" data-module="opendquality-radar-chart"></canvas>
+    <canvas id="radar_chart" data-module="dquality-radar-chart"></canvas>
   </div>
   
   <div class="col col-lg-6">
@@ -283,10 +283,10 @@
               {% for rev in top_relevance %}
               <tr>
                 <td><a
-                    href="{{ h.url_for('opendquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}">
+                    href="{{ h.url_for('dquality.dashboard',org_id=rev.org.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}">
                     {{ rev.org.title }}</a></td>
                 <td><a
-                    href="{{ h.url_for('opendquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}"
+                    href="{{ h.url_for('dquality.admin_report',org_id=rev.org.id, package_id=rev.id, org_main=rev.org.parent_id, org_sub=rev.org.id, ver_selected=selected_version) }}"
                     target="qa-link">{{ rev.title }}</a></td>
                 <td>
                   <div class="progress">
@@ -334,7 +334,7 @@
 
 {% block scripts %}
 {{ super() }}
-{% asset "opendquality/opendquality-js" %}
+{% asset "dquality/dquality-js" %}
 <script>
   {% if parents is not none %}
   window.CHILDREN_BY_PARENT = {{ children_by_parent | tojson | safe }};

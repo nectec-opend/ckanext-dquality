@@ -5,8 +5,8 @@
 
 {% block styles %}
 {{ super() }}
-{% asset "opendquality/datatables-css" %}
-{% asset "opendquality/opendquality-css" %}
+{% asset "dquality/datatables-css" %}
+{% asset "dquality/dquality-css" %}
 {% endblock %}
 
 {% block breadcrumb_content %}
@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block secondary_content %}
-{% include "ckanext/opendquality/left_side.html" %}
+{% include "ckanext/dquality/left_side.html" %}
 {% endblock %}
 
 {% block page_header %}
@@ -22,8 +22,8 @@
 {% block primary_content_inner %}
 <h1>{{ title }}</h1>
 <div class="row table-responsive">
-  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('opendquality.admin_report') }}">
-    {% include "ckanext/opendquality/qa_filter_form.html" %}
+  <form id='org-filter-form' class="form-inline" method="GET" action="{{ h.url_for('dquality.admin_report') }}">
+    {% include "ckanext/dquality/qa_filter_form.html" %}
     <button type="submit" class="btn btn-primary">{{ _('แสดงรายงาน') }}</button>
     <button type="button" id="export-btn" class="btn btn-success">Export</button>
     <button type="button" id="export-all-btn" class="btn btn-warning" alt="export data quality result package and resouce">Export All
@@ -67,7 +67,7 @@
       <tr>
         <td>{{ loop.index }}</td>
         <td>{{ report.package_id }}</td>
-        <td><a href="{{ h.url_for('opendquality.admin_report',org_id=report.org_id, package_id=report.package_id, org_main=report.org_parent_id, org_sub=report.org_id, ver_selected=selected_version) }}"
+        <td><a href="{{ h.url_for('dquality.admin_report',org_id=report.org_id, package_id=report.package_id, org_main=report.org_parent_id, org_sub=report.org_id, ver_selected=selected_version) }}"
             target="qa-link">{{ report.package_title }}</a></td>
         {%if quality_type == 'resource'%}
         <td>{{ report.resource_id }}</td>
@@ -143,7 +143,7 @@
 
 {% block scripts %}
 {{ super() }}
-{% asset "opendquality/datatables-js" %}
+{% asset "dquality/datatables-js" %}
 <!-- <script>
   new DataTable('#tb-qa-result', {
     responsive: true,

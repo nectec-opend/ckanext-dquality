@@ -1,6 +1,6 @@
 "use strict";
 
-ckan.module("opendquality-radar-chart", function ($) {
+ckan.module("dquality-radar-chart", function ($) {
   return {
     initialize: function () {
       const el = this.el;
@@ -9,7 +9,7 @@ ckan.module("opendquality-radar-chart", function ($) {
   };
 });
 
-ckan.module('opendquality-cancel', function ($) {
+ckan.module('dquality-cancel', function ($) {
   return {
     initialize: function () {
       $.proxyAll(this, /_on/);
@@ -54,7 +54,7 @@ ckan.module('opendquality-cancel', function ($) {
   };
 });
 
-ckan.module('opendquality-deleted', function ($) {
+ckan.module('dquality-deleted', function ($) {
   return {
     initialize: function () {
       $.proxyAll(this, /_on/);
@@ -97,7 +97,7 @@ ckan.module('opendquality-deleted', function ($) {
 });
 
 
-// ckan.module("opendquality-cancel", function ($) {
+// ckan.module("dquality-cancel", function ($) {
 //   return {
 //     initialize: function () {
 //       const el = this.el;
@@ -115,7 +115,7 @@ ckan.module('opendquality-deleted', function ($) {
 //   }
 // });
 
-// ckan.module("opendquality-deleted", function ($) {
+// ckan.module("dquality-deleted", function ($) {
 //   return {
 //     initialize: function () {
 //       const el = this.el;
@@ -142,7 +142,7 @@ ckan.module("qa-datatables", function ($) {
         pageLength: 50,
         lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "ทั้งหมด"] ],
         language: {
-          url: "/opendquality/datatables/i18n/th.json"
+          url: "/dquality/datatables/i18n/th.json"
         },
         layout: {
           topStart: ['pageLength', 'info'],

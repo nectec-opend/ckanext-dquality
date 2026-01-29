@@ -68,28 +68,19 @@ ckan.plugins = dquality ...
 
 การตั้งค่าเพิ่มเติมสำหรับ **ckanext-dquality** ในไฟล์ CKAN config (`/etc/ckan/default/ckan.ini`)
 
-### 1. (optional) อนุญาตให้ผู้ใช้ทั่วไปเข้าถึงหน้า Table / Dashboard Report
-
+### 1. (optional) อนุญาต ให้เข้าถึงหน้า table / dashboard report สำหรับผู้ใช้ทั่วไป
 ```sh
-ckanext.opendquality.public_endpoint = dquality.admin_report dquality.dashboard
+ckanext.dquality.public_endpoint = dquality.admin_report dquality.dashboard
 ```
-
-### 2. (optional) กำหนดขนาดไฟล์ทรัพยากรสูงสุด (หน่วยเป็น MB) ที่อนุญาตให้ใช้ในการตรวจคุณภาพข้อมูล  
-ค่าเริ่มต้นคือ 10MB
-
+### 2. (optional) กำหนดขนาดไฟล์ทรัพยากรของชุดข้อมูลในการตรวจคุณภาพที่มากกว่า 10MB
 ```sh
-ckanext.opendquality.filesize_limit = 20
+ckanext.dquality.filesize_limit = 20
 ```
-
-### 3. (optional) กำหนดจำนวนแถวสูงสุดที่อนุญาตให้อ่านจากไฟล์ทรัพยากรในการตรวจคุณภาพข้อมูล  
-ค่าเริ่มต้นคือ 5000 แถว
-
+### 3. (optional) กำหนดจำนวนแถวสูงสุดที่ต้องการให้การอ่านข้อมูลในไฟล์ทรัพยากรของชุดข้อมูลในการตรวจคุณภาพที่มากกว่าหรืน้อยกว่า 5000 แถว
 ```sh
-ckanext.opendquality.record_limit = 6000
+ckanext.dquality.record_limit = 6000
 ```
-
-### 4. (optional) กำหนดระยะเวลาการทำงานสูงสุดของ jobs worker (หน่วยเป็นวินาที)
-
+### 4. (optional) แก้ไขการกำหนดระยะเวลาในการทำงานของ jobs worker สูงสุด (หน่วยเป็นวินาที)
 ```sh
 ckan.jobs.timeout = 10800 #(3 ชั่วโมง)
 ```
