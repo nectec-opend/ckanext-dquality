@@ -60,8 +60,8 @@ MAX_CONTENT_LENGTH = 10 * 1024 * 1024   # 10 MB
 CHUNK_SIZE = 256 * 1024    # 256 KB
 DOWNLOAD_TIMEOUT = 60      # 60 seconds
 SSL_VERIFY = True
-record_limit = os.environ.get('CKANEXT__dquality__RECORD_LIMIT', toolkit.config.get('ckanext.dquality.record_limit', 5001))
-file_size_limit = os.environ.get('CKANEXT__dquality__FILE_SIZE_LIMIT', toolkit.config.get('ckanext.dquality.file_size_limit', 10))
+record_limit = os.environ.get('CKANEXT__DQUALITY__RECORD_LIMIT', toolkit.config.get('ckanext.dquality.record_limit', 5001))
+file_size_limit = os.environ.get('CKANEXT__DQUALITY__FILE_SIZE_LIMIT', toolkit.config.get('ckanext.dquality.file_size_limit', 10))
 
 class LazyStreamingList(object):
     '''Implements a buffered stream that emulates an iterable object.

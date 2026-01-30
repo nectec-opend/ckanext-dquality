@@ -1371,7 +1371,7 @@ def get_all_organizations():
 
 #     # อ่านค่าจาก ckan.ini
 #     # config_orgs = toolkit.config.get('ckanext.dquality.orgs', "").strip()
-#     config_orgs = (os.environ.get('CKANEXT__dquality__ORGS')
+#     config_orgs = (os.environ.get('CKANEXT__DQUALITY__ORGS')
 #     or (toolkit.config.get('ckanext.dquality.orgs') or '').strip())
 
 #     if config_orgs:
