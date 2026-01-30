@@ -18,8 +18,8 @@ qa = Blueprint('dquality', __name__, url_prefix="/qa")
 dquality = quality_lib.dquality()
 
 
-as_agency = toolkit.asbool(os.environ.get('CKANEXT__dquality__AGENT', toolkit.config.get('ckanext.dquality.agent', True)))
-enpoint_public = os.environ.get('CKANEXT__dquality__PUBLIC_ENDPOINTS', toolkit.config.get('ckanext.dquality.public_endpoints', ''))
+as_agency = toolkit.asbool(os.environ.get('CKANEXT__DQUALITY__AGENT', toolkit.config.get('ckanext.dquality.agent', True)))
+enpoint_public = os.environ.get('CKANEXT__DQUALITY__PUBLIC_ENDPOINTS', toolkit.config.get('ckanext.dquality.public_endpoints', ''))
 EXEMPT_ENDPOINTS = set(enpoint_public.split(' ') if enpoint_public else [])
 EXEMPT_ENDPOINTS.add('dquality.index')
 
